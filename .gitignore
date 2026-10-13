@@ -150,4 +150,6 @@ apps/samsar-client/public/*
 .turbo/
 .nx/
 
+# local-only agent instructions
 AGENTS.md
+agents.md
