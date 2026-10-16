@@ -6,6 +6,7 @@ import User from '../schema/User.js';
 import UserPayment from '../schema/UserPayment.js';
 import {
   createUserPaymentRecord,
+  getPaidCheckoutCredits,
   isAnonymousCreditPurchaseSession,
   resolveAnonymousCreditPurchaseUserFromSession,
 } from '../models/Payment.js';
@@ -59,7 +60,7 @@ router.post('/stripe_payment_webhook', express.raw({ type: 'application/json' })
 
       const { customer_details, mode } = session;
 
-      const email = customer_details.email;
+      const email = customer_details?.email;
       const stripePaymentId = session.id;
 
       if (mode === 'subscription') {
@@ -140,14 +141,17 @@ router.post('/stripe_payment_webhook', express.raw({ type: 'application/json' })
         }
       } else if (mode === 'payment') {
         try {
-
-
-          let currentUser = await User.findOne({ stripePaymentId });
-
           const customerMetadata = event.data.object.metadata;
           const isAnonymousCreditPurchase = isAnonymousCreditPurchaseSession(session);
           const isV2UserRecharge = isV2UserRechargeCheckoutSession(session);
+          const credits = getPaidCheckoutCredits(session, {
+            useConfiguredRate: isAnonymousCreditPurchase || isV2UserRecharge,
+          });
+          if (credits <= 0) {
+            return res.status(200).send('Success');
+          }
 
+          let currentUser = await User.findOne({ stripePaymentId });
 
           let newUserCreatedForCheckout = false;
 
@@ -163,14 +167,7 @@ router.post('/stripe_payment_webhook', express.raw({ type: 'application/json' })
             newUserCreatedForCheckout = Boolean(resolvedUser?.created);
           }
 
-          const amountPaid = parseInt(session.amount_total); // This is in cents
-          const metadataCredits = Number(customerMetadata?.creditsRequested);
-          const credits = (isAnonymousCreditPurchase || isV2UserRecharge)
-            && Number.isFinite(metadataCredits) && metadataCredits > 0
-            ? Math.round(metadataCredits)
-            : Math.max(0, Math.round(amountPaid));
-
-
+          const amountPaid = session.amount_total;
 
           if (!currentUser) {
             return res.status(404).send("User not found");

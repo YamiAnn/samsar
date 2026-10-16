@@ -9,6 +9,7 @@
     "repair:publication-flags": "node scripts/repair_publication_session_flags.js",
     "repair:published-media": "node scripts/repair_published_media.js",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:credits-security": "node --test src/routes/api/credits.security.test.js src/models/Payment.security.test.js src/models/external/User.ownership.test.js src/models/external/User.billingMode.test.js",
     "test:outro-footer-layout": "node --test src/test_cases/outro_footer_layout/*.test.js",
     "google:auth:check": "node scripts/check_google_adc.js",
     "generate:font-samples": "node src/utils/SupportedFontSamples.js --generate"

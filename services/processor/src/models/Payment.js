@@ -21,6 +21,23 @@ const CLIENT_APP = process.env.CLIENT_APP || 'https://app.samsar.one';
 const LANDING_APP = process.env.LANDING_APP || 'https://www.samsar.one';
 const ANONYMOUS_CREDIT_PURCHASE_INTENT = 'anonymous_credit_purchase';
 const DEFAULT_CREDITS_PER_DOLLAR = 100;
+const RESERVED_CHECKOUT_METADATA_KEYS = new Set([
+  'intent', 'sourceproject', 'creditsrequested', 'originalamountcents', 'productsummary',
+  'customeremail', 'userid', 'internaluserid', 'stripecustomerid', 'billingscope',
+  'externalidentitykey', 'externalprovider', 'externaluserid', 'externaluserexternalid',
+  'customersubaccountid', 'customersubaccountpublicid', 'customersubaccountexternalid',
+  'externalaccountid', 'externalcompanyid', 'externalappid', 'redirecturl', 'apiversion', 'authflow',
+]);
+
+function normalizeCheckoutMetadata(metadata, { trusted = false } = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+
+  return Object.fromEntries(Object.entries(metadata)
+    .filter(([key, value]) => value !== undefined && value !== null && (
+      trusted || !RESERVED_CHECKOUT_METADATA_KEYS.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase())
+    ))
+    .map(([key, value]) => [key, String(value)]));
+}
 
 function isCouponLimitReached(couponData) {
   const limit = Number(couponData?.redemptionLimit);
@@ -73,9 +90,25 @@ function buildUsernameFromEmail(email) {
   return safeLocalPart ? `api-${safeLocalPart}` : `api-customer-${Date.now()}`;
 }
 
-function getCreditsPerDollar() {
-  const parsed = Number(process.env.SAMSAR_CREDITS_PER_DOLLAR);
+function getCreditsPerDollar(env = process.env) {
+  const parsed = Number(env.SAMSAR_CREDITS_PER_DOLLAR);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CREDITS_PER_DOLLAR;
+}
+
+export function getPaidCheckoutCredits(session, { useConfiguredRate = false, env = process.env } = {}) {
+  const amountCents = session?.amount_total;
+  if (
+    session?.mode !== 'payment' || session?.payment_status !== 'paid' ||
+    typeof session?.currency !== 'string' || session.currency.toLowerCase() !== 'usd' ||
+    !Number.isSafeInteger(amountCents) || amountCents <= 0
+  ) {
+    return 0;
+  }
+
+  const credits = useConfiguredRate
+    ? Math.max(1, Math.round((amountCents / 100) * getCreditsPerDollar(env)))
+    : amountCents;
+  return Number.isSafeInteger(credits) && credits > 0 ? credits : 0;
 }
 
 function normalizeCheckoutAmountCents(payload = {}) {
@@ -106,22 +139,14 @@ function normalizeCheckoutAmountCents(payload = {}) {
 }
 
 function buildAnonymousCreditMetadata(payload, amountCents, credits) {
-  const metadata = {
+  return {
+    ...normalizeCheckoutMetadata(payload.metadata),
     intent: ANONYMOUS_CREDIT_PURCHASE_INTENT,
     sourceProject: 'superreferrer',
     creditsRequested: String(credits),
     originalAmountCents: String(amountCents),
     productSummary: `Purchase ${credits} Samsar Processor credits`,
   };
-
-  if (payload.metadata && typeof payload.metadata === 'object') {
-    Object.entries(payload.metadata).forEach(([key, value]) => {
-      if (value === undefined || value === null) return;
-      metadata[key] = String(value);
-    });
-  }
-
-  return metadata;
 }
 
 const ensureStripeCustomerForUser = async (userData) => {
@@ -544,7 +569,7 @@ function generateCouponCode() {
 
 
 
-export async function purchaseCreditsForUser(userId, payload = {}) {
+export async function purchaseCreditsForUser(userId, payload = {}, { trustedMetadata = {} } = {}) {
   const amountCentsRaw = payload.amountCents ?? payload.amount_cents;
   const parsedAmountCents = Number(amountCentsRaw);
   const parsedAmountUsd = Number(payload.amount);
@@ -572,19 +597,13 @@ export async function purchaseCreditsForUser(userId, payload = {}) {
 
   const productSummary =
     payload.productSummary || `Purchase ${amountOfCreditsToPurchase} credits`;
-  const metadataPayload = {};
-  if (payload.metadata && typeof payload.metadata === 'object') {
-    Object.entries(payload.metadata).forEach(([key, value]) => {
-      if (value === undefined || value === null) return;
-      metadataPayload[key] = String(value);
-    });
-  }
-  if (!metadataPayload.productSummary) {
-    metadataPayload.productSummary = productSummary;
-  }
-  if (!metadataPayload.creditsRequested) {
-    metadataPayload.creditsRequested = amountOfCreditsToPurchase.toString();
-  }
+  // Fulfillment routing is supplied by server callers, never client metadata.
+  const metadataPayload = {
+    ...normalizeCheckoutMetadata(payload.metadata),
+    ...normalizeCheckoutMetadata(trustedMetadata, { trusted: true }),
+    productSummary,
+    creditsRequested: amountOfCreditsToPurchase.toString(),
+  };
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     line_items: [

@@ -61,6 +61,7 @@ import {
 } from '../../models/api/VideoSessionOutroAPI.js';
 import { purchaseCreditsForUser } from '../../models/Payment.js';
 import {
+  assertCanGrantExternalUserCredits,
   archiveExternalUserRequest,
   buildExternalStatusResponse,
   createExternalLoginTokenForUser,
@@ -788,6 +789,7 @@ async function authenticateExternalRequest(req, res, next) {
         internalUserId: authContext.internalUserId,
         headers: req.headers,
       });
+    req.authContext = { ...authContext, externalUser: req.externalUser };
     next();
   } catch (error) {
     if (
@@ -1039,26 +1041,23 @@ router.post('/utils/usage_charge', authenticateExternalRequest, async (req, res)
 
 router.post('/credits/grant', authenticateExternalRequest, async (req, res) => {
   try {
-    if (req.authType === 'customer_sub_account_api_key') {
-      return res.status(403).json({
-        message: 'Customer sub-account API keys cannot grant credits. Purchase Samsar credits on the customer account and send user requests with external_user for audit.',
-      });
-    }
+    await assertCanGrantExternalUserCredits(req.authContext);
 
-    const externalUser = await resolveExternalUserContext(req);
     const payload = normalizeInputPayload(req);
     const creditsRaw =
       payload.credits ?? payload.credits_to_grant ?? payload.creditsToGrant;
     const credits = Number(creditsRaw);
 
-    if (!Number.isFinite(credits) || credits <= 0 || !Number.isInteger(credits)) {
+    if (!Number.isSafeInteger(credits) || credits <= 0) {
       return res.status(400).json({
-        message: 'credits is required and must be a positive integer.',
+        message: 'credits is required and must be a positive safe integer.',
       });
     }
 
+    const externalUser = await resolveExternalUserContext(req);
     const grantResult = await grantExternalUserCredits({
       internalUserId: req.userId,
+      authContext: req.authContext,
       externalUser,
       credits,
       source: 'manual_grant',
@@ -1209,7 +1208,8 @@ router.post('/credits/recharge', authenticateExternalRequest, async (req, res) =
       amount: amountUsd,
       amountCents,
       productSummary: `Purchase ${amountCents} credits`,
-      metadata: {
+    }, {
+      trustedMetadata: {
         billingScope: 'external_user',
         creditsRequested: amountCents,
         externalIdentityKey: externalUser.externalIdentityKey,

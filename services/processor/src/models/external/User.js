@@ -234,12 +234,11 @@ function isInternalBillingExternalUser(externalUser) {
     return false;
   }
 
+  // Billing authority must remain stable across profile updates and later refunds.
   return (
     normalizeString(externalUser.provider) === INTERNAL_EXTERNAL_USER_PROVIDER
     || normalizeString(externalUser.userType) === INTERNAL_EXTERNAL_USER_TYPE
     || Boolean(externalUser.customerSubAccountId || externalUser.customerSubAccountPublicId)
-    || normalizeString(externalUser.metadata?.billingMode) === 'customer_sub_account'
-    || normalizeString(externalUser.metadata?.billingMode) === 'internal'
   );
 }
 
@@ -1117,6 +1116,14 @@ export async function upsertExternalUser({
 }) {
   await getDBConnectionString();
 
+  const ownerUserId = normalizeString(internalUserId?.toString?.() || internalUserId);
+  const ownerSubAccountId = customerSubAccountObjectId(customerSubAccount);
+  if (!ownerUserId || (customerSubAccount && !ownerSubAccountId)) {
+    const error = new Error('An authenticated account and sub-account owner are required.');
+    error.status = 400;
+    throw error;
+  }
+
   const normalized = scopeExternalUserToCustomerSubAccount(
     normalizeExternalUserPayload(externalUserPayload),
     customerSubAccount,
@@ -1147,38 +1154,54 @@ export async function upsertExternalUser({
         customerSubAccountExternalId: customerSubAccountExternalId(customerSubAccount),
       }
     : {};
-  const doc = await ExternalUser.findOneAndUpdate(
-    { externalIdentityKey },
-    {
-      $set: {
-        internalUserId,
-        provider: normalized.provider.toLowerCase(),
-        externalUserId: normalized.externalUserId,
-        uniqueKey: normalized.uniqueKey || normalized.externalUserId,
-        externalAppId: normalized.externalAppId,
-        externalCompanyId: normalized.externalCompanyId,
-        externalAccountId: normalized.externalAccountId,
-        ...customerSubAccountFields,
-        email: normalized.email,
-        username: normalized.username,
-        displayName: normalized.displayName,
-        avatarUrl: normalized.avatarUrl,
-        userType: normalized.userType,
-        browserInstallation: normalized.browserInstallation,
-        metadata: normalized.metadata,
-        lastActivityAt: now,
-      },
-      $setOnInsert: {
-        externalIdentityKey,
-      },
-    },
-    {
-      new: true,
-      upsert: true,
-    },
-  );
+  const ownerFilter = {
+    externalIdentityKey,
+    internalUserId: ownerUserId,
+    ...(customerSubAccount ? { customerSubAccountId: ownerSubAccountId } : {}),
+  };
 
-  return doc;
+  try {
+    return await ExternalUser.findOneAndUpdate(
+      ownerFilter,
+      {
+        $set: {
+          provider: normalized.provider.toLowerCase(),
+          externalUserId: normalized.externalUserId,
+          uniqueKey: normalized.uniqueKey || normalized.externalUserId,
+          externalAppId: normalized.externalAppId,
+          externalCompanyId: normalized.externalCompanyId,
+          externalAccountId: normalized.externalAccountId,
+          email: normalized.email,
+          username: normalized.username,
+          displayName: normalized.displayName,
+          avatarUrl: normalized.avatarUrl,
+          browserInstallation: normalized.browserInstallation,
+          metadata: normalized.metadata,
+          lastActivityAt: now,
+        },
+        $setOnInsert: {
+          externalIdentityKey,
+          internalUserId: ownerUserId,
+          userType: normalized.userType,
+          ...customerSubAccountFields,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+      },
+    );
+  } catch (error) {
+    if (error?.code !== 11000) {
+      throw error;
+    }
+
+    // A globally unique identity must never move between account owners.
+    const forbidden = new Error('External user identity already belongs to another account or sub-account.');
+    forbidden.status = 403;
+    forbidden.code = 'EXTERNAL_USER_OWNERSHIP_CONFLICT';
+    throw forbidden;
+  }
 }
 
 export async function ensureExternalUserApiKey(externalUser, { rotate = false } = {}) {
@@ -2362,33 +2385,67 @@ export async function publishExternalUserRequest({
   };
 }
 
+export async function assertCanGrantExternalUserCredits(authContext) {
+  const forbidden = () => {
+    const error = new Error('Manual credit grants require a signed-in administrator auth token. Use credits/recharge to purchase credits.');
+    error.status = 403;
+    error.code = 'CREDIT_GRANT_FORBIDDEN';
+    return error;
+  };
+
+  // Delegated credentials resolve to the parent's ID, not its authority.
+  if (
+    authContext?.authType !== 'auth_token' ||
+    !authContext.internalUserId ||
+    authContext.externalUser ||
+    authContext.customerSubAccount
+  ) {
+    throw forbidden();
+  }
+
+  await getDBConnectionString();
+  const actorUserId = authContext.internalUserId.toString();
+  const actor = await User.findById(actorUserId).select('isAdminUser').lean();
+  if (actor?.isAdminUser !== true) {
+    throw forbidden();
+  }
+
+  return actorUserId;
+}
+
 export async function grantExternalUserCredits({
   internalUserId,
+  authContext,
   externalUser,
   credits,
   source = 'manual_grant',
   metadata = {},
 }) {
-  await getDBConnectionString();
+  const actorUserId = await assertCanGrantExternalUserCredits(authContext);
+  if (
+    internalUserId?.toString?.() !== actorUserId ||
+    externalUser?.internalUserId?.toString?.() !== actorUserId
+  ) {
+    const error = new Error('The credit grant target must belong to the authenticated administrator.');
+    error.status = 403;
+    error.code = 'CREDIT_GRANT_FORBIDDEN';
+    throw error;
+  }
 
   const normalizedCredits = Number(credits);
-  if (!Number.isFinite(normalizedCredits) || normalizedCredits <= 0) {
-    const error = new Error('credits must be a positive number.');
+  if (!Number.isSafeInteger(normalizedCredits) || normalizedCredits <= 0) {
+    const error = new Error('credits must be a positive safe integer.');
     error.status = 400;
     throw error;
   }
 
-  const grantedCredits = Math.floor(normalizedCredits);
-  if (grantedCredits <= 0) {
-    const error = new Error('credits must be at least 1.');
-    error.status = 400;
-    throw error;
-  }
+  const grantedCredits = normalizedCredits;
 
   const creditResult = await creditGenerationCredits(internalUserId, grantedCredits, {
     source,
     metadata: {
       ...normalizeMetadata(metadata),
+      grantedByUserId: actorUserId,
       externalIdentityKey: externalUser.externalIdentityKey,
       externalProvider: externalUser.provider,
       externalUserId: externalUser._id?.toString?.() || externalUser.id || null,
@@ -2427,6 +2484,7 @@ export async function grantExternalUserCredits({
     source,
     metadata: {
       ...normalizeMetadata(metadata),
+      grantedByUserId: actorUserId,
       countAsPurchase: source !== 'manual_grant',
     },
     balanceAfter: Number(updatedExternalUser?.generationCredits) || 0,
