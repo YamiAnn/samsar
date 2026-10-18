@@ -43,7 +43,7 @@ import {
 import { INFERENCE_MODEL_TYPES, ASSISTANT_MODEL_TYPES } from "../../constants/Types.ts";
 
 const PROCESSOR_SERVER = import.meta.env.VITE_PROCESSOR_API;
-const DEFAULT_TEXT_MODEL = "gpt-6-astra";
+const DEFAULT_TEXT_MODEL = "gpt-6.1-sol";
 const VIDEO_FPS_OPTIONS = [
   { value: 24, label: "24 FPS" },
   { value: 16, label: "16 FPS" },

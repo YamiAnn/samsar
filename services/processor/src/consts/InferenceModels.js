@@ -1,7 +1,7 @@
 export const INFERENCE_MODELS = Object.freeze({
-  Inference: 'gpt-6-astra',
-  BranchedInferenceExtraHigh: 'gpt-6-astra-xhigh',
-  PublicationMetadata: 'gpt-6-astra',
+  Inference: 'gpt-6.1-sol',
+  BranchedInferenceExtraHigh: 'gpt-6.1-sol-xhigh',
+  PublicationMetadata: 'gpt-6.1-sol',
 });
 
 export const INFERENCE_REASONING_EFFORTS = Object.freeze({
@@ -76,7 +76,7 @@ export const SUPPORTED_INFERENCE_MODEL_VALUES = Object.freeze([
 
 export const INFERENCE_MODEL_OPTIONS = Object.freeze([
   Object.freeze({
-    label: 'gpt-6-astra',
+    label: 'GPT 6.1 Sol High',
     value: DEFAULT_INFERENCE_MODEL,
     providerModel: INFERENCE_MODELS.Inference,
     availabilityModel: INFERENCE_MODELS.Inference,
@@ -84,7 +84,7 @@ export const INFERENCE_MODEL_OPTIONS = Object.freeze([
     isBranchedInferenceModel: true,
   }),
   Object.freeze({
-    label: 'GPT 6 Astra Extra High',
+    label: 'GPT 6.1 Sol Extra High',
     value: GPT_56_SOL_XHIGH_INFERENCE_MODEL,
     providerModel: INFERENCE_MODELS.Inference,
     availabilityModel: INFERENCE_MODELS.Inference,
@@ -129,10 +129,12 @@ const GPT_56_SOL_ALIAS_TOKENS = new Set([
   'GPT6',
   'GPT56SOL',
   'GPT6ASTRA',
+  'GPT61SOL',
   'GPT56HIGH',
   'GPT6HIGH',
   'GPT56SOLHIGH',
   'GPT6ASTRAHIGH',
+  'GPT61SOLHIGH',
 ]);
 
 const GPT_56_SOL_XHIGH_ALIAS_TOKENS = new Set([
@@ -140,10 +142,12 @@ const GPT_56_SOL_XHIGH_ALIAS_TOKENS = new Set([
   'GPT6XHIGH',
   'GPT56SOLXHIGH',
   'GPT6ASTRAXHIGH',
+  'GPT61SOLXHIGH',
   'GPT56EXTRAHIGH',
   'GPT6EXTRAHIGH',
   'GPT56SOLEXTRAHIGH',
   'GPT6ASTRAEXTRAHIGH',
+  'GPT61SOLEXTRAHIGH',
 ]);
 
 const GEMINI_31_PRO_ALIASES = new Set([

@@ -27,49 +27,49 @@ import {
   normalizeOpenAIInferenceModel,
 } from './InferenceModels.js';
 
-test('defaults inference model to GPT 6 Astra', () => {
-  assert.equal(INFERENCE_MODELS.Inference, 'gpt-6-astra');
-  assert.equal(INFERENCE_MODEL_KEYS.GPT_56_SOL, 'gpt-6-astra');
-  assert.equal(INFERENCE_PROVIDER_MODEL_KEYS[INFERENCE_MODEL_KEYS.GPT_56_SOL], 'gpt-6-astra');
+test('defaults inference model to GPT 6.1 Sol', () => {
+  assert.equal(INFERENCE_MODELS.Inference, 'gpt-6.1-sol');
+  assert.equal(INFERENCE_MODEL_KEYS.GPT_56_SOL, 'gpt-6.1-sol');
+  assert.equal(INFERENCE_PROVIDER_MODEL_KEYS[INFERENCE_MODEL_KEYS.GPT_56_SOL], 'gpt-6.1-sol');
   assert.equal(normalizeInferenceModel(), DEFAULT_INFERENCE_MODEL);
   assert.equal(normalizeInferenceModel(''), DEFAULT_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gpt-6-astra'), DEFAULT_INFERENCE_MODEL);
-  assert.equal(getProviderModelForInferenceModel('gpt-6-astra'), 'gpt-6-astra');
+  assert.equal(normalizeInferenceModel('gpt-6.1-sol'), DEFAULT_INFERENCE_MODEL);
+  assert.equal(getProviderModelForInferenceModel('gpt-6.1-sol'), 'gpt-6.1-sol');
   assert.equal(GPT_56_SOL_REASONING_EFFORT, 'high');
 });
 
-test('preserves the GPT 6 Astra extra-high logical option while routing to the Astra provider model', () => {
-  assert.equal(GPT_56_SOL_XHIGH_INFERENCE_MODEL, 'gpt-6-astra-xhigh');
+test('preserves the GPT 6.1 Sol extra-high logical option while routing to the Sol provider model', () => {
+  assert.equal(GPT_56_SOL_XHIGH_INFERENCE_MODEL, 'gpt-6.1-sol-xhigh');
   for (const alias of [
-    'gpt-6-astra-xhigh',
-    'GPT 6 Astra XHigh',
-    'GPT 6 Astra Extra High',
+    'gpt-6.1-sol-xhigh',
+    'GPT 6.1 Sol XHigh',
+    'GPT 6.1 Sol Extra High',
   ]) {
     assert.equal(normalizeInferenceModel(alias), GPT_56_SOL_XHIGH_INFERENCE_MODEL);
     assert.equal(getReasoningEffortForInferenceModel(alias), 'xhigh');
-    assert.equal(getProviderModelForInferenceModel(alias), 'gpt-6-astra');
+    assert.equal(getProviderModelForInferenceModel(alias), 'gpt-6.1-sol');
   }
   assert.equal(isOpenAIInferenceModel(GPT_56_SOL_XHIGH_INFERENCE_MODEL), true);
 });
 
-test('keeps publication metadata on Astra with explicit xhigh reasoning', () => {
-  assert.equal(INFERENCE_MODELS.PublicationMetadata, 'gpt-6-astra');
+test('keeps publication metadata on Sol with explicit xhigh reasoning', () => {
+  assert.equal(INFERENCE_MODELS.PublicationMetadata, 'gpt-6.1-sol');
   assert.equal(INFERENCE_REASONING_EFFORTS.PublicationMetadata, 'xhigh');
   assert.deepEqual(PUBLICATION_METADATA_INFERENCE_SETTINGS, {
-    model: 'gpt-6-astra',
+    model: 'gpt-6.1-sol',
     reasoning: { effort: 'xhigh' },
   });
-  assert.equal(normalizeOpenAIInferenceModel('gpt-6-astra'), 'gpt-6-astra');
-  assert.equal(getReasoningEffortForInferenceModel('gpt-6-astra'), 'high');
-  assert.equal(isOpenAIInferenceModel('gpt-6-astra'), true);
+  assert.equal(normalizeOpenAIInferenceModel('gpt-6.1-sol'), 'gpt-6.1-sol');
+  assert.equal(getReasoningEffortForInferenceModel('gpt-6.1-sol'), 'high');
+  assert.equal(isOpenAIInferenceModel('gpt-6.1-sol'), true);
 
   // Publication metadata shares the model, while its settings retain xhigh effort.
-  assert.equal(normalizeInferenceModel('gpt-6-astra'), DEFAULT_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gpt-6.1-sol'), DEFAULT_INFERENCE_MODEL);
 });
 
 test('uses the session inference provider for publication metadata', () => {
-  assert.deepEqual(getPublicationMetadataInferenceSettings('gpt-6-astra'), {
-    model: 'gpt-6-astra',
+  assert.deepEqual(getPublicationMetadataInferenceSettings('gpt-6.1-sol'), {
+    model: 'gpt-6.1-sol',
     reasoning: { effort: 'xhigh' },
   });
   assert.deepEqual(getPublicationMetadataInferenceSettings('gemini-3.1-pro'), {
@@ -154,7 +154,18 @@ test('normalizes Kimi K3 aliases to the native multimodal provider model', () =>
 });
 
 
-test('upgrades saved GPT 5.6 selections to Astra without losing xhigh effort', () => {
-  assert.equal(normalizeInferenceModel('gpt-5.6-sol'), 'gpt-6-astra');
-  assert.equal(normalizeInferenceModel('gpt-5.6-sol-xhigh'), 'gpt-6-astra-xhigh');
+test('upgrades saved GPT 5.6 selections to GPT 6.1 Sol without losing xhigh effort', () => {
+  assert.equal(normalizeInferenceModel('gpt-5.6-sol'), 'gpt-6.1-sol');
+  assert.equal(normalizeInferenceModel('gpt-5.6-sol-xhigh'), 'gpt-6.1-sol-xhigh');
+});
+
+
+test('migrates saved Astra selections to GPT 6.1 Sol and preserves explicit xhigh', () => {
+  for (const alias of ['gpt-6-astra', 'GPT 6 Astra High', 'gpt-6.1-sol', 'GPT 6.1 Sol High']) {
+    assert.equal(normalizeInferenceModel(alias), 'gpt-6.1-sol');
+    assert.equal(getReasoningEffortForInferenceModel(alias), 'high');
+  }
+  for (const alias of ['gpt-6-astra-xhigh', 'GPT 6 Astra Extra High', 'gpt-6.1-sol-xhigh']) {
+    assert.equal(getReasoningEffortForInferenceModel(alias), 'xhigh');
+  }
 });

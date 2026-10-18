@@ -73,7 +73,7 @@ test('shared movieResourceList builder preserves the existing stage-one enrichme
     videoTone: 'grounded',
     language: 'auto',
     speakerOptions: null,
-    inferenceModel: 'gpt-6-astra',
+    inferenceModel: 'gpt-6.1-sol',
   };
 
   const legacyGenders = ensureNarrativeSpeechGenders(
@@ -302,7 +302,7 @@ test('visual prompt builder rejects an empty generated prompt', async () => {
     buildMovieResourceListVisualPrompts({
       movieResourceList,
       themeJson: { style: ['cinematic'] },
-      inferenceModel: 'gpt-6-astra',
+      inferenceModel: 'gpt-6.1-sol',
       dependencies: {
         updatePromptWithTheme: async () => ' \n\t ',
       },

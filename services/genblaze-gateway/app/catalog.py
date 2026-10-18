@@ -36,11 +36,11 @@ class CuratedModel:
 # name here requires a matching Samsar adapter and verified request/response
 # compatibility.
 CURATED_SAMSAR_MODELS: Mapping[str, CuratedModel] = {
-    "gpt-5.6-sol": CuratedModel(
+    "gpt-6.1-sol": CuratedModel(
         "text",
         "chat.completions",
-        ("openai/gpt-5.6-sol",),
-        ("openai/gpt-5.6-sol",),
+        ("openai/gpt-6.1-sol",),
+        ("openai/gpt-6.1-sol",),
     ),
     "gemini-3.1-pro": CuratedModel(
         "text",

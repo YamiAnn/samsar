@@ -17,13 +17,13 @@ export const DEPLOYMENT_PROVIDER_CAPABILITIES = Object.freeze({
   samsar: {
     label: 'Samsar API Key',
     requiredFor: ['All models', 'All actions', 'moderation'],
-    models: ['gpt-6-astra', 'claude-opus-5.5', 'gemini-3.1-pro', 'QWEN3.8', 'KIMIK3', 'GPTIMAGE2.5', 'WAN2.7PRO', 'RUNWAYML', 'VEO3.1I2V', 'HAPPYHORSEI2V', 'LYRIA3', 'OPENAI_TTS', 'GOOGLE_TTS', 'MMAUDIO', 'LATENT_SYNC'],
+    models: ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-3.1-pro', 'QWEN3.8', 'KIMIK3', 'GPTIMAGE2.5', 'WAN2.7PRO', 'RUNWAYML', 'VEO3.1I2V', 'HAPPYHORSEI2V', 'LYRIA3', 'OPENAI_TTS', 'GOOGLE_TTS', 'MMAUDIO', 'LATENT_SYNC'],
     actions: ['chat', 'assistant', 'moderation', 'image', 'video', 'audio', 'lip_sync', 'sound_effect'],
   },
   openai: {
     label: 'OpenAI',
-    requiredFor: ['GPT 6 Astra', 'assistant', 'vision', 'moderation', 'OpenAI image', 'OpenAI TTS'],
-    models: ['gpt-6-astra', 'GPTIMAGE2.5', 'OPENAI_TTS'],
+    requiredFor: ['GPT 6.1 Sol', 'assistant', 'vision', 'moderation', 'OpenAI image', 'OpenAI TTS'],
+    models: ['gpt-6.1-sol', 'GPTIMAGE2.5', 'OPENAI_TTS'],
     actions: ['chat', 'assistant', 'moderation', 'image', 'audio'],
   },
   anthropic: {
@@ -34,8 +34,8 @@ export const DEPLOYMENT_PROVIDER_CAPABILITIES = Object.freeze({
   },
   openrouter: {
     label: 'OpenRouter',
-    requiredFor: ['GPT 6 Astra', 'Claude Opus 5.5', 'Gemini 3.1 Pro', 'Qwen 3.8 Max text and vision'],
-    models: ['gpt-6-astra', 'gemini-3.1-pro', 'QWEN3.8', 'claude-opus-5.5'],
+    requiredFor: ['GPT 6.1 Sol', 'Claude Opus 5.5', 'Gemini 3.1 Pro', 'Qwen 3.8 Max text and vision'],
+    models: ['gpt-6.1-sol', 'gemini-3.1-pro', 'QWEN3.8', 'claude-opus-5.5'],
     actions: ['chat', 'assistant'],
   },
   kimi: {

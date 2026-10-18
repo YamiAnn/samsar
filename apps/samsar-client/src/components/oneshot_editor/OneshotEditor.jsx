@@ -279,7 +279,7 @@ const IMAGE_LIST_TO_VIDEO_VIDEO_MODEL_KEYS = [
   'HAPPYHORSEI2V',
   'CUSTOM_IMAGE_TO_VIDEO',
 ];
-const DEFAULT_INFERENCE_MODEL = 'gpt-6-astra';
+const DEFAULT_INFERENCE_MODEL = 'gpt-6.1-sol';
 const JSON_MODE_ASPECT_RATIOS = ['16:9', '9:16'];
 const JSON_MODE_VIDEO_MODEL_SUB_TYPES = ['anime', '3d_animation', 'clay', 'comic', 'cyberpunk'];
 const GENERATION_STEP_MODE_ONE_STEP = 'one_step';
@@ -2028,7 +2028,7 @@ function validateCommonJsonInput(input, inferenceModelOptions = INFERENCE_MODEL_
       return 'JSON input.effort must be one of: high, xhigh.';
     }
     if (input.inference_model !== DEFAULT_INFERENCE_MODEL) {
-      return 'JSON input.effort is only supported with gpt-6-astra.';
+      return 'JSON input.effort is only supported with gpt-6.1-sol.';
     }
   } else if (input.inference_model === DEFAULT_INFERENCE_MODEL) {
     input.effort = modelImpliedEffort || 'high';

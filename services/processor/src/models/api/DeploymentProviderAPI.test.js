@@ -106,7 +106,7 @@ test('Samsar fallback availability includes Qwen 3.8 and media models', () => {
 test('OpenRouter availability exposes all inference models and no media-generation models', () => {
   const available = buildAvailableDeploymentModels({ openrouter: { ok: true, status: 'valid' } });
   assert.deepEqual(available.providers, ['openrouter']);
-  assert.deepEqual(available.models, ['QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-6-astra']);
+  assert.deepEqual(available.models, ['QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-6.1-sol']);
   assert.deepEqual(available.actions, ['assistant', 'chat']);
 });
 

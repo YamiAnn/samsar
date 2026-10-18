@@ -10,7 +10,7 @@ import {
   runInferenceAdapterFallback,
 } from './OpenAICompat.js';
 
-test('forces high reasoning for GPT 6 Astra Responses requests', async () => {
+test('forces high reasoning for GPT 6.1 Sol Responses requests', async () => {
   let capturedPath;
   let capturedBody;
   const openaiClient = {
@@ -19,14 +19,14 @@ test('forces high reasoning for GPT 6 Astra Responses requests', async () => {
       capturedBody = options.body;
       return {
         id: 'resp-test',
-        model: 'gpt-6-astra',
+        model: 'gpt-6.1-sol',
         output_text: 'ok',
       };
     },
   };
 
   const response = await createCompatibleChatCompletion(openaiClient, {
-    model: 'gpt-6-astra',
+    model: 'gpt-6.1-sol',
     messages: [{ role: 'user', content: 'hello' }],
     reasoning: { effort: 'low' },
     temperature: 0.2,
@@ -40,44 +40,44 @@ test('forces high reasoning for GPT 6 Astra Responses requests', async () => {
   assert.equal(response.choices[0].message.content, 'ok');
 });
 
-test('routes GPT 6 Astra Extra High to the Astra provider model with xhigh reasoning', async () => {
+test('routes GPT 6.1 Sol Extra High to the Sol provider model with xhigh reasoning', async () => {
   let capturedBody;
   const openaiClient = {
     async post(_path, options) {
       capturedBody = options.body;
-      return { id: 'resp-xhigh-test', model: 'gpt-6-astra', output_text: 'ok' };
+      return { id: 'resp-xhigh-test', model: 'gpt-6.1-sol', output_text: 'ok' };
     },
   };
 
   await createCompatibleChatCompletion(openaiClient, {
-    model: 'gpt-6-astra-xhigh',
+    model: 'gpt-6.1-sol-xhigh',
     messages: [{ role: 'user', content: 'hello' }],
   });
 
-  assert.equal(capturedBody.model, 'gpt-6-astra');
+  assert.equal(capturedBody.model, 'gpt-6.1-sol');
   assert.deepEqual(capturedBody.reasoning, { effort: 'xhigh' });
 });
 
-test('honors explicit xhigh effort on the canonical GPT 6 Astra model', async () => {
+test('honors explicit xhigh effort on the canonical GPT 6.1 Sol model', async () => {
   let capturedBody;
   const openaiClient = {
     async post(_path, options) {
       capturedBody = options.body;
-      return { id: 'resp-explicit-xhigh', model: 'gpt-6-astra', output_text: 'ok' };
+      return { id: 'resp-explicit-xhigh', model: 'gpt-6.1-sol', output_text: 'ok' };
     },
   };
 
   await createCompatibleChatCompletion(openaiClient, {
-    model: 'gpt-6-astra',
+    model: 'gpt-6.1-sol',
     messages: [{ role: 'user', content: 'analyze deeply' }],
     reasoning_effort: 'xhigh',
   });
 
-  assert.equal(capturedBody.model, 'gpt-6-astra');
+  assert.equal(capturedBody.model, 'gpt-6.1-sol');
   assert.deepEqual(capturedBody.reasoning, { effort: 'xhigh' });
 });
 
-test('preserves explicit xhigh for Astra publication metadata requests', async () => {
+test('preserves explicit xhigh for Sol publication metadata requests', async () => {
   let capturedBody;
   const openaiClient = {
     async post(_path, options) {
@@ -96,7 +96,7 @@ test('preserves explicit xhigh for Astra publication metadata requests', async (
     reasoning: { effort: 'xhigh' },
   });
 
-  assert.equal(capturedBody.model, 'gpt-6-astra');
+  assert.equal(capturedBody.model, 'gpt-6.1-sol');
   assert.deepEqual(capturedBody.reasoning, { effort: 'xhigh' });
 });
 
@@ -118,12 +118,12 @@ test('resolves multimodal media immediately before a native OpenAI Responses req
     async post(_path, options) {
       capturedOptions = options;
       capturedBody = options.body;
-      return { id: 'resp-media-test', model: 'gpt-6-astra', output_text: 'seen' };
+      return { id: 'resp-media-test', model: 'gpt-6.1-sol', output_text: 'seen' };
     },
   };
 
   await createCompatibleChatCompletion(openaiClient, {
-    model: 'gpt-6-astra',
+    model: 'gpt-6.1-sol',
     messages: sourceMessages,
   }, {
     resolveMediaUrl: async (source, options) => {
@@ -153,7 +153,7 @@ test('/external native GPT vision preserves the existing max_tokens Responses tr
       capturedBody = options.body;
       return {
         id: 'resp-external-vision',
-        model: 'gpt-6-astra',
+        model: 'gpt-6.1-sol',
         output_text: 'described',
       };
     },
@@ -169,7 +169,7 @@ test('/external native GPT vision preserves the existing max_tokens Responses tr
   }];
 
   await createCompatibleChatCompletion(openaiClient, {
-    model: 'gpt-6-astra',
+    model: 'gpt-6.1-sol',
     messages,
     bypassSamsarExternalInference: true,
     max_tokens: 16384,
@@ -269,11 +269,11 @@ test('adapter fallback does not hide a non-retryable request error', async () =>
 test('automatic adapter attempts disable provider-local retries and preserve provider pins', () => {
   assert.deepEqual(
     buildProviderPinnedChatRequest(
-      { model: 'gpt-6-astra', maxRetries: 4, externalMaxRetries: 4 },
+      { model: 'gpt-6.1-sol', maxRetries: 4, externalMaxRetries: 4 },
       'openrouter',
     ),
     {
-      model: 'gpt-6-astra',
+      model: 'gpt-6.1-sol',
       maxRetries: 0,
       externalMaxRetries: 0,
       authorization: 'openrouter',

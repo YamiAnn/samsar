@@ -86,7 +86,7 @@ test('effective enabled provider exposes the routed inference models', () => {
   const available = buildDockerAvailableModelsFromEnabledProviders(enabledProviders);
 
   assert.deepEqual(
-    available.models.filter((model) => ['gpt-5.6-sol', 'gemini-3.1-pro', 'QWEN3.8'].includes(model)),
-    ['QWEN3.8', 'gemini-3.1-pro', 'gpt-5.6-sol'],
+    available.models.filter((model) => ['gpt-6.1-sol', 'gemini-3.1-pro', 'QWEN3.8'].includes(model)),
+    ['QWEN3.8', 'gemini-3.1-pro', 'gpt-6.1-sol'],
   );
 });

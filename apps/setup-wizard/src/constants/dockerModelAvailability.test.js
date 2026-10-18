@@ -15,6 +15,7 @@ test('Lyria availability chooses Gemini 3.5, then Fal 3.5, then Vertex 3', () =>
 });
 
 import {
+  getDockerModelProviderPriority,
   DOCKER_PROVIDER,
   buildDockerAvailableModelsFromEnabledProviders,
   buildDockerAvailableModelsFromProviderResults,
@@ -25,7 +26,7 @@ import {
 } from './dockerModelAvailability.js';
 
 const INFERENCE_MODEL_KEYS = Object.freeze([
-  'gpt-5.6-sol',
+  'gpt-6.1-sol',
   'claude-opus-5.5',
   'gemini-3.1-pro',
   'KIMIK3',
@@ -108,7 +109,7 @@ test('Samsar exposes every supported inference model, including Kimi K3', () => 
 
   assert.deepEqual(
     getAvailableInferenceModels(available),
-    ['KIMIK3', 'QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-5.6-sol'],
+    ['KIMIK3', 'QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-6.1-sol'],
   );
   for (const model of INFERENCE_MODEL_KEYS) {
     assert.equal(available.modelProviders[model], DOCKER_PROVIDER.SAMSAR);
@@ -121,10 +122,10 @@ test('OpenRouter alone exposes GPT, Claude, Gemini, and Qwen inference', () => {
   ]);
   assert.deepEqual(
     getAvailableInferenceModels(available),
-    ['QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-5.6-sol'],
+    ['QWEN3.8', 'claude-opus-5.5', 'gemini-3.1-pro', 'gpt-6.1-sol'],
   );
   assert.deepEqual(available.actions, ['assistant', 'chat']);
-  for (const model of ['gpt-5.6-sol', 'claude-opus-5.5', 'gemini-3.1-pro', 'QWEN3.8']) {
+  for (const model of ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-3.1-pro', 'QWEN3.8']) {
     assert.equal(available.modelProviders[model], DOCKER_PROVIDER.OPENROUTER);
   }
   assert.equal(available.modelProviders.KIMIK3, undefined);
@@ -148,9 +149,9 @@ test('GMICloud exposes only credential-scoped compatible mappings', () => {
     DOCKER_PROVIDER.GMI_CLOUD,
   ], {
     gmiCloudModelMappings: {
-      'gpt-5.6-sol': {
-        text: { modelId: 'openai/gpt-5.6-sol' },
-        vision: { modelId: 'openai/gpt-5.6-sol' },
+      'gpt-6.1-sol': {
+        text: { modelId: 'openai/gpt-6.1-sol' },
+        vision: { modelId: 'openai/gpt-6.1-sol' },
       },
       'QWEN3.8': {
         text: { modelId: 'Qwen/Qwen3.8-Max' },
@@ -161,7 +162,7 @@ test('GMICloud exposes only credential-scoped compatible mappings', () => {
   });
 
   assert.deepEqual(available.providers, [DOCKER_PROVIDER.GMI_CLOUD]);
-  assert.deepEqual(available.models, ['QWEN3.8', 'VEO3.1', 'gpt-5.6-sol']);
+  assert.deepEqual(available.models, ['QWEN3.8', 'VEO3.1', 'gpt-6.1-sol']);
   assert.deepEqual(available.actions, ['assistant', 'chat', 'video']);
   assert.equal(available.modelProviders['QWEN3.8'], DOCKER_PROVIDER.GMI_CLOUD);
   assert.equal(available.modelProviders['gemini-3.1-pro'], undefined);
@@ -177,7 +178,7 @@ test('GMICloud inference is not advertised until both text and vision routes are
     DOCKER_PROVIDER.GMI_CLOUD,
   ], {
     gmiCloudModelMappings: {
-      'gpt-5.6-sol': { text: { modelId: 'openai/gpt-5.6-sol' } },
+      'gpt-6.1-sol': { text: { modelId: 'openai/gpt-6.1-sol' } },
       'gemini-3.1-pro': { vision: { modelId: 'google/gemini-3.1-pro-preview' } },
       'QWEN3.8': { text: { modelId: 'Qwen/Qwen3.8-Max' } },
     },
@@ -329,7 +330,7 @@ test('Samsar keeps moderation available when OpenRouter owns inference routing',
     DOCKER_PROVIDER.SAMSAR,
   ]);
 
-  assert.equal(available.modelProviders['gpt-5.6-sol'], DOCKER_PROVIDER.OPENROUTER);
+  assert.equal(available.modelProviders['gpt-6.1-sol'], DOCKER_PROVIDER.OPENROUTER);
   assert.equal(available.actions.includes('moderation'), true);
 });
 
@@ -341,20 +342,20 @@ test('validated GMI inference is preferred over Samsar only for mapped models', 
   ];
   const available = buildDockerAvailableModelsFromEnabledProviders(enabledProviders, {
     gmiCloudModelMappings: {
-      'gpt-5.6-sol': {
-        text: { modelId: 'openai/gpt-5.6-sol' },
-        vision: { modelId: 'openai/gpt-5.6-sol' },
+      'gpt-6.1-sol': {
+        text: { modelId: 'openai/gpt-6.1-sol' },
+        vision: { modelId: 'openai/gpt-6.1-sol' },
       },
     },
   });
 
-  assert.deepEqual(available.modelProviderPriority['gpt-5.6-sol'], [
+  assert.deepEqual(available.modelProviderPriority['gpt-6.1-sol'], [
     DOCKER_PROVIDER.OPENAI,
     DOCKER_PROVIDER.GMI_CLOUD,
     DOCKER_PROVIDER.SAMSAR,
     DOCKER_PROVIDER.OPENROUTER,
   ]);
-  assert.equal(available.modelProviders['gpt-5.6-sol'], DOCKER_PROVIDER.GMI_CLOUD);
+  assert.equal(available.modelProviders['gpt-6.1-sol'], DOCKER_PROVIDER.GMI_CLOUD);
   assert.deepEqual(available.modelProviderPriority['gemini-3.1-pro'], [
     DOCKER_PROVIDER.GOOGLE_CLOUD,
     DOCKER_PROVIDER.OPENROUTER,
@@ -607,4 +608,12 @@ test('an inference-only config reports every missing Express media type', () => 
     expressAvailability.missingRequirements.map((requirement) => requirement.label),
     ['Image generation', 'Video', 'Speech', 'Backing track', 'Lip sync', 'Sound effect'],
   );
+});
+
+
+test('legacy GPT selections resolve to the Sol 6.1 setup catalog', () => {
+  for (const model of ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-6.1-sol']) {
+    assert.deepEqual(getDockerModelProviderPriority(model), getDockerModelProviderPriority('gpt-6.1-sol'));
+    assert.ok(getDockerModelProviderPriority(model).includes('openai'));
+  }
 });

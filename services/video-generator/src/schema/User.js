@@ -58,9 +58,9 @@ const userSchema = new Schema({
 
   userApiKeys: [UserAPIKey],
 
-  selectedInferenceModel: {type: String, default: 'gpt-6-astra'},
+  selectedInferenceModel: {type: String, default: 'gpt-6.1-sol'},
 
-  selectedAssistantModel: {type: String, default: 'gpt-6-astra'},
+  selectedAssistantModel: {type: String, default: 'gpt-6.1-sol'},
 
   selectedNotifyOnCompletion: {type: Boolean, default: false},
 

@@ -1,5 +1,5 @@
-export const DEFAULT_INFERENCE_MODEL_VALUE = "gpt-6-astra";
-export const EXTRA_HIGH_INFERENCE_MODEL_VALUE = "gpt-6-astra-xhigh";
+export const DEFAULT_INFERENCE_MODEL_VALUE = "gpt-6.1-sol";
+export const EXTRA_HIGH_INFERENCE_MODEL_VALUE = "gpt-6.1-sol-xhigh";
 export const QWEN_INFERENCE_MODEL_VALUE = "QWEN3.8";
 export const KIMI_K3_INFERENCE_MODEL_VALUE = "kimi-k3";
 export const HOSTED_QWEN_INFERENCE_MODEL_VALUE = QWEN_INFERENCE_MODEL_VALUE;
@@ -12,21 +12,21 @@ const GPT_56_SOL_HIGH_MODEL_TOKENS = new Set([
   "gpt56",
   "gpt6",
   "gpt56sol",
-  "gpt6astra",
+  "gpt6astra", "gpt61sol",
   "gpt56high",
   "gpt6high",
   "gpt56solhigh",
-  "gpt6astrahigh",
+  "gpt6astrahigh", "gpt61solhigh",
 ]);
 const GPT_56_SOL_XHIGH_MODEL_TOKENS = new Set([
   "gpt56xhigh",
   "gpt6xhigh",
   "gpt56solxhigh",
-  "gpt6astraxhigh",
+  "gpt6astraxhigh", "gpt61solxhigh",
   "gpt56extrahigh",
   "gpt6extrahigh",
   "gpt56solextrahigh",
-  "gpt6astraextrahigh",
+  "gpt6astraextrahigh", "gpt61solextrahigh",
 ]);
 
 const DEPLOYMENT_PROVIDER_LABELS = Object.freeze({
@@ -43,17 +43,17 @@ const DEPLOYMENT_PROVIDER_LABELS = Object.freeze({
 });
 
 const DEPLOYMENT_INFERENCE_MODELS_BY_PROVIDER = Object.freeze({
-  openai: ["gpt-6-astra"],
+  openai: ["gpt-6.1-sol"],
   anthropic: ["claude-opus-5.5"],
   googleCloud: ["gemini-3.1-pro"],
   kimi: [KIMI_K3_INFERENCE_MODEL_VALUE],
-  openrouter: ["gpt-6-astra", "gemini-3.1-pro", QWEN_INFERENCE_MODEL_VALUE, "claude-opus-5.5"],
+  openrouter: ["gpt-6.1-sol", "gemini-3.1-pro", QWEN_INFERENCE_MODEL_VALUE, "claude-opus-5.5"],
   gmicloud: [QWEN_INFERENCE_MODEL_VALUE],
   // Alibaba/Qwen requires explicit, validated model provenance below. A
   // provider name by itself is not enough to make Qwen selectable.
   alibabaCloud: [],
   samsar: [
-    "gpt-6-astra",
+    "gpt-6.1-sol",
     "claude-opus-5.5",
     "gemini-3.1-pro",
     QWEN_INFERENCE_MODEL_VALUE,
@@ -222,7 +222,7 @@ export function normalizeDeploymentInferenceModelValue(value) {
 
 /**
  * Maps legacy logical inference choices onto the physical deployment model.
- * Reasoning effort is stored separately from the canonical GPT 6 Astra model.
+ * Reasoning effort is stored separately from the canonical GPT 6.1 Sol model.
  */
 export function getDeploymentInferenceAvailabilityModelValue(value) {
   const logicalValue = normalizeDeploymentInferenceModelValue(value);

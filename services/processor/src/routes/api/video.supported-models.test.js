@@ -68,7 +68,7 @@ test('supported models exposes additive branched metadata without narrowing prod
     production.body.INFERENCE_MODELS
       .filter((model) => model.isBranchedInferenceModel)
       .map((model) => model.value),
-    ['gpt-6-astra', 'claude-opus-5.5'],
+    ['gpt-6.1-sol', 'claude-opus-5.5'],
   );
   assert.deepEqual(
     production.body.IMAGE_MODELS
@@ -181,7 +181,7 @@ test('standalone supported models derives branched options from raw provider cre
     standalone.body.INFERENCE_MODELS
       .filter((model) => model.isBranchedInferenceModel)
       .map((model) => model.value),
-    ['gpt-6-astra'],
+    ['gpt-6.1-sol'],
   );
   assert.deepEqual(
     standalone.body.IMAGE_MODELS

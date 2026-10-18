@@ -7,8 +7,9 @@ const DEFAULT_MODEL_ADAPTER_PREFERENCES_PATH =
 
 const MODEL_KEY_BY_TOKEN = Object.freeze({
   GEMINI31PRO: 'gemini-3.1-pro',
-  GPT56SOL: 'gpt-6-astra',
-  GPT6ASTRA: 'gpt-6-astra',
+  GPT56SOL: 'gpt-6.1-sol',
+  GPT61SOL: 'gpt-6.1-sol',
+  GPT6ASTRA: 'gpt-6.1-sol',
   CLAUDEOPUS55: 'claude-opus-5.5',
   ANTHROPICCLAUDEOPUS55: 'claude-opus-5.5',
   KIMI3: 'KIMIK3',

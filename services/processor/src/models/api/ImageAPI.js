@@ -34,7 +34,7 @@ import {
   isAlibabaQwenImage3ProAvailable,
 } from '../../consts/DockerProviderPriority.js';
 
-const OPENAI_MODEL = process.env.IMAGE_SET_PROMPT_MODEL || 'gpt-6-astra';
+const OPENAI_MODEL = process.env.IMAGE_SET_PROMPT_MODEL || 'gpt-6.1-sol';
 const openaiClient = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const ROLLUP_MAX_IMAGES = 28;
 const ROLLUP_COLUMNS = 4;
@@ -1915,7 +1915,7 @@ async function generatePromptForImageSet({
         { role: 'system', content: systemPrompt },
         { role: 'user', content: parts.join('\n') },
       ],
-      ...(!usesSelectedNonOpenAIProvider && OPENAI_MODEL === 'gpt-6-astra' ? {} : { temperature: 0.8 }),
+      ...(!usesSelectedNonOpenAIProvider && OPENAI_MODEL === 'gpt-6.1-sol' ? {} : { temperature: 0.8 }),
     };
     const completion = usesPreferenceAwareRouting
       ? await createCompatibleChatCompletion(openaiClient, completionPayload)

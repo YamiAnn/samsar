@@ -4,6 +4,15 @@ export const DEFAULT_ASSISTANT_PRICING_MULTIPLIER = 1.5;
 
 const TOKEN_PRICING_USD_PER_MILLION = Object.freeze({
   'claude-opus-5.5': { input: 0.8374, cachedInput: 0.8374, output: 20.07 },
+  'gpt-6.1-sol': {
+    input: 2,
+    cachedInput: 0.1,
+    output: 10,
+    longContextInput: 4,
+    longContextCachedInput: 0.2,
+    longContextOutput: 15,
+    longContextInputThreshold: 272_000,
+  },
   'gpt-6-astra': {
     input: 10,
     cachedInput: 1,
@@ -134,13 +143,17 @@ function resolvePricingModel(model) {
     return null;
   }
 
-  const normalized = model.trim().toLowerCase();
+  const normalized = model.trim().toLowerCase().split('/').pop();
   if (!normalized) {
     return null;
   }
 
   if (['claude-opus-5.5', 'claude-opus-5-5'].includes(normalized)) {
     return 'claude-opus-5.5';
+  }
+
+  if (normalized.startsWith('gpt-6.1-sol')) {
+    return 'gpt-6.1-sol';
   }
 
   if (normalized.startsWith('gpt-6-astra')) {

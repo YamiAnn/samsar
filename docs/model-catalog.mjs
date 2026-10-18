@@ -41,9 +41,9 @@ export const modalities = [
 ];
 
 const inference = new Map(INFERENCE_MODEL_OPTIONS.filter(row => row.exposeInCatalog !== false).map(row => [row.availabilityModel, row]));
-const native = { 'gpt-6-astra': 'openai', 'claude-opus-5.5': 'anthropic', 'gemini-3.1-pro': 'googleCloud', KIMIK3: 'kimi', 'QWEN3.8': 'alibabaCloud' };
+const native = { 'gpt-6.1-sol': 'openai', 'claude-opus-5.5': 'anthropic', 'gemini-3.1-pro': 'googleCloud', KIMIK3: 'kimi', 'QWEN3.8': 'alibabaCloud' };
 const notes = {
-  'gpt-6-astra': 'Current public key. Older setup files may contain gpt-5.6-sol; the processor normalizes that alias. GenBlaze still requires an exact validated mapping.',
+  'gpt-6.1-sol': 'Current public key. Older setup files may contain gpt-5.6-sol or gpt-6-astra; the processor normalizes that alias. GenBlaze still requires an exact validated mapping.',
   KIMIK3: 'Setup key KIMIK3; inference requests use kimi-k3. Native Kimi first, then Samsar; OpenRouter is not in this chain.',
   'QWEN3.8': 'Native Alibaba is a Docker option. Hosted Qwen uses OpenRouter internally; callers still use Samsar.js.',
   'GPTIMAGE2.5': 'Versioned Samsar key for GPTImage 2.5. Legacy GenBlaze GPT Image 2 routes are excluded from this model.',
@@ -77,7 +77,7 @@ function modalityFor(key) {
 }
 
 export const models = Object.entries(providerMap).map(([setupKey, adapters]) => {
-  const key = setupKey === 'gpt-5.6-sol' ? 'gpt-6-astra' : setupKey;
+  const key = setupKey === 'gpt-5.6-sol' ? 'gpt-6.1-sol' : setupKey;
   const modality = modalityFor(key);
   const nativeAdapter = native[key];
   // Editorial order is deliberately separate from the runtime priority array.
@@ -85,7 +85,7 @@ export const models = Object.entries(providerMap).map(([setupKey, adapters]) => 
   const option = inference.get(key);
   return {
     key, setupKey, requestKey: option?.value || ({ KIMIK3: 'kimi-k3', OPENAI_TTS: 'OPENAI', GOOGLE_TTS: 'GOOGLE' })[key] || key,
-    label: ({ 'gpt-6-astra': 'GPT 6 Astra', SEEDREAM: 'Seedream 5 Pro', SEEDANCEI2V: 'Seedance 1.5 I2V', HAPPYHORSEI2V: 'Happy Horse 1.1 I2V' })[key] || getDockerModelDisplayName(setupKey),
+    label: ({ 'gpt-6.1-sol': 'GPT 6.1 Sol', SEEDREAM: 'Seedream 5 Pro', SEEDANCEI2V: 'Seedance 1.5 I2V', HAPPYHORSEI2V: 'Happy Horse 1.1 I2V' })[key] || getDockerModelDisplayName(setupKey),
     modality, adapters: ordered, runtimePriority: adapters, nativeAdapter: nativeAdapter || null,
     hosted: adapters.includes('samsar') || key === 'ELEVENLABS',
     scope: 'deployment',
@@ -95,7 +95,7 @@ export const models = Object.entries(providerMap).map(([setupKey, adapters]) => 
   };
 });
 
-models.push({ key: 'gpt-6-astra-xhigh', requestKey: 'gpt-6-astra-xhigh', label: 'GPT 6 Astra · extra high reasoning', modality: 'inference', adapters: ['openai', 'samsar', 'openrouter'], nativeAdapter: 'openai', hosted: true, scope: 'option', express: false, branching: true, note: 'Reasoning option on GPT 6 Astra, not a separate provider model. Omitted from the normal runtime catalog.' });
+models.push({ key: 'gpt-6.1-sol-xhigh', requestKey: 'gpt-6.1-sol-xhigh', label: 'GPT 6.1 Sol · extra high reasoning', modality: 'inference', adapters: ['openai', 'samsar', 'openrouter'], nativeAdapter: 'openai', hosted: true, scope: 'option', express: false, branching: true, note: 'Reasoning option on GPT 6.1 Sol, not a separate provider model. Omitted from the normal runtime catalog.' });
 
 for (const [modality, entries] of [['image', IMAGE_GENERAITON_MODEL_TYPES], ['image-edit', IMAGE_EDIT_MODEL_TYPES], ['video', VIDEO_GENERATION_MODEL_TYPES], ['music', MUSIC_PROVIDERS]]) {
   for (const entry of entries) {
