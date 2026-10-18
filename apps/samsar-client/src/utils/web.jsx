@@ -74,14 +74,28 @@ export function hasAcceptedCookies() {
 
 // helpers/auth.jsx
 
+function ensureAuthCookie(token) {
+  // Existing logins may predate private media authentication. Restore their
+  // cookie without logging in again or creating a second profile request.
+  try {
+    if (hasAcceptedCookies() && getAuthCookie() !== token) setAuthCookie(token);
+  } catch {
+    // Blocked cookies must not interrupt header-authenticated API requests.
+  }
+}
+
 export function getAuthToken() {
-  if (inMemoryAuthToken) return inMemoryAuthToken;
+  if (inMemoryAuthToken) {
+    ensureAuthCookie(inMemoryAuthToken);
+    return inMemoryAuthToken;
+  }
   if (typeof window === 'undefined') return null;
 
   try {
     const legacyToken = localStorage.getItem(AUTH_TOKEN_KEY);
     if (legacyToken) {
       inMemoryAuthToken = legacyToken;
+      ensureAuthCookie(legacyToken);
       return legacyToken;
     }
   } catch  {
@@ -92,6 +106,7 @@ export function getAuthToken() {
     const sessionToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
     if (sessionToken) {
       inMemoryAuthToken = sessionToken;
+      ensureAuthCookie(sessionToken);
       try {
         localStorage.setItem(AUTH_TOKEN_KEY, sessionToken);
       } catch  {

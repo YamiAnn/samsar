@@ -13,6 +13,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import { resolveVidgenieLoadedProjectView } from './vidgenieProjectViewState.mjs';
 import { createVidgenieDownloadFilename } from './vidgenieDownloadFilename.mjs';
+import { resolvePrivateMediaUrl } from '../../utils/privateMediaUrl.mjs';
 import {
   VIDGENIE_POLL_ACTION,
   resolveVidgeniePollAction,
@@ -42,6 +43,7 @@ import {
   FaClone,
 } from 'react-icons/fa';
 import axios from 'axios';
+import { deduplicatedGet } from '../../utils/deduplicatedGet.mjs';
 import { ToastContainer, toast } from 'react-toastify';
 
 import { useUser } from '../../contexts/UserContext.jsx';
@@ -824,6 +826,11 @@ function getProcessorAssetFallbackUrl(url) {
   if (typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
+  const privateMediaUrl = resolvePrivateMediaUrl(trimmed, {
+    processorApiUrl: PROCESSOR_API_URL,
+    staticCdnUrl: STATIC_ASSET_BASE_URL,
+  });
+  if (privateMediaUrl) return privateMediaUrl;
 
   const relativePath = trimmed.replace(/^\/+/, '');
   if (isDirectProcessorAssetPath(relativePath) && !isRemoteUserResourcePath(relativePath)) {
@@ -838,7 +845,7 @@ function getProcessorAssetFallbackUrl(url) {
     const parsedUrl = new URL(trimmed);
     const pathname = decodeURIComponent(parsedUrl.pathname).replace(/^\/+/, '');
     return isDirectProcessorAssetPath(pathname) && !isRemoteUserResourcePath(pathname)
-      ? buildProcessorAssetUrl(pathname)
+      ? buildProcessorAssetUrl(`${pathname}${parsedUrl.search}${parsedUrl.hash}`)
       : '';
   } catch {
     return '';
@@ -853,6 +860,11 @@ function normalizeRerollAssetUrl(url) {
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
     return trimmed;
   }
+  const privateMediaUrl = resolvePrivateMediaUrl(trimmed, {
+    processorApiUrl: PROCESSOR_API_URL,
+    staticCdnUrl: STATIC_ASSET_BASE_URL,
+  });
+  if (privateMediaUrl) return privateMediaUrl;
 
   const relativePath = trimmed.replace(/^\/+/, '');
   if (isRemoteUserResourcePath(relativePath)) {
@@ -2889,6 +2901,8 @@ export default function OneshotEditor() {
         : null;
   }
   const currentPollRequestIdRef = useRef(null);
+  const pollRunRef = useRef(0);
+  const hasResolvedSessionAuth = userInitiated && (!userFetching || Boolean(user?._id));
   const activeRequestIdRef = useRef(null);
   const postProcessingPollActionRef = useRef('');
 
@@ -4171,6 +4185,7 @@ export default function OneshotEditor() {
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
+      pollRunRef.current += 1;
       if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current);
       if (assistantPollRef.current) clearInterval(assistantPollRef.current);
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
@@ -4204,7 +4219,7 @@ export default function OneshotEditor() {
 
     if (currentPollRequestIdRef.current === id) return;
 
-    if (id && userInitiated && !userFetching) {
+    if (id && hasResolvedSessionAuth) {
       // getSessionDetails may start polling itself. Preserve that timer instead
       // of clearing it when this route-load continuation observes the active id.
       getSessionDetails().then((data) => {
@@ -4238,7 +4253,7 @@ export default function OneshotEditor() {
         }
       });
     }
-  }, [id, user?._id, userFetching, userInitiated]);
+  }, [id, user?._id, hasResolvedSessionAuth]);
 
   // ─────────────────────────────────────────────────────────
   //  Handle download
@@ -4457,18 +4472,18 @@ export default function OneshotEditor() {
   // ─────────────────────────────────────────────────────────
   const fetchDetailedGenerationStatus = async (requestId, headers) => {
     try {
-      const { data } = await axios.get(
+      const { data } = await deduplicatedGet(axios,
         `${VIDEO_STEP_API_BASE}/${encodeURIComponent(requestId)}/status_detailed`,
         headers
       );
       return data;
     } catch (error) {
       const statusCode = error?.response?.status;
-      if (statusCode && statusCode !== 400 && statusCode !== 404) {
+      if (statusCode !== 400 && statusCode !== 404) {
         throw error;
       }
       const query = new URLSearchParams({ request_id: requestId }).toString();
-      const { data } = await axios.get(
+      const { data } = await deduplicatedGet(axios,
         `${VIDEO_STATUS_DETAILED_ENDPOINT}?${query}`,
         headers
       );
@@ -4478,7 +4493,7 @@ export default function OneshotEditor() {
 
   const fetchBasicGenerationStatus = async (requestId, headers) => {
     const query = new URLSearchParams({ request_id: requestId }).toString();
-    const { data } = await axios.get(
+    const { data } = await deduplicatedGet(axios,
       `${VIDEO_STATUS_ENDPOINT}?${query}`,
       headers
     );
@@ -4541,6 +4556,7 @@ export default function OneshotEditor() {
   const pollPostProcessingStatus = (requestId = activeRequestIdRef.current || id, immediate = false) => {
     if (!requestId) return;
 
+    const pollRun = ++pollRunRef.current;
     currentPollRequestIdRef.current = requestId;
     if (activeRequestIdRef.current !== requestId) {
       activeRequestIdRef.current = requestId;
@@ -4551,7 +4567,7 @@ export default function OneshotEditor() {
     if (immediate) pollDelayRef.current = 0;
 
     const doPoll = async () => {
-      if (currentPollRequestIdRef.current !== requestId) {
+      if (currentPollRequestIdRef.current !== requestId || pollRunRef.current !== pollRun) {
         return;
       }
 
@@ -4589,7 +4605,7 @@ export default function OneshotEditor() {
         if (isCompletedGenerationStatus(normalizedStatus)) {
           if (!videoActualLink) {
             const latestSessionDetails = await getSessionDetails();
-            if (currentPollRequestIdRef.current !== requestId) {
+            if (currentPollRequestIdRef.current !== requestId || pollRunRef.current !== pollRun) {
               return;
             }
             videoActualLink = getNormalizedLatestVideoUrl(latestSessionDetails);
@@ -4649,7 +4665,7 @@ export default function OneshotEditor() {
           MAX_BACKOFF
         );
       } finally {
-        if (continuePolling && currentPollRequestIdRef.current === requestId) {
+        if (continuePolling && currentPollRequestIdRef.current === requestId && pollRunRef.current === pollRun) {
           const nextDelay = navigator.onLine ? pollDelayRef.current : OFFLINE_POLL;
           pollIntervalRef.current = setTimeout(doPoll, nextDelay);
         }
@@ -4766,6 +4782,7 @@ export default function OneshotEditor() {
       activeRequestStepModeRef.current = persistedStepMode;
     }
 
+    const pollRun = ++pollRunRef.current;
     currentPollRequestIdRef.current = requestId;
     if (activeRequestIdRef.current !== requestId) {
       activeRequestIdRef.current = requestId;
@@ -4776,7 +4793,7 @@ export default function OneshotEditor() {
     if (immediate) pollDelayRef.current = 0;
 
     const doPoll = async () => {
-      if (currentPollRequestIdRef.current !== requestId) {
+      if (currentPollRequestIdRef.current !== requestId || pollRunRef.current !== pollRun) {
         // Abort polling: request has changed
         return;
       }
@@ -4825,7 +4842,7 @@ export default function OneshotEditor() {
         if (isCompletedGenerationStatus(normalizedStatus)) {
           if (!videoActualLink) {
             const latestSessionDetails = await getSessionDetails();
-            if (currentPollRequestIdRef.current !== requestId) {
+            if (currentPollRequestIdRef.current !== requestId || pollRunRef.current !== pollRun) {
               return;
             }
             videoActualLink = getNormalizedLatestVideoUrl(latestSessionDetails);
@@ -4874,7 +4891,7 @@ export default function OneshotEditor() {
         );
 
       } finally {
-        if (continuePolling && currentPollRequestIdRef.current === requestId) {
+        if (continuePolling && currentPollRequestIdRef.current === requestId && pollRunRef.current === pollRun) {
           const nextDelay = navigator.onLine ? pollDelayRef.current : OFFLINE_POLL;
           pollIntervalRef.current = setTimeout(doPoll, nextDelay);
         }
@@ -5125,7 +5142,7 @@ export default function OneshotEditor() {
       } else if (headers) {
         let sessionResponse;
         try {
-          sessionResponse = await axios.get(
+          sessionResponse = await deduplicatedGet(axios,
             `${API_SERVER}/video_sessions/session_details?id=${encodeURIComponent(id)}&cacheBust=${Date.now()}`,
             headers
           );
@@ -5135,7 +5152,7 @@ export default function OneshotEditor() {
             headers = getHeaders();
             if (headers) {
               try {
-                sessionResponse = await axios.get(
+                sessionResponse = await deduplicatedGet(axios,
                   `${API_SERVER}/video_sessions/session_details?id=${encodeURIComponent(id)}&cacheBust=${Date.now()}`,
                   headers
                 );
@@ -5173,7 +5190,7 @@ export default function OneshotEditor() {
         setGenerationStatusDetails(statusData);
         data = buildStandaloneAnonymousSessionDetailsFromStatus(statusData);
       } else {
-        const sessionResponse = await axios.get(
+        const sessionResponse = await deduplicatedGet(axios,
           `${API_SERVER}/video_sessions/session_details?id=${encodeURIComponent(id)}&cacheBust=${Date.now()}`
         );
         data = sessionResponse.data;
@@ -5868,6 +5885,7 @@ export default function OneshotEditor() {
     activeRequestIdRef.current = null;
     activeRequestStepModeRef.current = GENERATION_STEP_MODE_ONE_STEP;
     currentPollRequestIdRef.current = null;
+    pollRunRef.current += 1;
     postProcessingPollActionRef.current = '';
     setSessionMessages([]);
     setIsAssistantQueryGenerating(false);   // ⬅️ NEW

@@ -26,6 +26,7 @@ export function shouldDeferVidgenieProjectLoad({
   sessionId = '',
   userInitiated = false,
   userFetching = false,
+  hasAuthenticatedUser = false,
 } = {}) {
-  return Boolean(sessionId && (!userInitiated || userFetching));
+  return Boolean(sessionId && (!userInitiated || (userFetching && !hasAuthenticatedUser)));
 }

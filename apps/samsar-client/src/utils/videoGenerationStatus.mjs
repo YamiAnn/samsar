@@ -1,3 +1,5 @@
+import { deduplicatedGet } from './deduplicatedGet.mjs';
+
 const PENDING_STATUSES = new Set(['PENDING', 'IN_PROGRESS', 'RUNNING', 'PROCESSING', 'INIT']);
 const FAILED_STATUSES = new Set(['FAILED', 'ERROR', 'CANCELLED', 'CANCELED', 'TIMEOUT']);
 
@@ -442,20 +444,20 @@ export async function fetchDetailedVideoGenerationStatus({
 
   const normalizedApiServer = apiServer.replace(/\/+$/, '');
   try {
-    const { data } = await axiosClient.get(
+    const { data } = await deduplicatedGet(axiosClient,
       `${normalizedApiServer}/v2/video/step/${encodeURIComponent(requestId)}/status_detailed`,
       headers
     );
     return data;
   } catch (error) {
     const statusCode = error?.response?.status;
-    if (statusCode && statusCode !== 400 && statusCode !== 404) {
+    if (statusCode !== 400 && statusCode !== 404) {
       throw error;
     }
   }
 
   const query = new URLSearchParams({ request_id: requestId }).toString();
-  const { data } = await axiosClient.get(
+  const { data } = await deduplicatedGet(axiosClient,
     `${normalizedApiServer}/v2/status_detailed?${query}`,
     headers
   );

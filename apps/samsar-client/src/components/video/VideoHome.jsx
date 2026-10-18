@@ -4,6 +4,7 @@ import CommonContainer from '../common/CommonContainer.tsx';
 import FrameToolbar from './toolbars/frame_toolbar/index.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
+import { deduplicatedGet } from '../../utils/deduplicatedGet.mjs';
 import { CURRENT_EDITOR_VIEW, FRAME_TOOLBAR_VIEW } from '../../constants/Types.ts';
 import { getHeaders } from '../../utils/web.jsx';
 import VideoEditorContainer from './VideoEditorContainer.jsx';
@@ -1607,13 +1608,13 @@ export default function VideoHome() {
     const headers = getHeaders();
 
     const sessionDetailsRequest = isReadOnlyShareView
-      ? axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`)
+      ? axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`, headers || undefined)
       : isEditableShareView
         ? axios.get(
           `${PROCESSOR_API_URL}/video_sessions/editable_share/${encodeURIComponent(editableShareToken)}`,
           headers || undefined
         )
-        : axios.get(
+        : deduplicatedGet(axios,
           `${PROCESSOR_API_URL}/video_sessions/session_details?id=${encodeURIComponent(routeSessionId)}&cacheBust=${Date.now()}`,
           headers
         );
@@ -2061,7 +2062,7 @@ export default function VideoHome() {
         isStatusRequestInFlight = true;
 
         try {
-          const dataRes = await axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`);
+          const dataRes = await axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`, getHeaders() || undefined);
           const sessionData = normalizeGuestSessionForStudio(dataRes.data);
           if (!sessionData) {
             stopRenderPollAfterFailureLimit(
@@ -3848,10 +3849,7 @@ export default function VideoHome() {
 
   const updateCurrentActiveLayer = (imageItem) => {
 
-    // stripe any query params from the image src
-    const src = imageItem.src.split('?')[0];
-    const imageItemNew = { ...imageItem, src: src };
-    const newActiveItemList = activeItemList.concat(imageItemNew);
+    const newActiveItemList = activeItemList.concat(imageItem);
     debouncedUpdateSessionLayerActiveItemListRef.current?.(newActiveItemList);
   }
 

@@ -417,3 +417,14 @@ test('branched status preserves canonical pools and materializes the default pat
   ]);
   assert.deepEqual(alternatePath.audioLayers.map((layer) => layer.connectedLayerIndex), [0, 1]);
 });
+
+
+test('a disconnect does not trigger a duplicate status request through another endpoint', async () => {
+  let calls = 0;
+  const failure = new Error('Network disconnected');
+  const axiosClient = { get: async () => { calls += 1; throw failure; } };
+  await assert.rejects(fetchDetailedVideoGenerationStatus({
+    axiosClient, apiServer: '/api', requestId: 'existing-session',
+  }), error => error === failure);
+  assert.equal(calls, 1);
+});

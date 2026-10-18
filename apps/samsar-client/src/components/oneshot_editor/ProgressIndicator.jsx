@@ -12,6 +12,7 @@ import {
   shouldDuckMusicAgainstAudioType,
 } from '../video/util/audioPreviewDucking.js';
 import { IS_STANDALONE_DEPLOYMENT } from '../../utils/environment.jsx';
+import { resolvePrivateMediaUrl } from '../../utils/privateMediaUrl.mjs';
 
 const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
 const STATIC_ASSET_BASE_URL = (
@@ -87,6 +88,11 @@ function normalizeAssetUrl(url) {
   if (typeof url !== 'string') return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
+  const privateMediaUrl = resolvePrivateMediaUrl(trimmed, {
+    processorApiUrl: PROCESSOR_API_URL,
+    staticCdnUrl: STATIC_ASSET_BASE_URL,
+  });
+  if (privateMediaUrl) return privateMediaUrl;
   const relativePath = trimmed.replace(/^\/+/, '');
   if (relativePath.startsWith(USER_RESOURCES_PREFIX)) {
     return `${STATIC_ASSET_BASE_URL}/${relativePath}`;

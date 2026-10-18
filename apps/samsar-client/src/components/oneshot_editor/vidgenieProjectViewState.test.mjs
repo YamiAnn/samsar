@@ -66,3 +66,12 @@ test('authenticated and resolved guest project routes can load immediately', () 
     userFetching: true,
   }), false);
 });
+
+test('refreshing an authenticated profile keeps the loaded editor mounted', () => {
+  assert.equal(shouldDeferVidgenieProjectLoad({
+    sessionId: 'existing-project',
+    userInitiated: true,
+    userFetching: true,
+    hasAuthenticatedUser: true,
+  }), false);
+});
