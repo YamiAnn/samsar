@@ -12,7 +12,8 @@
     "test:credits-security": "node --test src/routes/api/credits.security.test.js src/models/Payment.security.test.js src/models/external/User.ownership.test.js src/models/external/User.billingMode.test.js",
     "test:outro-footer-layout": "node --test src/test_cases/outro_footer_layout/*.test.js",
     "google:auth:check": "node scripts/check_google_adc.js",
-    "generate:font-samples": "node src/utils/SupportedFontSamples.js --generate"
+    "generate:font-samples": "node src/utils/SupportedFontSamples.js --generate",
+    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/models/VideoSession.frameDrift.test.js src/models/video/FrameDrift.test.js"
   },
   "engines": {
     "node": ">=24 <25"

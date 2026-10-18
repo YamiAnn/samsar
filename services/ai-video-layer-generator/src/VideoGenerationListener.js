@@ -1,3 +1,4 @@
+import { frameCountToSeconds, secondsToFrameCount } from './utils/FrameClock.js';
 import { extractSyncStartingFrame } from './utils/SyncLipSyncFace.js';
 import { shouldPrepareExpressLipSyncFace } from './utils/ExpressLipSyncPrompt.js';
 import {
@@ -782,7 +783,7 @@ function getFrameSafeDurationSecondsFromFrameCount(frameCount, framesPerSecond) 
   if (!Number.isFinite(safeFrameCount) || safeFrameCount <= 0 || !Number.isFinite(safeFramesPerSecond) || safeFramesPerSecond <= 0) {
     return null;
   }
-  return Math.ceil((safeFrameCount / safeFramesPerSecond) * 1e6) / 1e6;
+  return frameCountToSeconds(safeFrameCount, safeFramesPerSecond);
 }
 
 export function resolveCompletedLayerDuration({
@@ -800,9 +801,9 @@ export function resolveCompletedLayerDuration({
     generatedFrameCount,
     framesPerSecond
   );
-  const frameSafeGeneratedDuration = Number.isFinite(Number(generatedFrameDuration)) && Number(generatedFrameDuration) > 0
-    ? Number(generatedFrameDuration)
-    : generatedDurationFromFrames;
+  const frameSafeGeneratedDuration = generatedDurationFromFrames
+    ?? (Number.isFinite(Number(generatedFrameDuration)) && Number(generatedFrameDuration) > 0
+      ? Number(generatedFrameDuration) : null);
 
   if (
     isAudioVideoGeneration &&
@@ -829,9 +830,9 @@ export function resolveCompletedLayerDuration({
     return currentDuration;
   }
 
-  return Number.isFinite(generatedDuration) && generatedDuration > 0
-    ? generatedDuration
-    : currentLayerDuration;
+  return frameSafeGeneratedDuration
+    ?? (Number.isFinite(generatedDuration) && generatedDuration > 0
+      ? generatedDuration : currentLayerDuration);
 }
 
 export function buildBaseAiVideoCompletionUpdate({
@@ -2700,7 +2701,7 @@ async function processVideoGenerationCompletion(payload, localVideoLink) {
   payload.imageConfig = null;
   payload.durationDiff = durationDiff;
 
-  const framDurationDiff = Math.floor(durationDiff * framesPerSecond);
+  const framDurationDiff = secondsToFrameCount(newLayerDuration, framesPerSecond) - secondsToFrameCount(currentLayerDuration, framesPerSecond);
 
   payload.frameDurationDiff = framDurationDiff;
 
@@ -3048,7 +3049,7 @@ async function markVideoLayerGenerationAsComplete(localVideoLink, payload) {
     const resolvedDurationDiff = currentLayer.duration - oldDuration;
     if (Math.abs(resolvedDurationDiff) > 0.000001) {
       payload.durationDiff = resolvedDurationDiff;
-      payload.frameDurationDiff = Math.floor(resolvedDurationDiff * framesPerSecond);
+      payload.frameDurationDiff = Math.round(resolvedDurationDiff * framesPerSecond);
       videoSession.totalDuration = recalculateLayerOffsetsAndConnectedAudio(
         videoSession.layers,
         videoSession.audioLayers
@@ -3489,7 +3490,7 @@ async function updateNextLayersAudioAndAnimationDurations(payload, durationDiff)
 
     let nextLayerTextItems = nextLayer.imageSession.activeItemList.filter(item => item.type === 'text');
 
-    const durationDiffInFrames = Math.floor(durationDiff * framesPerSecond);
+    const durationDiffInFrames = Math.round(durationDiff * framesPerSecond);
 
     for (let j = 0; j < nextLayerTextItems.length; j++) {
       const textItem = nextLayerTextItems[j];

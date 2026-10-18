@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../../../StudioFrameRateContext.jsx';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactSlider from 'react-slider';
 import { FaGripLines } from 'react-icons/fa6';
@@ -21,6 +22,7 @@ function addStyleValueOffset(styleValue, offsetPixels) {
 }
 
 const TextTrackDisplay = (props) => {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const {
     textItemLayer,
     onUpdate,
@@ -90,8 +92,8 @@ const TextTrackDisplay = (props) => {
     );
 
     setSliderValues([nextStartValue, nextEndValue]);
-    const newStartTime = newStartFrame / 30;
-    const newEndTime = newEndFrame / 30;
+    const newStartTime = newStartFrame / DISPLAY_FRAMES_PER_SECOND;
+    const newEndTime = newEndFrame / DISPLAY_FRAMES_PER_SECOND;
 
     if (onUpdate) {
       onUpdate(newStartTime, newEndTime);

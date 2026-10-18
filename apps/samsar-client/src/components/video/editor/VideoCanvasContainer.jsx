@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import VideoCanvas from "./VideoCanvas";
 import { forwardRef, useCallback, useContext, useEffect, useState, useRef } from "react";
 import { CURRENT_TOOLBAR_VIEW, TOOLBAR_ACTION_VIEW } from '../../../constants/Types.ts';
@@ -24,7 +25,6 @@ const SHAPE_CONFIG_SCALE_KEYS = [
 
 
 
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const DEFAULT_SESSION_FRAMES_PER_SECOND = 24;
 const VALID_SESSION_FRAME_RATES = new Set([16, 24, 30]);
 
@@ -197,6 +197,7 @@ function shouldIgnoreCanvasNudgeShortcut(target) {
 }
 
 const VideoCanvasContainer = forwardRef((props, ref) => {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const { sessionDetails, activeItemList, setActiveItemList, currentView,
     setCurrentView, editBrushWidth, editMasklines, setEditMaskLines, currentCanvasAction,
     setCurrentCanvasAction, setSelectedId, selectedId, setButtonPositions, selectedLayerType, pencilColor, pencilWidth, eraserWidth, currentLayer, currentLayerSeek, updateSessionActiveItemList,
@@ -745,7 +746,7 @@ const VideoCanvasContainer = forwardRef((props, ref) => {
         applyAnimationsToNode(node, item, elapsedTime, duration, durationOffset, sessionDetails?.framesPerSecond);
       }
     });
-  }, [currentLayerSeek, currentLayer, activeItemList, sessionDetails?.framesPerSecond]);
+  }, [currentLayerSeek, currentLayer, activeItemList, sessionDetails?.framesPerSecond, DISPLAY_FRAMES_PER_SECOND]);
 
 
 

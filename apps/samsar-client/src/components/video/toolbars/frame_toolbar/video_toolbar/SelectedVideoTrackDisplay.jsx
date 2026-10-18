@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../../../StudioFrameRateContext.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { FaBolt, FaCheck, FaCut, FaPlus, FaTimes } from 'react-icons/fa';
 import { useColorMode } from '../../../../../contexts/ColorMode.jsx';
@@ -65,6 +66,7 @@ function ActionButton({
 }
 
 export default function SelectedVideoTrackDisplay(props) {
+  const displayFramesPerSecond = useStudioFrameRate();
   const {
     selectedVideoTrack,
     activeTool,
@@ -110,8 +112,9 @@ export default function SelectedVideoTrackDisplay(props) {
     if (!activeTool) {
       return 'Choose an action.';
     }
-    return `Selection ready for ${getToolLabel(activeTool)} on ${formatFrameRange(selectedRangeFrames)}.`;
+    return `Selection ready for ${getToolLabel(activeTool)} on ${formatFrameRange(selectedRangeFrames, displayFramesPerSecond)}.`;
   }, [
+    displayFramesPerSecond,
     activeTool,
     draftOperations.length,
     feedbackMessage,

@@ -1,3 +1,4 @@
+import { frameCountToSeconds, buildFrameExtractionFilter } from '../../utils/FrameClock.js';
 import fs from 'fs-extra';
 import path from 'path';
 import axios from 'axios';
@@ -67,7 +68,7 @@ export async function getVideoDuration(videoPath) {
         reject(err);
       } else {
         const duration = metadata.format.duration;
-        const durationInSeconds = Math.floor(duration * 100) / 100;
+        const durationInSeconds = Number(duration);
         resolve(durationInSeconds);
       }
     });
@@ -150,7 +151,7 @@ async function getExtractedFrameSummary(outputFolder, framesPerSecond) {
     lastFramePath,
     numFiles,
     frameDuration: getFrameSafeDurationSeconds(numFiles, framesPerSecond),
-    duration: Math.floor((numFiles / framesPerSecond) * 100) / 100,
+    duration: frameCountToSeconds(numFiles, framesPerSecond),
   };
 }
 
@@ -161,7 +162,7 @@ function getFrameSafeDurationSeconds(frameCount, framesPerSecond) {
     return 0;
   }
 
-  return Math.ceil((safeFrameCount / safeFramesPerSecond) * 1000000) / 1000000;
+  return frameCountToSeconds(safeFrameCount, safeFramesPerSecond);
 }
 
 function parseAudioEdgeSilence(stderrOutput, mediaDurationSeconds, minDurationSeconds) {
@@ -713,14 +714,15 @@ function extractFrames(
 ) {
   return withProcessorFfmpegResources((threadOptions) => new Promise((resolve, reject) => {
     const preserveAspectRatio = Boolean(options?.preserveAspectRatio);
-    const fpsFilter = `fps=${framesPerSecond}:round=down,${buildFrameFilter(
+    const fpsFilter = buildFrameExtractionFilter(framesPerSecond, buildFrameFilter(
       newFrameWidth,
       newFrameHeight,
       preserveAspectRatio
-    )}`;
+    ));
 
     const outputOptions = [
       '-start_number', '0',
+      '-fps_mode', 'passthrough',
       ...threadOptions.outputOptions,
       '-vf', fpsFilter,
       '-sws_flags', 'lanczos',

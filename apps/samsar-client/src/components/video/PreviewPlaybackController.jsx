@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from './StudioFrameRateContext.jsx';
 import { useCallback, useEffect, useRef } from 'react';
 import {
   buildResolvedPreviewAudioVolumeAutomationPoints,
@@ -15,7 +16,6 @@ import {
 } from './util/audioPreviewDucking.js';
 
 const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const DEFAULT_PREVIEW_FRAMES_PER_SECOND = 24;
 const VALID_PREVIEW_FRAME_RATES = new Set([16, 24, 30]);
 const PREVIEW_AUDIO_READY_STATE = 3;
@@ -48,6 +48,7 @@ function resolvePreviewFramesPerSecond(value) {
 }
 
 export default function PreviewPlaybackController(props) {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const {
     applyAudioDucking = true,
     audioLayers,
@@ -488,7 +489,7 @@ export default function PreviewPlaybackController(props) {
 
       const previewFramesPerSecond = resolvePreviewFramesPerSecond(framesPerSecond);
       const displayFrameStep = DISPLAY_FRAMES_PER_SECOND / previewFramesPerSecond;
-      const totalFrames = Math.floor((Number(totalDuration) || 0) * DISPLAY_FRAMES_PER_SECOND);
+      const totalFrames = Math.round((Number(totalDuration) || 0) * DISPLAY_FRAMES_PER_SECOND);
       if (totalFrames <= 0) {
         onPlaybackActiveChange?.(false);
         setIsVideoPreviewPlaying(false);
@@ -592,6 +593,7 @@ export default function PreviewPlaybackController(props) {
     };
   }, [
     clearPlaybackAnimationFrame,
+    DISPLAY_FRAMES_PER_SECOND,
     isVideoPreviewPlaying,
     onPlaybackActiveChange,
     resetPreviewAudioLevels,

@@ -1,10 +1,12 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import { useState, useRef } from 'react';
 import ReactSlider from 'react-slider';
 import { FaGripLines } from 'react-icons/fa6';
 import './audioLevelsTrackSlider.css';
 
 export default function AudioLevelsTrackSlider(props) {
-  const { totalDuration, min = 0, max = totalDuration * 30 } = props; // Adjust as per your time units (frames or seconds)
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
+  const { totalDuration, min = 0, max = totalDuration * DISPLAY_FRAMES_PER_SECOND } = props; // Adjust as per your time units (frames or seconds)
 
   const [thumbs, setThumbs] = useState([]); // Array of thumbs with position and volume
   const [selectedThumbIndex, setSelectedThumbIndex] = useState(null); // Index of the selected thumb for the popup

@@ -1,3 +1,4 @@
+import { frameCountToSeconds, buildFrameExtractionFilter } from '../utils/FrameClock.js';
 import fs from 'fs-extra';
 import path from 'path';
 import axios from 'axios';
@@ -18,7 +19,7 @@ export async function getVideoDuration(videoPath) {
         reject(err);
       } else {
         const duration = metadata.format.duration;
-        const durationInSeconds = Math.floor(duration * 100) / 100;
+        const durationInSeconds = Number(duration);
 
         
         resolve(durationInSeconds);
@@ -106,10 +107,9 @@ export async function processVideoAsFrames(videoPath, sessionId, layerId, canvas
     outputFolder = path.join(process.env.SAMSAR_ASSETS_ROOT || '/assets', 'ai_video', 'frames', sessionId, layerId); // Docker staging volume mount path
   }
   
-  // Ensure the output directory exists
-  if (!fs.existsSync(outputFolder)) {
-    fs.mkdirSync(outputFolder, { recursive: true });
-  }
+  await fs.ensureDir(path.dirname(outputFolder));
+  const targetFolder = outputFolder;
+  outputFolder = await fs.mkdtemp(`${targetFolder}.tmp-`);
 
   try {
     await extractFrames(videoPath, outputFolder, newFrameWidth, newFrameHeight, effectiveFramesPerSecond);
@@ -125,7 +125,7 @@ export async function processVideoAsFrames(videoPath, sessionId, layerId, canvas
     }
 
     // Calculate the duration in seconds based on session FPS
-    const durationInSeconds = Math.floor((numFiles / effectiveFramesPerSecond) * 100) / 100; // Rounded to 2 decimal places
+    const durationInSeconds = frameCountToSeconds(numFiles, effectiveFramesPerSecond); // Rounded to 2 decimal places
 
 
     // Determine the last frame's filename
@@ -137,12 +137,19 @@ export async function processVideoAsFrames(videoPath, sessionId, layerId, canvas
       throw new Error(`Last frame not found at path: ${lastFramePath}`);
     }
 
+    await fs.remove(targetFolder);
+    await fs.move(outputFolder, targetFolder, { overwrite: true });
+
     // Return the result as an object
     return {
-      lastFrame: lastFramePath,
+      firstFrame: path.join(targetFolder, '0.png'),
+      lastFrame: path.join(targetFolder, path.basename(lastFramePath)),
       duration: durationInSeconds,
+      frameCount: numFiles,
+      frameDuration: durationInSeconds,
     };
   } catch (error) {
+    await fs.remove(outputFolder).catch(() => {});
     throw error;
   }
 }
@@ -156,11 +163,11 @@ function extractFrames(videoPath, outputFolder, newFrameWidth, newFrameHeight, f
         '-threads', ffmpegThreadValue,
       ])
       .outputOptions([
-        '-r', `${framesPerSecond}`,
         '-start_number', '0',
+        '-fps_mode', 'passthrough',
         '-filter_threads', ffmpegThreadValue,
         '-threads', ffmpegThreadValue,
-        '-vf', `scale=${newFrameWidth}:${newFrameHeight}`,
+        '-vf', buildFrameExtractionFilter(framesPerSecond, `scale=${newFrameWidth}:${newFrameHeight}`),
         '-sws_flags', 'lanczos',
       ])
       .output(path.join(outputFolder, '%d.png'))

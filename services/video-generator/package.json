@@ -12,7 +12,8 @@
     "build": "node --check index.js && rg --files -0 -g \"*.js\" src | xargs -0 -n 50 node --check",
     "check:native": "node ./scripts/check-native-modules.mjs",
     "rebuild:native": "npm rebuild sharp && npm run check:native",
-    "test": "node --test"
+    "test": "node --test",
+    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/FinalFrameDrift.test.js"
   },
   "engines": {
     "node": "22.x",

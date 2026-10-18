@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../../StudioFrameRateContext.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
@@ -45,7 +46,6 @@ import { filterOptionsForDeploymentModelValues } from '../../../../utils/deploym
 import { filterImageModelsForDeploymentScope } from '../../../../utils/imageModelAvailability.mjs';
 
 const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const DEBUG_RECORD_SPEECH = true;
 const FACECAM_VIDEO_BITS_PER_SECOND = 1_500_000;
 const FACECAM_RECORDER_TIMESLICE_MS = 1000;
@@ -663,6 +663,7 @@ export default function RecordSpeechSection({
   const [micVolume, setMicVolume] = useState(100);
   const [isStartingRecording, setIsStartingRecording] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingBlob, setRecordingBlob] = useState(null);

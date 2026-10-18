@@ -1,3 +1,4 @@
+import { secondsToFrameCount, frameCountToSeconds, getLayerFrameRange } from './utils/FrameClock.js';
 import VideoGeneration from "./schema/VideoGeneration.js";
 import VideoSession from "./schema/VideoSession.js";
 import FrameGeneration from "./schema/FrameGeneration.js";
@@ -1957,7 +1958,7 @@ export async function generatePendingVideoRequests() {
             );
             for (const candidateFolderPath of currentFolderCandidates) {
               try {
-                const candidateLayerFrames = fs.readdirSync(candidateFolderPath);
+                const candidateLayerFrames = fs.readdirSync(candidateFolderPath).filter((name) => /^\d+\.png$/.test(name));
                 if (candidateLayerFrames && candidateLayerFrames.length > 0) {
                   currentFolderPath = candidateFolderPath;
                   currentLayerFrames = candidateLayerFrames;
@@ -1989,7 +1990,8 @@ export async function generatePendingVideoRequests() {
 
           let { frameWidth, frameHeight } = await getImageSizeWithFallback(currentFolderPath);
 
-          for (let i = 0; i < currentLayerFrames.length; i++) {
+          const expectedLayerFrames = getLayerFrameRange(currentLayer, framesPerSecond).frameCount;
+          for (let i = 0; i < expectedLayerFrames; i++) {
             const sourcePath = path.join(currentFolderPath, `${i}.png`);
             const currentDirLen = fs.readdirSync(frameOutputPath).length;
             const destinationPath = path.join(frameOutputPath, `${currentDirLen}.png`);
@@ -2070,7 +2072,7 @@ export async function generatePendingVideoRequests() {
           ? branchRenderContext.duration
           : resolvedTimelineDuration;
 
-        const totalDurationInFrames = Math.floor(totalDuration * frameRate);
+        const totalDurationInFrames = Math.max(1, secondsToFrameCount(totalDuration, frameRate));
 
         if (numFilesInOutputPath > totalDurationInFrames) {
           for (let i = totalDurationInFrames; i < numFilesInOutputPath; i++) {
@@ -2248,7 +2250,8 @@ export async function generatePendingVideoRequests() {
         }
 
         const payload = {
-          duration: totalDuration,
+          duration: frameCountToSeconds(totalDurationInFrames, frameRate),
+          frameCount: totalDurationInFrames,
           framePath: frameOutputPath,
           audioList: selectedAudioPayload,
           outputPath,
@@ -2514,7 +2517,7 @@ function resolveLocalOutroImagePath(outroImagePath) {
 
 function renderAndSaveVideoOnce(payload) {
   const {
-    duration,
+    duration: requestedDuration,
     framePath,
     audioList,
     outputPath,
@@ -2533,6 +2536,8 @@ function renderAndSaveVideoOnce(payload) {
   });
 
   const frameRate = normalizeFramesPerSecond(framesPerSecond) ?? DEFAULT_FRAMES_PER_SECOND;
+  const frameCount = Math.max(1, secondsToFrameCount(requestedDuration, frameRate));
+  const duration = frameCountToSeconds(frameCount, frameRate);
   const ffmpegThreads = resolveFinalRenderFfmpegThreads();
   const ffmpegThreadValue = `${ffmpegThreads}`;
   const ffmpegInputThreadValue = '1';
@@ -2892,7 +2897,7 @@ function renderAndSaveVideoOnce(payload) {
     } else {
       filterParts.push(
         `[0:v]tpad=stop_mode=clone:stop_duration=${formatFFmpegNumber(duration)},` +
-        `trim=duration=${formatFFmpegNumber(duration)},setpts=PTS-STARTPTS[${videoStreamLabel}]`
+        `trim=end_frame=${frameCount},setpts=N/(${frameRate}*TB)[${videoStreamLabel}]`
       );
     }
 
@@ -2910,6 +2915,9 @@ function renderAndSaveVideoOnce(payload) {
         '-pix_fmt', 'yuv420p',
         '-threads', ffmpegThreadValue,
         '-t', `${duration}`,
+        '-frames:v', `${frameCount}`,
+        '-fps_mode', 'passthrough',
+        '-video_track_timescale', `${frameRate * 1000}`,
       ]);
 
     if (hasAudioOutput) {

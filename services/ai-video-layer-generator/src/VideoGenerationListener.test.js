@@ -390,7 +390,7 @@ test('lip-sync completion shrinks to materially shorter extracted frame duration
       model: 'SYNCLIPSYNC',
       isAudioVideoGeneration: true,
     }),
-    4.041667,
+    97 / 24,
   );
 });
 

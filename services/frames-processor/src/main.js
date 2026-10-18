@@ -1,3 +1,4 @@
+import { getLayerFrameRange, secondsToFrameCount, buildFrameExtractionFilter } from './utils/FrameClock.js';
 import { fork } from 'child_process';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
@@ -625,11 +626,16 @@ function persistBranchThumbnailFrame({ sessionId, renderPathId, sourceFramePath 
   return thumbnailPath;
 }
 
-function getFrameSourceIdentity({ sourceType, normalizedVideoPath, videoPath }) {
+function getFrameSourceIdentity({ sourceType, normalizedVideoPath, videoPath, framesPerSecond, canvasDimensions, preserveAspectRatio }) {
   const identity = {
     sourceType: sourceType || null,
     normalizedVideoPath: normalizedVideoPath || null,
     videoPath: videoPath || null,
+    framesPerSecond: getFramesPerSecondFromValue(framesPerSecond),
+    width: canvasDimensions?.width,
+    height: canvasDimensions?.height,
+    preserveAspectRatio: Boolean(preserveAspectRatio),
+    frameClockVersion: 1,
     sourceSize: null,
     sourceMtimeMs: null,
   };
@@ -677,6 +683,12 @@ function isFrameSourceManifestCurrent(manifest, sourceIdentity) {
   }
 
   return (
+    manifest.frameClockVersion === sourceIdentity.frameClockVersion &&
+    manifest.framesPerSecond === sourceIdentity.framesPerSecond &&
+    manifest.width === sourceIdentity.width &&
+    manifest.height === sourceIdentity.height &&
+    manifest.preserveAspectRatio === sourceIdentity.preserveAspectRatio &&
+    manifest.sourceType === sourceIdentity.sourceType &&
     manifest.normalizedVideoPath === sourceIdentity.normalizedVideoPath &&
     manifest.sourceSize === sourceIdentity.sourceSize &&
     Math.round(Number(manifest.sourceMtimeMs) || 0) === Math.round(Number(sourceIdentity.sourceMtimeMs) || 0)
@@ -1149,7 +1161,7 @@ async function extractAiVideoFramesWithFfmpeg({
     : normalizedFitMode === 'contain'
       ? `scale=${canvasDimensions.width}:${canvasDimensions.height}:force_original_aspect_ratio=decrease,pad=${canvasDimensions.width}:${canvasDimensions.height}:(ow-iw)/2:(oh-ih)/2:color=black@0`
       : `scale=${canvasDimensions.width}:${canvasDimensions.height}`;
-  const frameFilter = `fps=${fps}:round=down,${scaleFilter}`;
+  const frameFilter = buildFrameExtractionFilter(fps, scaleFilter);
   const threadCount = String(FFMPEG_THREADS);
   const args = [
     '-y',
@@ -1157,6 +1169,7 @@ async function extractAiVideoFramesWithFfmpeg({
     '-threads', threadCount,
     '-i', videoPath,
     '-start_number', '0',
+    '-fps_mode', 'passthrough',
     '-vf', frameFilter,
     '-sws_flags', 'lanczos',
     '-threads', threadCount,
@@ -1287,6 +1300,9 @@ async function ensureAiVideoFramesAvailable({
     sourceType,
     normalizedVideoPath,
     videoPath,
+    framesPerSecond,
+    canvasDimensions,
+    preserveAspectRatio: preserveUserVideoAspectRatio,
   });
 
   const ensureFramesIfPresent = (dirPath, options = {}) => {
@@ -1315,23 +1331,21 @@ async function ensureAiVideoFramesAvailable({
   };
 
   let aiFramesDir = baseAiFramesDir;
-  if (!preserveUserVideoAspectRatio) {
-    if (prefersAudioVideoFrames) {
-      // Audio-video outputs replace the base AI-video frames. If the dedicated
-      // frames are missing, extract them from the lip-sync/sound-effect video
-      // instead of silently reusing stale base AI-video frames.
-      if (ensureFramesIfPresent(audioVideoAiFramesDir, { skipStillFramePadding: true })) {
-        return;
-      }
-      if (ensureFramesIfPresent(legacyAudioVideoAiFramesDir, { skipStillFramePadding: true })) {
-        return;
-      }
-      aiFramesDir = audioVideoAiFramesDir;
-    } else if (ensureFramesIfPresent(baseAiFramesDir)) {
-      return;
-    } else if (ensureFramesIfPresent(legacyBaseAiFramesDir)) {
+  if (prefersAudioVideoFrames) {
+    // Audio-video outputs replace the base AI-video frames. If the dedicated
+    // frames are missing, extract them from the lip-sync/sound-effect video
+    // instead of silently reusing stale base AI-video frames.
+    if (ensureFramesIfPresent(audioVideoAiFramesDir, { skipStillFramePadding: true })) {
       return;
     }
+    if (ensureFramesIfPresent(legacyAudioVideoAiFramesDir, { skipStillFramePadding: true })) {
+      return;
+    }
+    aiFramesDir = audioVideoAiFramesDir;
+  } else if (ensureFramesIfPresent(baseAiFramesDir)) {
+    return;
+  } else if (ensureFramesIfPresent(legacyBaseAiFramesDir)) {
+    return;
   }
 
   if (!videoPath || !fs.existsSync(videoPath)) {
@@ -1575,7 +1589,7 @@ async function ensureJoinedNarratorAvatarFramesAvailable({
     }
 
     const segmentFramesPerSecond = getFramesPerSecondFromValue(sourceOverlay?.framesPerSecond || framesPerSecond);
-    const requiredFrameCount = Math.max(1, Math.ceil(duration * segmentFramesPerSecond));
+    const requiredFrameCount = Math.max(1, secondsToFrameCount(duration, segmentFramesPerSecond));
     const framesDir = path.join(
       assetsRoot,
       'video',
@@ -1954,11 +1968,11 @@ async function generateFramesForSession(generationId, sessionId, layerId, branch
 
   const canvasDimensions = getCanvasDimensions(session);
   const framesPerSecond = getFramesPerSecondFromValue(session?.framesPerSecond);
-  const frameCount = Math.floor(layer.duration * framesPerSecond);
+  const frameCount = getLayerFrameRange(layer, framesPerSecond).frameCount;
   const totalVideoDuration = isBranchJob
     ? branchContext.pathDuration * 1000
     : session.layers.reduce((sum, layer) => sum + layer.duration, 0) * 1000;
-  const totalFrameCount = Math.max(1, Math.ceil((totalVideoDuration / 1000) * framesPerSecond));
+  const totalFrameCount = Math.max(1, secondsToFrameCount(totalVideoDuration / 1000, framesPerSecond));
   layer = await ensureFooterQrCodeForLayer({ layer, sessionId, layerId });
 
   if (layer?.footerQrImagePath) {
@@ -2056,10 +2070,14 @@ async function generateFramesForSession(generationId, sessionId, layerId, branch
 
   // Wait for all children
   const results = await Promise.all(workerPromises);
-  const framesList = results.flatMap(result => result.framesList);
+  const framesList = [...new Set(results.flatMap(result => result.framesList || []))]
+    .sort((left, right) => Number.parseInt(path.basename(left), 10) - Number.parseInt(path.basename(right), 10));
 
-  if (!framesList || framesList.length === 0) {
-    throw new Error(`No frames generated for layer ${layerId} in session ${sessionId}`);
+  if (framesList.length !== frameCount || framesList.some((framePath, index) => (
+    path.basename(framePath) !== `${index}.png`
+      || !fs.existsSync(path.join(frameDirectory, `${index}.png`))
+  ))) {
+    throw new Error(`Incomplete frame sequence for layer ${layerId} in session ${sessionId}: expected ${frameCount}, received ${framesList.length}`);
   }
 
   // Re-fetch session (it may have changed in DB)

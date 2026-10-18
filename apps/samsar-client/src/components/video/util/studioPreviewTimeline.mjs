@@ -1,15 +1,17 @@
 export const STUDIO_DISPLAY_FRAMES_PER_SECOND = 30;
 
-export function secondsToDisplayFrames(value) {
+export function secondsToDisplayFrames(value, framesPerSecond = STUDIO_DISPLAY_FRAMES_PER_SECOND) {
   return Math.max(
     0,
-    Math.round((Number(value) || 0) * STUDIO_DISPLAY_FRAMES_PER_SECOND)
+    Math.round((Number(value) || 0) * framesPerSecond)
   );
 }
 
-export function getLayerDisplayFrameRange(layer) {
-  const startFrame = secondsToDisplayFrames(layer?.durationOffset);
-  const durationFrames = Math.max(1, secondsToDisplayFrames(layer?.duration));
+export function getLayerDisplayFrameRange(layer, framesPerSecond = STUDIO_DISPLAY_FRAMES_PER_SECOND) {
+  const startFrame = secondsToDisplayFrames(layer?.durationOffset, framesPerSecond);
+  const durationFrames = Math.max(1,
+      secondsToDisplayFrames((Number(layer?.durationOffset) || 0) + (Number(layer?.duration) || 0), framesPerSecond)
+      - secondsToDisplayFrames(layer?.durationOffset, framesPerSecond));
 
   return {
     startFrame,
@@ -17,39 +19,34 @@ export function getLayerDisplayFrameRange(layer) {
   };
 }
 
-export function getLayerDisplayFrameRanges(layers) {
+export function getLayerDisplayFrameRanges(layers, framesPerSecond = STUDIO_DISPLAY_FRAMES_PER_SECOND) {
   if (!Array.isArray(layers)) {
     return [];
   }
 
-  let previousEndFrame = 0;
+  let previousEndTime = 0;
   return layers.map((layer) => {
     const rawOffset = layer?.durationOffset;
     const hasExplicitOffset = rawOffset !== undefined
-      && rawOffset !== null
-      && rawOffset !== ''
-      && Number.isFinite(Number(rawOffset));
-    const configuredStartFrame = hasExplicitOffset
-      ? secondsToDisplayFrames(rawOffset)
-      : previousEndFrame;
-    // Layer insertions can briefly expose the new ordering before every
-    // durationOffset in the response has caught up. Keep the client timeline
-    // monotonic so the inserted scene still participates in layout immediately.
-    const startFrame = Math.max(previousEndFrame, configuredStartFrame);
-    const durationFrames = Math.max(1, secondsToDisplayFrames(layer?.duration));
-    const range = { startFrame, endFrame: startFrame + durationFrames };
-    previousEndFrame = range.endFrame;
-    return range;
+      && rawOffset !== null && rawOffset !== '' && Number.isFinite(Number(rawOffset));
+    const configuredStartTime = hasExplicitOffset ? Math.max(0, Number(rawOffset)) : previousEndTime;
+    // Insertions can expose stale offsets briefly; retain monotonic scene ordering.
+    const startTime = Math.max(previousEndTime, configuredStartTime);
+    const endTime = startTime + Math.max(0, Number(layer?.duration) || 0);
+    const startFrame = secondsToDisplayFrames(startTime, framesPerSecond);
+    const endFrame = Math.max(startFrame + 1, secondsToDisplayFrames(endTime, framesPerSecond));
+    previousEndTime = endTime;
+    return { startFrame, endFrame };
   });
 }
 
-export function findLayerIndexAtDisplayFrame(layers, displayFrame) {
+export function findLayerIndexAtDisplayFrame(layers, displayFrame, framesPerSecond = STUDIO_DISPLAY_FRAMES_PER_SECOND) {
   if (!Array.isArray(layers) || layers.length === 0) {
     return -1;
   }
 
   const resolvedFrame = Math.max(0, Number(displayFrame) || 0);
-  const layerRanges = getLayerDisplayFrameRanges(layers);
+  const layerRanges = getLayerDisplayFrameRanges(layers, framesPerSecond);
   const exactLayerIndex = layerRanges.findIndex(({ startFrame, endFrame }) => {
     return resolvedFrame >= startFrame && resolvedFrame < endFrame;
   });
@@ -69,9 +66,10 @@ export function findLayerIndexAtDisplayFrame(layers, displayFrame) {
 export function resolveLayerSelectionAtDisplayFrame(
   layers,
   displayFrame,
-  currentLayerId = null
+  currentLayerId = null,
+  framesPerSecond = STUDIO_DISPLAY_FRAMES_PER_SECOND
 ) {
-  const activeLayerIndex = findLayerIndexAtDisplayFrame(layers, displayFrame);
+  const activeLayerIndex = findLayerIndexAtDisplayFrame(layers, displayFrame, framesPerSecond);
   const activeLayer = activeLayerIndex >= 0 ? layers[activeLayerIndex] : null;
   const activeLayerId = activeLayer?._id?.toString?.()
     || activeLayer?._id

@@ -1,9 +1,9 @@
+import { useStudioFrameRate } from '../../../StudioFrameRateContext.jsx';
 import { useCallback, useMemo, useRef } from 'react';
 import { FaGripLines } from 'react-icons/fa6';
 import { useColorMode } from '../../../../../contexts/ColorMode.jsx';
 import { frameToViewportValue, viewportValueToFrame } from '../../../util/viewportGeometry.js';
 
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const MIN_HINT_FRAME_DISTANCE = 1;
 
 function clamp(value, minimum, maximum) {
@@ -25,6 +25,7 @@ export default function HintTrackDisplay({
   viewportGeometry = null,
 }) {
   const { colorMode } = useColorMode();
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const railRef = useRef(null);
   const hintId = hint?.id || hint?._id;
   const [visibleStartFrame, visibleEndFrame] = selectedFrameRange;

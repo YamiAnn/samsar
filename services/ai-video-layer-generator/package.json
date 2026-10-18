@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node --check index.js && rg --files -0 -g \"*.js\" src | xargs -0 -n 50 node --check",
-    "test": "node --test $(rg --files src -g '*test.js')"
+    "test": "node --test $(rg --files src -g '*test.js')",
+    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/utils/GenerationHelper.frameDrift.test.js src/FrameDrift.test.js"
   },
   "author": "",
   "license": "ISC",

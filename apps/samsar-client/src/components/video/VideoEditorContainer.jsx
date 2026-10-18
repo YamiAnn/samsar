@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from './StudioFrameRateContext.jsx';
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
@@ -71,7 +72,6 @@ const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
 const STATIC_CDN_URL = import.meta.env.VITE_STATIC_CDN_URL;
 const VIDEO_TASK_POLL_INTERVAL_MS = 1500;
 const USER_VIDEO_UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const VIDEO_SCENE_PRELOAD_LOOKAHEAD = 2;
 
 function isActiveUserVideoUploadTask(task) {
@@ -100,6 +100,7 @@ function getContentDispositionFileName(contentDisposition) {
 }
 
 export default function VideoEditorContainer(props) {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const {
     selectedLayerId,
     currentLayerSeek,
@@ -545,8 +546,8 @@ export default function VideoEditorContainer(props) {
 
   // Example showing usage for uploading images
   const createCurrentLayerImageItem = useCallback(
-    (imagePayload) => createLayerBoundImageItem({ layer: currentLayer, ...imagePayload }),
-    [currentLayer]
+    (imagePayload) => createLayerBoundImageItem({ layer: currentLayer, framesPerSecond: DISPLAY_FRAMES_PER_SECOND, ...imagePayload }),
+    [currentLayer, DISPLAY_FRAMES_PER_SECOND]
   );
 
   const setUploadURL = useCallback(

@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const DEFAULT_TICK_COUNT = 8;
@@ -6,11 +7,6 @@ const MAX_TICK_COUNT = 14;
 const MIN_TICK_SPACING_PX = 56;
 const EPSILON = 1e-6;
 const TICK_INTERVALS = [
-  1 / 30,
-  2 / 30,
-  5 / 30,
-  10 / 30,
-  15 / 30,
   0.5,
   1,
   2,
@@ -40,7 +36,8 @@ const trimTrailingZeroes = (value) => value
   .replace(/\.0+$/, '')
   .replace(/(\.\d*?)0+$/, '$1');
 
-const getTickInterval = (visibleDuration, desiredTickCount) => {
+const getTickInterval = (visibleDuration, desiredTickCount, framesPerSecond) => {
+  const intervals = [...new Set([...TICK_INTERVALS, ...[1, 2, 5, 10, 15].map(frames => frames / framesPerSecond)])].sort((a, b) => a - b);
   const safeTickCount = clamp(
     Math.round(desiredTickCount) || DEFAULT_TICK_COUNT,
     MIN_TICK_COUNT,
@@ -48,7 +45,7 @@ const getTickInterval = (visibleDuration, desiredTickCount) => {
   );
   const minimumInterval = visibleDuration / safeTickCount;
 
-  return TICK_INTERVALS.find((interval) => interval >= minimumInterval)
+  return intervals.find((interval) => interval >= minimumInterval)
     || TICK_INTERVALS[TICK_INTERVALS.length - 1];
 };
 
@@ -156,7 +153,8 @@ const TimeRuler = ({
       MAX_TICK_COUNT,
     );
   }, [rulerHeight]);
-  const tickInterval = getTickInterval(visibleDuration, desiredTickCount);
+  const framesPerSecond = useStudioFrameRate();
+  const tickInterval = getTickInterval(visibleDuration, desiredTickCount, framesPerSecond);
   const ticks = buildTicks(startTime, endTime, tickInterval);
 
   return (

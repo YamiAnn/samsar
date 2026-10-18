@@ -1,3 +1,4 @@
+import { frameCountToSeconds, secondsToFrameCount } from '../utils/FrameClock.js';
 import { getDBConnectionString } from "./DBString.js";
 import VideoSession from "../schema/VideoSession.js";
 import VideoSessionEditLog from "../schema/VideoSessionEditLog.js";
@@ -3248,7 +3249,7 @@ function getFrameSafeDurationSecondsFromFrameCount(frameCount, framesPerSecond) 
     return null;
   }
 
-  return Math.ceil((safeFrameCount / safeFramesPerSecond) * 1000000) / 1000000;
+  return frameCountToSeconds(safeFrameCount, safeFramesPerSecond);
 }
 
 function getFrameSafeDurationSeconds(durationInSeconds, framesPerSecond) {
@@ -6797,13 +6798,15 @@ export async function updateLayerVisualItem(userId, payload) {
     throw new Error("Only image and shape items can be updated with this route");
   }
 
+  // New clients send their native clock; omitted values retain the legacy API contract.
+  const editorFramesPerSecond = normalizeFramesPerSecond(payload.frameRate) ?? TRACK_EDITOR_FRAMES_PER_SECOND;
   const parentLayerStartFrame = Math.max(
     0,
-    Math.round((Number(layer.durationOffset) || 0) * TRACK_EDITOR_FRAMES_PER_SECOND)
+    Math.round((Number(layer.durationOffset) || 0) * editorFramesPerSecond)
   );
   const parentLayerDurationFrames = Math.max(
     1,
-    Math.round((Number(layer.duration) || 0) * TRACK_EDITOR_FRAMES_PER_SECOND)
+    Math.round((Number(layer.duration) || 0) * editorFramesPerSecond)
   );
   const sessionFramesPerSecond = getSessionFramesPerSecondWithLog(
     session,
@@ -6815,7 +6818,7 @@ export async function updateLayerVisualItem(userId, payload) {
   );
   const editorFramesToSessionFrames = (value) => Math.max(
     0,
-    Math.round(((Number(value) || 0) / TRACK_EDITOR_FRAMES_PER_SECOND) * sessionFramesPerSecond)
+    Math.round(((Number(value) || 0) / editorFramesPerSecond) * sessionFramesPerSecond)
   );
 
   const requestedStartFrame = Math.round(Number(startFrame));
@@ -7651,8 +7654,8 @@ export async function addLastFrameForMissingDuration({
     'VideoSession.padLayerWithLastFrame'
   );
   // We'll treat this extra portion as (durationDiff) * session FPS frames
-  const frameDuration = Math.floor(durationDiff * framesPerSecond);
-  const existingFramesCount = Math.floor(oldDuration * framesPerSecond);
+  const frameDuration = Math.round(durationDiff * framesPerSecond);
+  const existingFramesCount = secondsToFrameCount(oldDuration, framesPerSecond);
   const frameOffset = existingFramesCount;
 
   // 3) Create an optional “zoom+slide” animation:

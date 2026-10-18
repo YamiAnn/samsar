@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../../StudioFrameRateContext.jsx';
 import { useRef, useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import ReactSlider from "react-slider";
@@ -17,8 +18,8 @@ export default function FrameToolbarHorizontal({
   onLayersOrderChange,
   isRenderPending,
 }) {
-  const fps = 30;
-  const totalFrames = Math.max(1, Math.floor(totalDuration * fps));
+  const fps = useStudioFrameRate();
+  const totalFrames = Math.max(1, Math.round(totalDuration * fps));
   const safeTotalDuration = Math.max(totalDuration || 0, 0.001);
 
   // Scroll container

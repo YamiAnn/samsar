@@ -41,7 +41,8 @@
     "test:browser:watch": "vitest --config vitest.browser.config.mjs --browser.headless=false",
     "test:ci": "npm test && npm run test:browser",
     "test:sync": "npm run test:ci",
-    "test:browser:install": "playwright install chromium"
+    "test:browser:install": "playwright install chromium",
+    "test:frame-drift": "node --test src/components/video/util/frameDrift.test.mjs && vitest run --config vitest.config.mjs test/unit/StudioFrameRate.test.jsx"
   },
   "browserslist": {
     "production": [

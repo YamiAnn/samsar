@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import { forwardRef, useCallback, useEffect, useState, useRef, useContext } from "react";
 import { createPortal } from 'react-dom';
 import { Stage, Layer, Group, Line, Image as KonvaImage, Rect } from 'react-konva';
@@ -40,7 +41,6 @@ import {
 } from '../util/studioCanvasOverlay.mjs';
 
 
-const FPS = 30;
 
 
 
@@ -100,6 +100,7 @@ function canDragCanvasItems({
 }
 
 const VideoCanvas = forwardRef((props, ref) => {
+  const FPS = useStudioFrameRate();
   const {
     activeItemList, setActiveItemList, currentView, editBrushWidth, editMasklines, currentCanvasAction,
     setCurrentCanvasAction, setSelectedId, selectedId, buttonPositions, setButtonPositions, selectedLayerType,
@@ -513,7 +514,7 @@ const VideoCanvas = forwardRef((props, ref) => {
   const addNewItem = (newItem) => {
     const normalizedItem =
       newItem?.type === 'image'
-        ? createLayerBoundImageItem({ layer: currentLayer, ...newItem })
+        ? createLayerBoundImageItem({ layer: currentLayer, framesPerSecond: FPS, ...newItem })
         : newItem;
     const newActiveItemList = [...activeItemList, normalizedItem];
     setActiveItemList(newActiveItemList);
@@ -709,6 +710,7 @@ const VideoCanvas = forwardRef((props, ref) => {
     const imageObj = new Image();
     imageObj.onload = () => {
       const newItem = createLayerBoundImageItem({
+        framesPerSecond: FPS,
         layer: currentLayer,
         id: maskBaseImageId, // Keep the same ID
         src: imageObj.src,
@@ -767,6 +769,7 @@ const VideoCanvas = forwardRef((props, ref) => {
     const imageObj = new Image();
     imageObj.onload = () => {
       const newItem = createLayerBoundImageItem({
+        framesPerSecond: FPS,
         layer: currentLayer,
         id: `item_${activeItemList.length}`,
         src: imageObj.src,
@@ -950,7 +953,7 @@ const VideoCanvas = forwardRef((props, ref) => {
       if (!item || item.isHidden || item.type !== 'image') {
         return false;
       }
-      return isItemVisibleAtDisplayFrame(item, currentRelativeFrame, sessionDetails?.framesPerSecond);
+      return isItemVisibleAtDisplayFrame(item, currentRelativeFrame, sessionDetails?.framesPerSecond, FPS);
     });
   })();
   const overlayImageAspectRatio =

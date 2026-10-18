@@ -1,3 +1,5 @@
+import { getLayerDisplayFrameRanges } from '../../util/studioPreviewTimeline.mjs';
+import { useStudioFrameRate } from '../../StudioFrameRateContext.jsx';
 // FrameToolbar.js
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { useColorMode } from '../../../../contexts/ColorMode.jsx';
@@ -468,7 +470,7 @@ function buildVisualTrackDisplayList(layers, displayFramesPerSecond, sourceFrame
     );
     const parentLayerDurationFrames = Math.max(
       1,
-      Math.round((Number(layer?.duration) || 0) * resolvedDisplayFramesPerSecond)
+      Math.round(((Number(layer?.durationOffset) || 0) + (Number(layer?.duration) || 0)) * resolvedDisplayFramesPerSecond) - parentLayerStartFrame
     );
     const parentLayerEndFrame = parentLayerStartFrame + parentLayerDurationFrames;
 
@@ -833,36 +835,13 @@ function buildHintTrackDisplayList(hints, displayFramesPerSecond = 30) {
 }
 
 function buildLayerFrameMetadata(layers = [], displayFramesPerSecond = 30) {
-  let fallbackStartFrame = 0;
-
-  return layers.map((layer, index) => {
-    const durationFrames = Math.max(
-      1,
-      Math.round((Number(layer?.duration) || 0) * displayFramesPerSecond)
-    );
-    const rawDurationOffset = layer?.durationOffset;
-    const hasConfiguredStartFrame = rawDurationOffset !== undefined
-      && rawDurationOffset !== null
-      && rawDurationOffset !== ''
-      && Number.isFinite(Number(rawDurationOffset));
-    const configuredStartFrame = hasConfiguredStartFrame
-      ? Math.max(0, Math.round(Number(rawDurationOffset) * displayFramesPerSecond))
-      : null;
-    const startFrame = configuredStartFrame !== null && configuredStartFrame >= fallbackStartFrame
-      ? configuredStartFrame
-      : fallbackStartFrame;
-    const endFrame = startFrame + durationFrames;
-
-    fallbackStartFrame = endFrame;
-
-    return {
-      layer,
-      originalIndex: index,
-      startFrame,
-      endFrame,
-      durationFrames,
-    };
-  });
+  const ranges = getLayerDisplayFrameRanges(layers, displayFramesPerSecond);
+  return layers.map((layer, index) => ({
+    layer,
+    originalIndex: index,
+    ...ranges[index],
+    durationFrames: ranges[index].endFrame - ranges[index].startFrame,
+  }));
 }
 
 function getNearestFrameAtOrBefore(frames = [], targetFrame = 0, fallbackFrame = 0) {
@@ -985,6 +964,7 @@ function areVideoEditToolsEqual(leftTool, rightTool) {
 }
 
 export default function FrameToolbar(props) {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const {
     layers,
     setSelectedLayer,
@@ -1046,7 +1026,6 @@ export default function FrameToolbar(props) {
 
 
 
-  const DISPLAY_FRAMES_PER_SECOND = 30;
   const numericFramesPerSecond = Number(framesPerSecond);
   const sessionFramesPerSecond = [16, 24, 30].includes(numericFramesPerSecond)
     ? numericFramesPerSecond
@@ -6333,8 +6312,8 @@ export default function FrameToolbar(props) {
 
 
             if (typeof item.startFrame === 'undefined' || typeof item.endFrame === 'undefined') {
-              item.startFrame = layer.durationOffset * 30;
-              item.endFrame = (layer.durationOffset + layer.duration) * 30;
+              item.startFrame = layer.durationOffset * DISPLAY_FRAMES_PER_SECOND;
+              item.endFrame = (layer.durationOffset + layer.duration) * DISPLAY_FRAMES_PER_SECOND;
             }
             const itemStartFrame = Math.round(Number(item.startFrame) || 0);
             const itemEndFrame = Math.max(
@@ -6347,8 +6326,8 @@ export default function FrameToolbar(props) {
             }
             const layerStartTime = layer.durationOffset;
             const layerEndTime = layer.durationOffset + layer.duration;
-            const parentLayerStartFrame = layerStartTime * 30;
-            const parentLayerEndFrame = layerEndTime * 30;
+            const parentLayerStartFrame = layerStartTime * DISPLAY_FRAMES_PER_SECOND;
+            const parentLayerEndFrame = layerEndTime * DISPLAY_FRAMES_PER_SECOND;
             const textItemObject = {
               ...item,
               startFrame: itemStartFrame,
@@ -6415,8 +6394,8 @@ export default function FrameToolbar(props) {
   const updateTextItemTime = (newStartTime, newEndTime) => {
 
 
-    const newStartFrame = Math.ceil(newStartTime * 30);
-    const newEndFrame = Math.ceil(newEndTime * 30);
+    const newStartFrame = Math.round(newStartTime * DISPLAY_FRAMES_PER_SECOND);
+    const newEndFrame = Math.round(newEndTime * DISPLAY_FRAMES_PER_SECOND);
 
     if (!selectedTextTrackDisplay) {
       return;
@@ -6450,6 +6429,12 @@ export default function FrameToolbar(props) {
       updatedItem.endFrame = newEndFrame;
       updatedItem.startTime = newStartTime;
       updatedItem.endTime = newEndTime;
+      updatedItem.config = {
+        ...updatedItem.config,
+        frameRate: sessionFramesPerSecond,
+        frameOffset: Math.max(0, newStartFrame - Math.round(selectedTextLayer.durationOffset * sessionFramesPerSecond)),
+        frameDuration: Math.max(1, newEndFrame - newStartFrame),
+      };
       selectedTextLayerActiveItemList[selectedTextItemIndexInActiveItemList] = updatedItem;
       selectedTextLayer.imageSession.activeItemList = selectedTextLayerActiveItemList;
 
@@ -7587,8 +7572,8 @@ export default function FrameToolbar(props) {
               <div className='relative z-[4] inline-flex h-full min-h-0'>
                 <TimeRuler
                   totalDuration={totalDuration}
-                  visibleStartTime={viewRangeStart / 30}
-                  visibleEndTime={viewRangeEnd / 30}
+                  visibleStartTime={viewRangeStart / DISPLAY_FRAMES_PER_SECOND}
+                  visibleEndTime={viewRangeEnd / DISPLAY_FRAMES_PER_SECOND}
                 />
               </div>
             </div>

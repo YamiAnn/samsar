@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactSlider from 'react-slider';
 import { FaGripLines } from 'react-icons/fa6';
@@ -8,7 +9,6 @@ import { useColorMode } from '../../../contexts/ColorMode.jsx';
 import { frameToViewportValue, viewportValueToFrame } from './viewportGeometry.js';
 import { getAudioTrackFrameBounds } from './audioTrackTiming.js';
 
-const DISPLAY_FRAMES_PER_SECOND = 30;
 const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
 const AUDIO_TRACK_THUMB_HEIGHT = 10;
 
@@ -50,6 +50,7 @@ function resolveAudioTrackUrl(audioTrack = {}) {
 }
 
 const AudioTrackSlider = (props) => {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const { audioTrack, onUpdate, selectedFrameRange, isStartVisible, isEndVisible,
     setAudioRangeSliderDisplayAsSelected, 
     viewportGeometry = null,

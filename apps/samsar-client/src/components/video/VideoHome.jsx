@@ -1,3 +1,4 @@
+import { StudioFrameRateContext, resolveStudioFramesPerSecond } from './StudioFrameRateContext.jsx';
 import { useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import CommonContainer from '../common/CommonContainer.tsx';
 import FrameToolbar from './toolbars/frame_toolbar/index.jsx';
@@ -22,6 +23,7 @@ import { getCanvasDimensionsForAspectRatio } from '../../utils/canvas.jsx';
 import { normalizeActiveTextItemListForCanvas } from '../../constants/TextConfig.jsx';
 import useUndoRedoState from '../../hooks/useUndoRedoState.js';
 import {
+  getLayerDisplayFrameRange,
   getLayerDisplayFrameRanges,
   resolveLayerSelectionAtDisplayFrame,
   resolveTimelineDuration,
@@ -763,6 +765,7 @@ export default function VideoHome() {
     setCanZoomOutCanvas,
   } = useContext(NavCanvasControlContext);
   const [videoSessionDetails, setVideoSessionDetails] = useState(null);
+  const studioFramesPerSecond = resolveStudioFramesPerSecond(videoSessionDetails?.framesPerSecond);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState(0);
   const [currentLayer, setCurrentLayer] = useState({});
   const [layers, setLayers] = useState([]);
@@ -1498,7 +1501,7 @@ export default function VideoHome() {
     setSelectedLayerIndex(index);
     currentLayerRef.current = layer;
     setCurrentLayer(layer);
-    const { startFrame: newLayerSeek } = getLayerDisplayFrameRanges(layers)[index];
+    const { startFrame: newLayerSeek } = getLayerDisplayFrameRanges(layers, studioFramesPerSecond)[index];
     if (!isLayerSeeking && !isVideoPreviewPlaying) {
       setCurrentLayerSeek(newLayerSeek);
     }
@@ -1750,7 +1753,8 @@ export default function VideoHome() {
     const selection = resolveLayerSelectionAtDisplayFrame(
       layers,
       currentLayerSeek,
-      getSessionLayerId(currentLayer)
+      getSessionLayerId(currentLayer),
+      studioFramesPerSecond
     );
     if (!selection.shouldUpdate) {
       return;
@@ -2757,7 +2761,7 @@ export default function VideoHome() {
     }
 
     let currentFrameIndex = 0;
-    const frameRate = 1000 / 30;
+    const frameRate = 1000 / studioFramesPerSecond;
 
     const updateFrame = () => {
       if (currentFrameIndex >= frames.length) {
@@ -3020,6 +3024,7 @@ export default function VideoHome() {
           itemId,
           startFrame,
           endFrame,
+          frameRate: studioFramesPerSecond,
         },
         headers
       );
@@ -3313,7 +3318,7 @@ export default function VideoHome() {
     const updatedItem = { ...updatedLayer.imageSession.activeItemList[itemIndex] };
 
     // Convert times to frames
-    const fps = 30;
+    const fps = studioFramesPerSecond;
     const newStartFrame = Math.round(startTime * fps);
     const newEndFrame = Math.round(endTime * fps);
 
@@ -3325,9 +3330,13 @@ export default function VideoHome() {
     updatedItem.endTime = endTime;
 
     // The frameOffset is relative to the layer's durationOffset
-    const layerStartFrame = Math.floor(updatedLayer.durationOffset * fps);
-    updatedItem.frameOffset = newStartFrame - layerStartFrame;
-    updatedItem.frameDuration = newEndFrame - newStartFrame;
+    const layerStartFrame = Math.round(updatedLayer.durationOffset * fps);
+    updatedItem.config = {
+      ...updatedItem.config,
+      frameRate: fps,
+      frameOffset: newStartFrame - layerStartFrame,
+      frameDuration: newEndFrame - newStartFrame,
+    };
 
     // Update the item in the layer
     updatedLayer.imageSession.activeItemList[itemIndex] = updatedItem;
@@ -3401,7 +3410,7 @@ export default function VideoHome() {
       previousSyncedLayerIdRef.current = newLayerId;
       syncActiveItemList([], { resetHistory: true });
 
-      const { startFrame: newLayerSeek } = getLayerDisplayFrameRange(insertedLayer);
+      const { startFrame: newLayerSeek } = getLayerDisplayFrameRange(insertedLayer, studioFramesPerSecond);
       setCurrentLayerSeek(newLayerSeek);
 
       updateCurrentLayerAndLayerList(newLayers, newLayerIndex);
@@ -3914,7 +3923,7 @@ export default function VideoHome() {
     setLayers(updatedLayers);
     setCurrentLayer(layerData);
 
-    const { startFrame: newLayerSeek } = getLayerDisplayFrameRange(layerData);
+    const { startFrame: newLayerSeek } = getLayerDisplayFrameRange(layerData, studioFramesPerSecond);
     if (!isLayerSeeking) {
       setCurrentLayerSeek(newLayerSeek);
     }
@@ -4443,6 +4452,7 @@ export default function VideoHome() {
     : 'bg-slate-900 text-white hover:bg-slate-800';
 
   return (
+    <StudioFrameRateContext.Provider value={studioFramesPerSecond}>
     <CommonContainer
       isVideoPreviewPlaying={isVideoPreviewPlaying}
       setIsVideoPreviewPlaying={setIsVideoPreviewPlaying}
@@ -4663,5 +4673,6 @@ export default function VideoHome() {
 
       </div>
     </CommonContainer>
+    </StudioFrameRateContext.Provider>
   );
 }

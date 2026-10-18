@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../../../StudioFrameRateContext.jsx';
 import { useState } from 'react';
 import SecondaryButton from '../../../../common/SecondaryButton.tsx';
 import { FaPlus, FaTimes, FaEye, FaEyeSlash, FaCheck, FaPlay, FaMagic, FaChevronCircleLeft } from 'react-icons/fa';
@@ -13,6 +14,7 @@ const TEXT_ANIMATION_OPTIONS = [
 ];
 
 export default function SelectedTextToolbarDisplay(props) {
+  const DISPLAY_FRAMES_PER_SECOND = useStudioFrameRate();
   const {
     handleStartTimeChange,
     handleEndTimeChange,
@@ -45,8 +47,8 @@ export default function SelectedTextToolbarDisplay(props) {
   const startFrame = selectedAnimation ? selectedAnimation.startFrame : selectedTextTrack.startFrame;
   const endFrame = selectedAnimation ? selectedAnimation.endFrame : selectedTextTrack.endFrame;
 
-  const displayedStartTime = (startFrame / 30).toFixed(2);
-  const displayedEndTime = (endFrame / 30).toFixed(2);
+  const displayedStartTime = (startFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2);
+  const displayedEndTime = (endFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2);
 
   const textTrackId = `${selectedTextTrack.layerId}_${selectedTextTrack.id}`;
 

@@ -1,3 +1,4 @@
+import { frameCountToSeconds, buildFrameExtractionFilter } from './utils/FrameClock.js';
 import fs from 'fs-extra';
 import path from 'path';
 import axios from 'axios';
@@ -45,7 +46,7 @@ function getFrameSafeDurationSeconds(frameCount, framesPerSecond) {
   if (!Number.isFinite(safeFrameCount) || safeFrameCount <= 0 || safeFramesPerSecond <= 0) {
     return 0;
   }
-  return Math.ceil((safeFrameCount / safeFramesPerSecond) * 1e6) / 1e6;
+  return frameCountToSeconds(safeFrameCount, safeFramesPerSecond);
 }
 
 export async function getVideoDuration(videoPath) {
@@ -55,7 +56,7 @@ export async function getVideoDuration(videoPath) {
         reject(err);
       } else {
         const duration = metadata.format.duration;
-        const durationInSeconds = Math.floor(duration * 100) / 100;
+        const durationInSeconds = Number(duration);
         resolve(durationInSeconds);
       }
     });
@@ -376,8 +377,9 @@ export async function processVideoAsFramesAndAudio(
   } 
 
 
-  // Ensure there are no stale frames from previous generations for this layer.
-  await fs.emptyDir(framesOutputFolder);
+  const targetFramesOutputFolder = framesOutputFolder;
+  await fs.ensureDir(path.dirname(framesOutputFolder));
+  framesOutputFolder = await fs.mkdtemp(`${targetFramesOutputFolder}.tmp-`);
 
 
   
@@ -450,15 +452,19 @@ export async function processVideoAsFramesAndAudio(
     // Calculate approximate duration based on frame count & session FPS
     const durationInSeconds = getFrameSafeDurationSeconds(numFiles, effectiveFramesPerSecond);
 
+    await fs.remove(targetFramesOutputFolder);
+    await fs.move(framesOutputFolder, targetFramesOutputFolder, { overwrite: true });
+
     return {
-      firstFrame: firstFramePath,
-      lastFrame: lastFramePath,
+      firstFrame: path.join(targetFramesOutputFolder, path.basename(firstFramePath)),
+      lastFrame: path.join(targetFramesOutputFolder, path.basename(lastFramePath)),
       duration: durationInSeconds,
       frameCount: numFiles,
       frameDuration: durationInSeconds,
       audioPath,
     };
   } catch (error) {
+    await fs.remove(framesOutputFolder).catch(() => {});
     console.error('Error processing video (frames + audio):', error);
     throw error;
   }
@@ -467,7 +473,7 @@ export async function processVideoAsFramesAndAudio(
 function extractFrames(videoPath, outputFolder, newFrameWidth, newFrameHeight, framesPerSecond) {
   const ffmpegThreadValue = `${resolveAiVideoFfmpegThreads()}`;
   return new Promise((resolve, reject) => {
-    const frameFilter = `fps=${framesPerSecond}:round=down,scale=${newFrameWidth}:${newFrameHeight}`;
+    const frameFilter = buildFrameExtractionFilter(framesPerSecond, `scale=${newFrameWidth}:${newFrameHeight}`);
 
     ffmpeg(videoPath)
       .inputOptions([
@@ -475,6 +481,7 @@ function extractFrames(videoPath, outputFolder, newFrameWidth, newFrameHeight, f
       ])
       .outputOptions([
         '-start_number', '0',
+        '-fps_mode', 'passthrough',
         '-filter_threads', ffmpegThreadValue,
         '-threads', ffmpegThreadValue,
         '-vf', frameFilter,

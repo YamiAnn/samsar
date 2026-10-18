@@ -71,10 +71,8 @@ export async function adjustFrameOffsetsAndDurations(
     let layerActiveItemList = layer.imageSession.activeItemList;
     if (layerActiveItemList) {
       for (let item of layerActiveItemList) {
-        if (item.config && item.config.frameOffset != null) {
-          // Shift frameOffset by durationDiff in frames
-          item.config.frameOffset += Math.round(durationDiff * effectiveFramesPerSecond);
-        }
+        // Item configs are relative to their own scene. Moving the scene's
+        // durationOffset must not also shift its local frame offset.
         // frameDuration remains unchanged unless layer's duration changes
       }
     }

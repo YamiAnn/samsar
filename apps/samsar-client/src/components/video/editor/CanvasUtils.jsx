@@ -1,3 +1,4 @@
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import ResizableImage from "../../editor/ResizableImage.tsx";
 import ResizableText from "../text_display/ResizableText.jsx";
 import ResizableRectangle from "../../editor/shapes/ResizableRectangle.tsx";
@@ -57,7 +58,7 @@ function getFrameConfigSourceRate(item, framesPerSecond) {
   return normalizeSessionFramesPerSecond(framesPerSecond);
 }
 
-function getItemDisplayFrameRange(item, framesPerSecond) {
+function getItemDisplayFrameRange(item, framesPerSecond, displayFramesPerSecond = FPS) {
   const frameOffset = Number(item?.config?.frameOffset);
   const frameDuration = Number(item?.config?.frameDuration);
 
@@ -66,8 +67,8 @@ function getItemDisplayFrameRange(item, framesPerSecond) {
   }
 
   const sourceRate = getFrameConfigSourceRate(item, framesPerSecond);
-  const startFrame = Math.max(0, convertFramesBetweenRates(frameOffset, sourceRate, FPS) ?? 0);
-  const durationFrames = Math.max(1, convertFramesBetweenRates(frameDuration, sourceRate, FPS) ?? 1);
+  const startFrame = Math.max(0, convertFramesBetweenRates(frameOffset, sourceRate, displayFramesPerSecond) ?? 0);
+  const durationFrames = Math.max(1, convertFramesBetweenRates(frameDuration, sourceRate, displayFramesPerSecond) ?? 1);
 
   return {
     startFrame,
@@ -75,8 +76,8 @@ function getItemDisplayFrameRange(item, framesPerSecond) {
   };
 }
 
-export function isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond) {
-  const frameRange = getItemDisplayFrameRange(item, framesPerSecond);
+export function isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond, displayFramesPerSecond = FPS) {
+  const frameRange = getItemDisplayFrameRange(item, framesPerSecond, displayFramesPerSecond);
   if (!frameRange) {
     return true;
   }
@@ -86,6 +87,7 @@ export function isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPe
 }
 
 export function ActiveRenderItem(props) {
+  const displayFramesPerSecond = useStudioFrameRate();
   const {
     item,
     index,
@@ -112,11 +114,11 @@ export function ActiveRenderItem(props) {
 
   } = props;
 
-  const currentRelativeFrame = currentLayerSeek - (durationOffset * FPS);
+  const currentRelativeFrame = currentLayerSeek - (durationOffset * displayFramesPerSecond);
 
 
   if (item.type === 'image') {
-    if (!isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond)) {
+    if (!isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond, displayFramesPerSecond)) {
       return null;
     }
 
@@ -148,7 +150,7 @@ export function ActiveRenderItem(props) {
     );
   } else if (item.type === 'text') {
 
-    const frameRange = getItemDisplayFrameRange(item, framesPerSecond);
+    const frameRange = getItemDisplayFrameRange(item, framesPerSecond, displayFramesPerSecond);
 
     const newItem = {
       ...item,
@@ -210,7 +212,7 @@ export function ActiveRenderItem(props) {
         ...scaleShapeConfig(item.config, stageZoomScale),
       }
     }
-    if (!isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond)) {
+    if (!isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPerSecond, displayFramesPerSecond)) {
       return null;
     }
     if (item.shape === 'circle') {
