@@ -28,6 +28,7 @@ export default function OneshotEditorContainer() {
   const routeResolutionStartedRef = useRef(false);
   const shouldWaitForProjectAuth = shouldDeferVidgenieProjectLoad({
     sessionId: id,
+    hasAuthenticatedUser: Boolean(user?._id),
     userInitiated,
     userFetching,
   });

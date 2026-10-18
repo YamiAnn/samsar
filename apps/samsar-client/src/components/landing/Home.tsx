@@ -135,6 +135,12 @@ function SharedVideoDesktopOnlyMessage() {
   );
 }
 
+function VidgenieRouteRedirect() {
+  const { id } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={appendRouteSearch(id ? `/vidgenie/${id}` : '/vidgenie', search)} replace />;
+}
+
 function MobileStudioSessionRedirect() {
   const { id } = useParams();
   return <Navigate to={id ? `/vidgenie/${id}` : '/vidgenie'} replace />;
@@ -238,7 +244,7 @@ export default function Home() {
   ]);
 
   const isExternalUser = Boolean(user?.isExternalUser);
-  const isVidgeniePath = location.pathname.startsWith('/vidgenie');
+  const isVidgeniePath = location.pathname.startsWith('/vidgenie') || location.pathname.startsWith('/vidgemie');
   const isAccessAllowedPath = (() => {
     if (location.pathname.startsWith('/video/share/')) return true;
     if (location.pathname.startsWith('/video/collab/')) return true;
@@ -533,6 +539,8 @@ export default function Home() {
           <Route path="/quick_video" element={isMobile ? <OneshotEditorContainer /> : <QuickEditorLandingHome />} />
           <Route path="/vidgpt" element={<OneshotEditorContainer />} />
           <Route path="/vidgpt/:id" element={<OneshotEditorContainer />} />
+          <Route path="/vidgemie" element={<VidgenieRouteRedirect />} />
+          <Route path="/vidgemie/:id" element={<VidgenieRouteRedirect />} />
           <Route path="/vidgenie" element={<OneshotEditorContainer />} />
           <Route path="/vidgenie/:id" element={<OneshotEditorContainer />} />
           <Route path="/login" element={<LoginPage />} />

@@ -87,7 +87,16 @@ function collectLayerImageUrls(layers) {
 
   const addImageUrl = (asset) => {
     const imageUrl = getRemoteImageLink(asset);
-    if (!imageUrl || seenUrls.has(imageUrl)) {
+    // Private responses are no-store. A worker fetch cannot warm their cache
+    // and only duplicates the canvas request (and its authentication work).
+    let isPrivate = false;
+    try {
+      const parsed = new URL(imageUrl, 'https://relative-media.invalid');
+      const signedCdn = parsed.searchParams.has('Signature') && parsed.searchParams.has('Key-Pair-Id');
+      isPrivate = parsed.searchParams.has('asset_token')
+        || (/\/assets_v2\//.test(parsed.pathname) && !signedCdn);
+    } catch { return; }
+    if (!imageUrl || isPrivate || seenUrls.has(imageUrl)) {
       return;
     }
     seenUrls.add(imageUrl);
@@ -146,8 +155,8 @@ function resolveProcessorAssetUrlFromStaticUrl(value) {
     if (
       (normalizedHost !== 'static.samsar.one' && normalizedHost !== configuredStaticHost)
       || !(normalizedPath.startsWith('assets_v2/') || normalizedPath.startsWith('assets/'))
-      || normalizedPath.startsWith('assets_v2/user_resources/')
-      || normalizedPath.startsWith('user_resources/')
+      || (normalizedPath.startsWith('assets_v2/user_resources/') && !parsedUrl.searchParams.has('asset_token'))
+      || (normalizedPath.startsWith('user_resources/') && !parsedUrl.searchParams.has('asset_token'))
       || hasCloudFrontSignature
     ) {
       return null;
@@ -156,7 +165,8 @@ function resolveProcessorAssetUrlFromStaticUrl(value) {
     const normalizedApiServer = typeof API_SERVER === 'string'
       ? API_SERVER.trim().replace(/\/+$/, '')
       : '';
-    return normalizedApiServer ? `${normalizedApiServer}/${normalizedPath}` : `/${normalizedPath}`;
+    const assetPath = `/${normalizedPath}${parsedUrl.search}${parsedUrl.hash}`;
+    return normalizedApiServer ? `${normalizedApiServer}${assetPath}` : assetPath;
   } catch {
     return null;
   }
