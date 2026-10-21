@@ -74,7 +74,7 @@ router.post('/completion', validateAPIKeyAndUserId, async (req, res) => {
     const timeoutMs = getAssistantCompletionTimeoutMs(req.body || {});
     req.setTimeout(timeoutMs + 30000);
     res.setTimeout(timeoutMs + 30000);
-    const result = await createAssistantCompletion(req.userId, req.body || {});
+    const result = await createAssistantCompletion(req.userId, req.body || {}, { idempotencyKey: req.get('Idempotency-Key') });
     setCreditHeaders(res, result.creditsCharged, result.remainingCredits);
     res.status(200).json(result.openaiResponse);
   } catch (error) {
@@ -86,6 +86,7 @@ router.post('/completion', validateAPIKeyAndUserId, async (req, res) => {
 
     const statusCode = error?.statusCode || error?.status || error?.response?.status || 500;
     res.status(statusCode).json({
+      code: error?.code || null,
       message: error?.message || 'Internal server error while creating assistant completion.',
     });
   }

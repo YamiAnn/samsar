@@ -1,3 +1,5 @@
+import { checkpointImageResult } from '../billing/ImageResultCheckpoint.js';
+import { reportedImageCharge } from '../billing/ImagePricing.js';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
@@ -646,6 +648,9 @@ async function callGoogleNanoBananaGenerateContent({
     throw new Error(textOutput || 'Google Nano Banana returned no image output.');
   }
 
+  Object.defineProperty(imageBuffers, 'imageBillingReceipts', { value: [{ adapter: 'googleCloud',
+    model: providerModel, region: location, usage: payload.usageMetadata,
+    providerRequestId: payload.responseId, ...reportedImageCharge(payload) }] });
   return imageBuffers;
 }
 
@@ -656,6 +661,7 @@ export async function generateGoogleNanoBananaImages(request = {}) {
   const normalizedPayload = normalizeGoogleNanoBananaRequestPayload(request);
   const totalCount = normalizedPayload.numImages;
   const buffers = [];
+  const receipts = [];
 
   while (buffers.length < totalCount) {
     const responseBuffers = await callGoogleNanoBananaGenerateContent({
@@ -666,9 +672,12 @@ export async function generateGoogleNanoBananaImages(request = {}) {
       resolution: normalizedPayload.resolution,
     });
     buffers.push(...responseBuffers);
+    receipts.push(...(responseBuffers.imageBillingReceipts || []));
   }
 
-  return buffers.slice(0, totalCount);
+  const images = buffers.slice(0, totalCount);
+  Object.defineProperty(images, 'imageBillingReceipts', { value: receipts });
+  return images;
 }
 
 async function checkIfBlackImage(buffer) {
@@ -731,6 +740,8 @@ export async function handleGoogleNanoBananaRequest(payload) {
     });
 
     const imageName = await saveGoogleNanoBananaImageBuffer(imageBuffers[0]);
+    const checkpoint = await checkpointImageResult(payload, { image: imageName, provider: 'google-native-nanobanana',
+      imageBillingReceipt: { adapter: 'googleCloud', calls: imageBuffers.imageBillingReceipts } });
     await ImageGeneration.findOneAndUpdate(
       { _id },
       {
@@ -741,11 +752,9 @@ export async function handleGoogleNanoBananaRequest(payload) {
       }
     );
 
-    return {
-      image: imageName,
-      provider: 'google-native-nanobanana',
-    };
+    return checkpoint;
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     console.error('[GoogleNanoBananaNative] generation failed:', error);
     if (isGoogleNanoBananaProviderInfrastructureError(error)) {
       throw markAsNonPromptProviderFailure(error);

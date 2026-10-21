@@ -1,3 +1,4 @@
+import { checkpointImageResult } from '../billing/ImageResultCheckpoint.js';
 import { Agent, fetch as undiciFetch } from 'undici';
 
 import { getDBConnectionString } from '../DBString.js';
@@ -144,6 +145,8 @@ export async function handleAlibabaQwenImage3Request(payload = {}, dependencies 
     );
 
     const imageName = await saveFile(providerResultUrl);
+    await checkpointImageResult(payload, { image: imageName, provider: 'alibabaCloud',
+      imageBillingReceipt: result.imageBillingReceipt, providerRequestId: result.requestId });
 
     await imageGenerationModel.findOneAndUpdate(
       { _id },
@@ -161,6 +164,7 @@ export async function handleAlibabaQwenImage3Request(payload = {}, dependencies 
 
     return {
       image: imageName,
+      ...(result.imageBillingReceipt ? { imageBillingReceipt: result.imageBillingReceipt } : {}),
       provider: 'alibabaCloud',
       providerRequestId,
     };

@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 
 
 
@@ -67,7 +68,7 @@ export async function requestRenderHaiperVideo(payload) {
   aiVideoRenderPayload.userId = userId;
 
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   const renderSaveRes = await aiRenderPayload.save();
 
 

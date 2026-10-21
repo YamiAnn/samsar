@@ -96,6 +96,7 @@ async function handleExternalChatCompletion(req, res) {
       const request = await createExternalChatCompletionRequest({
         userId: req.userId,
         payload: req.body || {},
+        idempotencyKey: req.get('Idempotency-Key'),
       });
       return res.status(202).json(request);
     }
@@ -106,6 +107,7 @@ async function handleExternalChatCompletion(req, res) {
     const result = await createExternalChatCompletion({
       userId: req.userId,
       payload: req.body || {},
+      idempotencyKey: req.get('Idempotency-Key'),
     });
     setCreditHeaders(res, result.creditsCharged, result.remainingCredits);
     res.status(200).json(result.response);
@@ -117,6 +119,7 @@ async function handleExternalChatCompletion(req, res) {
     }
     const statusCode = error?.statusCode || error?.status || error?.response?.status || 500;
     res.status(statusCode).json({
+      code: error?.code || null,
       message: error?.message || 'Internal server error while creating external chat completion.',
     });
   }
@@ -162,6 +165,7 @@ async function handleExternalEmbeddings(req, res) {
     const result = await createExternalEmbeddingVectors({
       userId: req.userId,
       payload: req.body || {},
+      idempotencyKey: req.get('Idempotency-Key'),
     });
     setCreditHeaders(res, result.creditsCharged, result.remainingCredits);
     return res.status(200).json(result.response);
@@ -173,6 +177,7 @@ async function handleExternalEmbeddings(req, res) {
     }
     const statusCode = error?.statusCode || error?.status || error?.response?.status || 500;
     return res.status(statusCode).json({
+      code: error?.code || null,
       message: error?.message || 'Internal server error while creating external embeddings.',
     });
   }

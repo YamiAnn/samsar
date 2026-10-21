@@ -461,6 +461,11 @@ export async function generateGoogleVeo3VideoLayer(payload) {
   const model = resolveVeoModel(payload.model);
   const token = await getAccessToken();
 
+  const requestBody = await buildVeoRequest(payload);
+  payload.videoBillingNativeReceipt = { adapter: 'googleCloud', model,
+    seconds: requestBody.parameters.durationSeconds,
+    generateAudio: requestBody.parameters.generateAudio,
+    resolution: requestBody.parameters.resolution || '720p' };
   const response = await fetch(buildPublisherModelUrl({
     projectId,
     location,
@@ -472,7 +477,7 @@ export async function generateGoogleVeo3VideoLayer(payload) {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(await buildVeoRequest(payload)),
+    body: JSON.stringify(requestBody),
   });
 
   const operation = await readJsonResponse(response, 'Google Veo submit');
@@ -535,9 +540,14 @@ export async function listenToPendingGoogleVeo3Requests(payload) {
     return { responseStatus: 'FAILED' };
   }
 
+  const outputs = operation.response?.videos || operation.response?.generatedSamples || operation.response?.generatedVideos;
+  const videoBillingReceipt = { ...payload.videoBillingNativeReceipt,
+    providerRequestId: operationName, outputCount: Array.isArray(outputs) ? outputs.length : undefined };
+
   if (output.base64) {
     return {
       responseStatus: 'COMPLETED',
+      videoBillingReceipt,
       responseBlob: Buffer.from(stripDataUrlPrefix(output.base64), 'base64'),
     };
   }
@@ -546,12 +556,14 @@ export async function listenToPendingGoogleVeo3Requests(payload) {
     if (output.uri.startsWith('gs://')) {
       return {
         responseStatus: 'COMPLETED',
+        videoBillingReceipt,
         responseBlob: await downloadGcsObjectAsBuffer(output.uri, token),
       };
     }
 
     return {
       responseStatus: 'COMPLETED',
+      videoBillingReceipt,
       remoteUrl: output.uri,
     };
   }

@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   buildExternalImageToVideoInput,
+  buildExternalVideoRouteRequest,
   buildExternalStepImageToVideoInput,
   buildExternalVideoToVideoInput,
   getExternalVideoAttemptId,
@@ -346,4 +347,14 @@ test('Samsar external sound-effect payload resolves Docker source video URLs to 
   } finally {
     restoreEnv(envSnapshot);
   }
+});
+
+
+test('standalone text model calls use the direct hosted route and retain one attempt key', async () => {
+  const payload = { _id: 'local-video', model: 'VEO3.1', prompt: 'A sunrise', duration: 6, numRetries: 0 };
+  const request = await buildExternalVideoRouteRequest({}, payload, 'text_to_video');
+  assert.equal(request.route, 'direct_text_to_video');
+  assert.equal(request.body.input.video_model, 'VEO3.1');
+  assert.equal(getExternalVideoAttemptId(payload), 'local-video:attempt:0');
+  assert.equal(getExternalVideoAttemptId({ ...payload }), getExternalVideoAttemptId(payload));
 });

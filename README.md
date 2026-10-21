@@ -317,7 +317,7 @@ Follow a workflow from the hosted Samsar.js API into its local deployment detail
 | Image List to Video | [Image-list API](https://docs.samsar.one/video#post-videoimage_list_to_video) | [Product videos, CTA and narrator settings](pages/image-list-to-video.md) |
 | Image Edit | [Image API](https://docs.samsar.one/image-api) · [V2 edits](https://docs.samsar.one/v2#v2-image-edit-routes) | [Generation, enhancement and edits](pages/image-edit.md) |
 | Speech, music, sound and lip sync | [Audio](https://docs.samsar.one/external-requests#audio) · [Video operations](https://docs.samsar.one/external-requests#video) | [Audio and performance guide](pages/audio-and-performance.md) |
-| Inference and assistants | [Chat](https://docs.samsar.one/chat-api) · [Assistant](https://docs.samsar.one/assistant-api) | [Inference matrix](pages/model-matrix.md#inference) |
+| Inference and assistants | [Chat](https://docs.samsar.one/chat-api) · [Assistant](https://docs.samsar.one/assistant-api) | [Inference matrix](pages/model-matrix.md#inference) · [Billing and retries](pages/assistant-billing.md) |
 | Narrative and branching | [Narrative API](https://docs.samsar.one/narrative) | [Workflow allowlists](pages/providers-and-models.md#model-groups-used-by-video-apis) |
 | Search | [Index and search](https://docs.samsar.one/chat-api#post-chatcreate_embedding) | [Templates, filters and indexing](pages/search.md) |
 | Recommendations | [Similarity API](https://docs.samsar.one/chat-api#post-chatsimilar_to_embedding) | [Related content and product matching](pages/recommendations.md) |
@@ -364,7 +364,7 @@ The [complete model matrix](pages/model-matrix.md) lists **all 46 model keys in 
 
 | Modality | Models in the deployment registry | Explore and build |
 | --- | --- | --- |
-| Inference & vision | GPT 6.1 Sol, Claude Opus 5.5, Gemini 4 Argon, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
+| Inference & vision | GPT 6 Astra, Claude Opus 5.5, Gemini 4 Argon, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
 | Image generation | GPTImage 2.5, Seedream 5 Pro, Nano Banana 2 / Pro, Qwen Image 3.0 Pro, Wan 2.7 Pro | [Matrix](pages/model-matrix.md#image) · [Image API](https://docs.samsar.one/image-api) |
 | Image editing | GPTImage 2.5 Edit, Nano Banana 2 / Pro Edit, BRIA Eraser / GenFill | [Matrix](pages/model-matrix.md#image-edit) · [Edit API](https://docs.samsar.one/v2#v2-image-edit-routes) |
 | Video generation | Runway; Veo 3.1 text / fast / I2V / first-last-frame; Cosmos 3; Seedance 1.5 / 2.0 / 2.5; Kling 3 / 1.6 / 2.1 variants; Hailuo; Happy Horse 1.1 | [Every video key](pages/model-matrix.md#video) · [Video API](https://docs.samsar.one/video) |
@@ -379,7 +379,7 @@ The [complete model matrix](pages/model-matrix.md) lists **all 46 model keys in 
 <summary><strong>Understand model keys, workflow support and native exceptions</strong></summary>
 
 - **Model keys:** `GPTIMAGE2.5` identifies GPTImage 2.5; retired `GPTIMAGE2` requests return an Invalid model validation error; `SEEDREAM` maps to Seedream 5 Pro; `HAPPYHORSEI2V` maps to Happy Horse 1.1 I2V. Use Samsar keys rather than an upstream provider ID.
-- **Inference aliases:** current requests use `gpt-6.1-sol`; older setup files can contain `gpt-5.6-sol`, which the processor normalizes. `KIMIK3` is the setup key; use `kimi-k3` in inference requests.
+- **Inference aliases:** current requests use `gpt-6-astra`; older setup files can contain `gpt-5.6-sol`, which the processor normalizes. `KIMIK3` is the setup key; use `kimi-k3` in inference requests.
 - **Workflow scope:** the complete Studio catalog is larger than the Express and branching allowlists. A model listed for image generation is not automatically selectable for an Express scene.
 - **Native-only model:** `QWENIMAGE3PRO` needs Alibaba Cloud standard pay-as-you-go credentials. It is not enabled by a Samsar key or Alibaba Token Plan.
 - **Credential-scoped model routes:** GenBlaze enables only exact validated GMICloud mappings. Legacy GPT Image 2 mappings do not satisfy the GPTImage 2.5 contract.
@@ -436,11 +436,96 @@ The Studio one-shot flow exposes durations up to 3 minutes; the text-to-video AP
 | Search query | `POST /v1/chat/search_against_embeddings` | Searches a template with `search_term`, filters, and optional reranking. |
 | Recommendations | `POST /v1/chat/similar_to_embeddings` | Returns similar records from a template using text or structured search JSON. |
 | Assistant workflows | `POST /v1/assistant/*`, `POST /v2/assistant/*` aliases | Runs assistant queries through the processor and configured inference provider. |
+| Managed chat/assistant completions | `POST /v2/external/chat/completions`, `POST /v2/external/assistant/completions` | OpenAI-compatible messages; synchronous or queued polling; published input, output, and cached-input token rates. |
 | Image edit/generation | `POST /v1/image/text_to_image`, `POST /v1/image/enhance`, `POST /v1/image/remove_branding`, `POST /v1/image/add_image_set` | Queues image sessions and returns request IDs for polling. |
 | Image status | `GET /v1/image/status?request_id=...`, `GET /v1/image/list` | Polls and lists image API sessions. |
 | Text-to-video | `POST /v1/video/text_to_video`, `POST /v2/text_to_video` | Requires prompt, image model, video model, and duration from 10 to 240 seconds. |
 | Image-list-to-video | `POST /v1/video/image_list_to_video`, `POST /v2/image_list_to_video` | Uses image URLs, prompt/metadata, selected models, aspect ratio, and optional CTA/outro/footer/narrator settings. |
 | Video status | `GET /v2/status`, `GET /v2/status_detailed`, `GET /v1/external_users/status` | Status endpoints support request IDs/session IDs; terminal provider/model failures include the exact stored error, with failed layer details in `status_detailed`. |
+
+### Image billing
+
+Studio image calls, edits, external image endpoints, and rerolls are charged on completion using the [final image token and output prices](https://docs.samsar.one/pricing#image-models). Production agent pipelines retain their flat stage pricing. Standalone Docker waives local image debits; calls through Samsar.js are charged by the hosted image endpoint. See [Image billing and retries](pages/image-billing.md) for status receipts, request keys, and regression checks.
+
+#### Final image token prices
+
+Credits per one million tokens on the named native adapter. Generation and the listed edit keys share these rates. A dash means that token category is not offered on that route.
+
+| Model | Adapter | Token category | Input | Cached input | Output |
+| --- | --- | --- | --- | --- | --- |
+| `GPTIMAGE2.5 / GPTIMAGE2.5EDIT` | OpenAI | Text tokens | 600 | — | — |
+| `GPTIMAGE2.5 / GPTIMAGE2.5EDIT` | OpenAI | Image tokens | 960 | — | 3,600 |
+| `NANOBANANA2 / NANOBANANA2EDIT` | Google global | Text tokens | 60 | 6 | 360 |
+| `NANOBANANA2 / NANOBANANA2EDIT` | Google global | Image tokens | 60 | 6 | 7,200 |
+| `NANOBANANA2 / NANOBANANA2EDIT` | Google regional | Text tokens | 66 | 6.6 | 396 |
+| `NANOBANANA2 / NANOBANANA2EDIT` | Google regional | Image tokens | 66 | 6.6 | 7,920 |
+| `NANOBANANAPRO / NANOBANANAPROEDIT` | Google global | Text tokens | 240 | 24 | 1,440 |
+| `NANOBANANAPRO / NANOBANANAPROEDIT` | Google global | Image tokens | 240 | 24 | 14,400 |
+| `NANOBANANAPRO / NANOBANANAPROEDIT` | Google regional | Text tokens | 264 | 26.4 | 1,584 |
+| `NANOBANANAPRO / NANOBANANAPROEDIT` | Google regional | Image tokens | 264 | 26.4 | 15,840 |
+
+Text output includes reasoning tokens when reported. The direct OpenAI Images API has no cached-input price.
+
+#### Final output image prices
+
+Credits per generated image on the listed native adapter and configuration.
+
+| Model | Adapter | Configuration | Credits / output image |
+| --- | --- | --- | --- |
+| `DALLE3` | OpenAI | Standard · 1024×1024 | 4.8 |
+| `DALLE3` | OpenAI | Standard · 1792×1024 or 1024×1792 | 9.6 |
+| `IMAGEN3` | Google | Standard generation | 4.8 |
+| `IMAGEN3FLASH` | Google | Fast generation | 2.4 |
+| `WAN2.7PRO` | Alibaba international | 1K | 9 |
+| `QWENIMAGE3PRO` | Alibaba international | 1K | 4.8 |
+| `QWENIMAGE3PRO` | Alibaba international | 2K | 9 |
+| `WAN2.7PRO` | Alibaba China / global | 1K | 8.25132 |
+| `QWENIMAGE3PRO` | Alibaba China / global | 1K | 4.1256 |
+| `QWENIMAGE3PRO` | Alibaba China / global | 2K | 8.25132 |
+
+Other image models and Fal or GMICloud routes have configuration-specific final charges in their completion receipts. Their prices should not be inferred from another adapter's table.
+
+
+### Video model billing
+
+Studio AI-video calls, lip-sync and sound-effect layers, direct hosted video endpoints and scene rerolls are charged on completion at the [final model-call output prices](https://docs.samsar.one/pricing#video-model-calls). Production agent pipelines keep their fixed stage prices. Standalone model adapters waive local debits and use the hosted direct endpoints through Samsar.js. See [Video model billing and retries](pages/video-model-billing.md) for endpoint scope, receipts, provider configuration and regression coverage.
+
+#### Final AI-video output prices
+
+These prices apply to individual model calls on the named native adapter. Per-second prices refer to generated output before scene trimming or padding. Multiple completed outputs are billable individually.
+
+| Model | Adapter | Configuration | Unit | Credits |
+| --- | --- | --- | --- | --- |
+| `RUNWAYML` | Runway | Gen-4.5 | second | 14.4 |
+| `VEO3.1 / VEO3.1I2V` | Google Cloud | 720p / 1080p, video | second | 24 |
+| `VEO3.1 / VEO3.1I2V` | Google Cloud | 720p / 1080p, video + audio | second | 48 |
+| `VEO3.1FAST / VEO3.1I2VFAST` | Google Cloud | 720p, video | second | 9.6 |
+| `VEO3.1FAST / VEO3.1I2VFAST` | Google Cloud | 720p, video + audio | second | 12 |
+| `VEO3.1FAST / VEO3.1I2VFAST` | Google Cloud | 1080p, video | second | 12 |
+| `VEO3.1FAST / VEO3.1I2VFAST` | Google Cloud | 1080p, video + audio | second | 14.4 |
+| `HAPPYHORSEI2V` | Alibaba international | Happy Horse 1.1, 720p | second | 16.8 |
+| `HAPPYHORSEI2V` | Alibaba China / global | Happy Horse 1.1, 720p | second | 14.85228 |
+| `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 6 seconds | clip | 33.6 |
+| `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 10 seconds | clip | 67.2 |
+
+#### Lip-sync and video sound-effect pricing
+
+| Operation | Model keys | Final customer price |
+| --- | --- | --- |
+| Lip-sync layer | `SYNCLIPSYNC`, `LATENTSYNC`, `KLINGLIPSYNC`, `HUMMINGBIRDLIPSYNC`, `CREATIFYLIPSYNC` | Configuration-specific completed-call charge; reported in the final credit receipt |
+| Video sound-effect layer | `MMAUDIOV2`, `MIRELOAI` | Configuration-specific completed-call charge; reported in the final credit receipt |
+| Other Fal or GMICloud AI-video calls | Selected model and configuration | Final completed-call charge in the credit receipt |
+
+These operations have no universal flat per-scene price. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
+
+
+### Assistant billing
+
+Assistant completions and public chat/assistant endpoints called through **samsar-js** use the [final input, output, and cached-input token prices](pages/assistant-billing.md#final-token-prices), listed in credits per one million tokens for each model and adapter route. Production agent pipeline inference retains its flat stage pricing.
+
+For retries, pass `{ idempotencyKey: 'stable-request-id' }` in SDK request options or reuse `client_request_id`. The same key and payload reuse the response and original charge; changed payloads return `409`. Requests awaiting billing confirmation or completion after a timeout can remain pending; keep the same key while checking completion.
+
+See [Assistant billing and retries](pages/assistant-billing.md) for endpoint scope, standalone behavior, tool limitations, and regression commands. Other media, narrative, and utility routes retain their route-specific pricing.
 
 ## Deployment and operations
 

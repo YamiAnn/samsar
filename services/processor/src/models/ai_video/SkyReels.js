@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 
 
 
@@ -58,7 +59,7 @@ export async function requestRenderSkyReelsVideo(payload) {
   aiVideoRenderPayload.userId = userId;
   aiVideoRenderPayload.prompt = prompt; 
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   const renderSaveRes = await aiRenderPayload.save();
 
 

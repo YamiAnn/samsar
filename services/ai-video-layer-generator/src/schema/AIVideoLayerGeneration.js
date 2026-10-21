@@ -2,6 +2,11 @@ import { Schema, model } from 'mongoose';
 
 // 2. Create a Schema corresponding to the document interface.
 const aiVideoLayerGenerationSchema = new Schema({
+  videoBillingPolicy: String,
+  videoBillingPending: Boolean,
+  videoBillingAPIKeyUsage: Schema.Types.Mixed,
+  videoBillingSavedResult: Schema.Types.Mixed,
+  videoBillingReceiptId: String,
   sessionId: String,
   layerId: String,
   prompt: String,

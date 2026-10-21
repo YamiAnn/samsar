@@ -4,15 +4,13 @@ import User from '../schema/User.js';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadTempEditImageToFileSystem } from '../storage/Files.js';
 import ImageBatchGeneration from '../schema/ImageBatchGeneration.js';
-import { IMAGE_EDIT_MODEL_PRICES, IMAGE_MODEL_PRICES } from '../consts/ModelPrices.js';
+import { prepareImageRequestBilling } from './api/ImageRequestBilling.js';
 import sharp from 'sharp';
-import { shouldBypassGenerationCredits } from '../utils/EnvironmentUtils.js';
 import {
   QWEN_IMAGE_3_PRO_MODEL_KEY,
   isAlibabaQwenImage3ProAvailable,
 } from '../consts/DockerProviderPriority.js';
 
-import { maybeTriggerAutoRecharge } from './AutoRecharge.js';
 import { getRetiredGPTImageModelError } from '../consts/GPTImageModelKeys.js';
 
 
@@ -247,7 +245,7 @@ function getInferenceModelPayloadAliases(payload = {}) {
   };
 }
 
-export async function addImageGeneratorRequest(userId, payload, updateCredits = true) {
+export async function addImageGeneratorRequest(userId, payload, updateCredits = true, { billOnCompletion = updateCredits, billingAdmitted = false, apiKeyId } = {}) {
 
 
   const { model, aspectRatio, contentFilterRating = 3, retryOnFailure } = payload;
@@ -256,40 +254,13 @@ export async function addImageGeneratorRequest(userId, payload, updateCredits = 
   );
 
 
-  // Find the pricing information for the selected model
-  const modelPricing = IMAGE_MODEL_PRICES.find(m => m.key === resolvedModel);
-
-  // Find the price for the selected aspect ratio
-  const priceObj = modelPricing
-    ? modelPricing.prices.find(p => p.aspectRatio === aspectRatio) ||
-      modelPricing.prices.find(p => p.aspectRatio === '1:1')
-    : null;
-
-  // Get the price or default to 0 if not found
-  const creditCost = priceObj ? priceObj.price : 0;
-
-  if (updateCredits && creditCost > 0 && !shouldBypassGenerationCredits()) {
-    // Deduct the correct amount of credits
-    const updateResult = await User.updateOne(
-      { _id: userId, generationCredits: { $gte: creditCost } },
-      { $inc: { generationCredits: -creditCost } }
-    );
-
-    // If no documents were updated, it means the user either doesn't exist or doesn't have enough credits
-    if (updateResult.modifiedCount === 0) {
-
-      throw new Error('Insufficient credits');
-      // Handle as necessary, possibly throw an error or return a specific response
-      return; // Or throw new Error('Insufficient credits');
-    }
-
-    await maybeTriggerAutoRecharge(userId);
-  }
+  const imageBilling = await prepareImageRequestBilling(userId, { includedInPipeline: !billOnCompletion, skipAdmission: billingAdmitted, apiKeyId });
 
   try {
     await getDBConnectionString();
     const generationPayload = new ImageGeneration({
       ...payload,
+      ...imageBilling,
       ...getInferenceModelPayloadAliases(payload),
       model: resolvedModel,
       generationStatus: "PENDING",
@@ -317,40 +288,13 @@ export async function addImageUpscaleRequest(userId, payload, updateCredits = tr
   const resolvedModel = resolveNanoBananaModelAlias(model);
 
 
-  // Find the pricing information for the selected model
-  const modelPricing = IMAGE_MODEL_PRICES.find(m => m.key === resolvedModel);
-
-  // Find the price for the selected aspect ratio
-  const priceObj = modelPricing
-    ? modelPricing.prices.find(p => p.aspectRatio === aspectRatio) ||
-      modelPricing.prices.find(p => p.aspectRatio === '1:1')
-    : null;
-
-  // Get the price or default to 0 if not found
-  const creditCost = priceObj ? priceObj.price : 0;
-
-  if (updateCredits && creditCost > 0 && !shouldBypassGenerationCredits()) {
-    // Deduct the correct amount of credits
-    const updateResult = await User.updateOne(
-      { _id: userId, generationCredits: { $gte: creditCost } },
-      { $inc: { generationCredits: -creditCost } }
-    );
-
-    // If no documents were updated, it means the user either doesn't exist or doesn't have enough credits
-    if (updateResult.modifiedCount === 0) {
-
-      throw new Error('Insufficient credits');
-      // Handle as necessary, possibly throw an error or return a specific response
-      return; // Or throw new Error('Insufficient credits');
-    }
-
-    await maybeTriggerAutoRecharge(userId);
-  }
+  const imageBilling = await prepareImageRequestBilling(userId, { includedInPipeline: !updateCredits });
 
   try {
     await getDBConnectionString();
     const generationPayload = new ImageGeneration({
       ...payload,
+      ...imageBilling,
       ...getInferenceModelPayloadAliases(payload),
       model: resolvedModel,
       generationStatus: "PENDING",
@@ -377,15 +321,7 @@ export async function addImageEditRequest(userId, payload) {
   const modelSelected = resolveNanoBananaModelAlias(payload.model);
   const aspectRatio = payload.aspectRatio;
 
-  const modelPricing = IMAGE_EDIT_MODEL_PRICES.find(m => m.key === modelSelected);
-  const priceObj = modelPricing
-    ? modelPricing.prices.find(p => p.aspectRatio === aspectRatio) ||
-      modelPricing.prices.find(p => p.aspectRatio === '1:1')
-    : null;
-
-
-
-  const creditCost = priceObj ? priceObj.price : 5;
+  const imageBilling = await prepareImageRequestBilling(userId);
 
   let remoteImage;
   let remoteMaskImage;
@@ -514,24 +450,11 @@ export async function addImageEditRequest(userId, payload) {
     await primeCDNCache(remoteMaskImage);
   }
 
-  if (!shouldBypassGenerationCredits()) {
-    // Update user credits
-    const updateResult = await User.updateOne(
-      { _id: userId, generationCredits: { $gt: 0 } },
-      { $inc: { generationCredits: -creditCost } }
-    );
-
-    // If no documents were updated, it means the user either doesn't exist or doesn't have enough credits
-    if (updateResult.modifiedCount === 0) {
-      throw new Error('Insufficient credits');
-    }
-
-    await maybeTriggerAutoRecharge(userId);
-  }
 
   // Prepare the payload for the database
   await getDBConnectionString();
   let queuePayload = {
+    ...imageBilling,
     editStatus: "PENDING",
     sessionId: payload.sessionId,
     layerId: payload.layerId,
@@ -540,6 +463,7 @@ export async function addImageEditRequest(userId, payload) {
     operationType: "EDIT",
     prompt: payload.prompt,
     model: modelSelected,
+    resolution: payload.resolution || '1K',
     guidanceScale: payload.guidanceScale,
     numInferenceSteps: payload.numInferenceSteps,
     strength: payload.strength,

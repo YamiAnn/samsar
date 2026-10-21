@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   buildDirectExternalImageToVideoIdentity,
+  getExternalVideoStageKey,
+  decorateExternalStageStatus,
   buildDirectExternalImageToVideoSession,
 } from './ExternalVideoAPI.js';
 
@@ -64,4 +66,18 @@ test('direct external Seedance 2.0 session preserves the requested audio contrac
   });
 
   assert.equal(session.layers[0].isAudioVideoLayer, true);
+});
+
+
+test('direct text-to-video status resolves the generated clip and final charge', () => {
+  const session = { externalVideoRoute: 'direct_text_to_video', videoBillingPolicy: 'adapter',
+    videoCreditsCharged: 57.6, videoRemainingCredits: 100,
+    layers: [{ aiVideoGenerationStatus: 'COMPLETED', aiVideoRemoteLink: 'https://cdn.example/video.mp4' }] };
+  assert.equal(getExternalVideoStageKey(session), 'ai_video_generation');
+  const status = decorateExternalStageStatus({ status: 'PENDING', credits_charged: 0 }, session);
+  assert.equal(status.status, 'COMPLETED');
+  assert.equal(status.result_url, 'https://cdn.example/video.mp4');
+  assert.equal(status.creditsCharged, 57.6);
+  assert.equal(status.credits_charged, 57.6);
+  assert.equal(status.billingStatus, 'COMPLETED');
 });

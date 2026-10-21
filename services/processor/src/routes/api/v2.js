@@ -32,6 +32,7 @@ import {
   buildExternalVideoDetailedStatus,
   buildExternalVideoStatus,
   requestExternalDirectImageToVideo,
+  requestExternalDirectTextToVideo,
   requestExternalImageToVideo,
   requestExternalLipSyncVideo,
   requestExternalSoundEffectVideo,
@@ -1342,6 +1343,30 @@ async function handleExternalDirectImageToVideo(req, res) {
   }
 }
 
+async function handleExternalDirectTextToVideo(req, res) {
+  try {
+    const authContext = await resolveV2AuthContext(req);
+    const payload = normalizeInputPayload(req);
+    const response = await requestExternalDirectTextToVideo({
+      userId: authContext.internalUserId,
+      payload,
+      idempotencyKey:
+        req.get('Idempotency-Key') ||
+        payload?.client_request_id ||
+        payload?.clientRequestId,
+      req,
+    });
+    return res.status(200).json(response);
+  } catch (error) {
+    if (error?.code === 'INSUFFICIENT_CREDITS') {
+      return res.status(402).json({ message: 'Insufficient credits.' });
+    }
+    return res.status(error?.status || error?.response?.status || 500).json({
+      message: error?.message || 'Internal server error while creating direct image-to-video request.',
+    });
+  }
+}
+
 async function handleExternalLipSyncVideo(req, res) {
   try {
     const authContext = await resolveV2AuthContext(req);
@@ -1847,6 +1872,7 @@ router.post('/text_to_interactive_video/session', handleTextToInteractiveVideoDr
 router.post('/interactive_publication/generate_meta', handleInteractivePublicationMetadata);
 router.post('/external/video/image_to_video', handleExternalImageToVideo);
 router.post('/external/video/direct_image_to_video', handleExternalDirectImageToVideo);
+router.post('/external/video/direct_text_to_video', handleExternalDirectTextToVideo);
 router.post('/external/video/lip_sync', handleExternalLipSyncVideo);
 router.post('/external/video/sound_effect', handleExternalSoundEffectVideo);
 router.get('/external/video/status', handleExternalVideoStatus);

@@ -20,6 +20,10 @@ console.log(job.data.request_id);
 
 The operation determines which edit contract is used. A general image-generation model key is not interchangeable with an edit-model key. The full matrix distinguishes both, along with native-only Qwen Image and custom endpoints.
 
+## Final prices and completion billing
+
+Generation, enhancement and image edits use the [final image token and output prices](image-billing.md#final-image-token-prices) for their selected model, adapter and configuration. There is no fixed enhancement or branding-removal fee per image. Poll status for the final charge; a pending submission is not a free completed call. Production agent pipelines keep their flat prices, and standalone Samsar.js calls receive one hosted charge.
+
 ## Docker Services
 
 | Service | Role |

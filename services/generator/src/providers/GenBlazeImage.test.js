@@ -207,7 +207,8 @@ test('polls the same job and preserves the existing image result shape', async (
   );
 
   assert.deepEqual(calls, ['/media/requests/sealed%2Fjob']);
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: 'generated-local.png',
     width: 1536,
     height: 864,
@@ -244,7 +245,8 @@ test('GPT Image 2 polling honors the same snake-case ratio accepted at submissio
     },
   );
 
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: 'vertical-local.png',
     width: 864,
     height: 1536,
@@ -269,7 +271,8 @@ test('returns a structured provider failure while retaining ownership for shared
     },
   );
 
-  assert.deepEqual(result, { image: null, error: 'quota exceeded' });
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined, image: null, error: 'quota exceeded' });
   assert.deepEqual(recorder.updates, [
     {
       method: 'findByIdAndUpdate',

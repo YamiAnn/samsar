@@ -229,7 +229,7 @@ function buildExternalUserApiKey() {
   return `sxu_${generateAPIKeySecret()}`;
 }
 
-function isInternalBillingExternalUser(externalUser) {
+export function isInternalBillingExternalUser(externalUser) {
   if (!externalUser) {
     return false;
   }

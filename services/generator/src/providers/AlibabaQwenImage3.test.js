@@ -80,7 +80,10 @@ test('calls the synchronous Alibaba endpoint with its Qwen-only dispatcher', asy
       negative_prompt: 'illegible text',
     },
   });
-  assert.deepEqual(result, {
+  assert.deepEqual(result.imageBillingReceipt, { adapter: 'alibabaCloud', model: 'qwen-image-3.0-pro',
+    providerRequestId: 'qwen-request-123', outputImages: 1, inputImages: 0, resolution: '1K', region: 'international' });
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     imageUrl: 'https://example.com/qwen.png',
     requestId: 'qwen-request-123',
     usage: { width: 1024, height: 1792, image_count: 1 },
@@ -146,7 +149,8 @@ test('persists the downloaded Qwen result as a completed Alibaba generation', as
     },
   });
 
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: 'local-qwen.png',
     provider: 'alibabaCloud',
     providerRequestId: 'provider-request-1',
@@ -293,7 +297,8 @@ test('keeps definitive pre-submit and provider rejections retry-safe', async () 
       },
     });
 
-    assert.deepEqual(result, {
+    assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
       image: null,
       error: testCase.error.message,
     });
@@ -433,7 +438,8 @@ test('submits Qwen Image 3 after hosted routing selects native Alibaba', async (
   });
 
   assert.equal(submitted, true);
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: 'hosted-qwen.png',
     provider: 'alibabaCloud',
     providerRequestId: 'hosted-provider-request',

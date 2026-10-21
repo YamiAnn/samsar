@@ -164,7 +164,8 @@ test('submits and polls an opaque image-edit job while preserving Samsar result 
     logger: { error() {} },
   });
 
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: 'edited-local.png',
     resultUrl: 'https://cdn.example/edited.png',
     resultUrls: ['https://cdn.example/edited.png'],
@@ -190,7 +191,8 @@ test('failed GenBlaze edits retain ownership until shared failover is persisted'
     logger: { error() {} },
   });
 
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     image: null,
     error: 'adapter unavailable',
     definitiveAdapterFailure: true,

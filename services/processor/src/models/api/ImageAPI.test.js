@@ -8,7 +8,17 @@ import {
   normalizeTextToImageRequestOptions,
   generateTextToImage,
   shouldUsePreferenceAwareImagePromptRouting,
+  resolveImageStatus,
 } from './ImageAPI.js';
+
+test('image status and history do not report completion before billing and delivery finish', () => {
+  const job = { operationType: 'GENERATE', generationStatus: 'COMPLETED', imageBillingPolicy: 'adapter' };
+  assert.equal(resolveImageStatus({ ...job, imageBillingPending: true }), 'PENDING');
+  assert.equal(resolveImageStatus({ ...job, imageDeliveryPending: true }), 'PENDING');
+  assert.equal(resolveImageStatus(job), 'COMPLETED');
+  assert.equal(resolveImageStatus({ ...job, generationStatus: 'FAILED', imageBillingPending: true }), 'FAILED');
+  assert.equal(resolveImageStatus({ ...job, imageBillingPolicy: 'pipeline', imageBillingPending: true }), 'COMPLETED');
+});
 
 test('GPTImage 2.5 uses the versioned generation key', () => {
   for (const key of ['GPTIMAGE2.5', 'gptimage2.5', ' GPTIMAGE2.5 ']) {
@@ -173,25 +183,26 @@ test('normalizes Qwen Image 3.0 Pro with standalone or explicitly routed product
   }
 });
 
-test('hosted Qwen Image 3.0 Pro direct API pricing matches the existing hosted image path', () => {
+test('hosted image API quotes defer model-specific charges until completion', () => {
   assert.deepEqual(
     getTextToImageRequestPricing('QWENIMAGE3PRO', 3),
     getTextToImageRequestPricing('GPTIMAGE2.5', 3),
   );
-  assert.equal(getTextToImageRequestPricing('QWENIMAGE3PRO', 3).credits > 0, true);
+  assert.equal(getTextToImageRequestPricing('QWENIMAGE3PRO', 3).credits, null);
+  assert.equal(getTextToImageRequestPricing('GPTIMAGE2.5', 3).billingTiming, 'completion');
 });
 
 test('standalone image prompt inference uses saved adapter routing without changing production OpenAI routing', () => {
   assert.equal(
     shouldUsePreferenceAwareImagePromptRouting(
-      'gpt-6.1-sol',
+      'gpt-6-astra',
       { SAMSAR_DEPLOYMENT_EDITION: 'standalone' },
     ),
     true,
   );
   assert.equal(
     shouldUsePreferenceAwareImagePromptRouting(
-      'gpt-6.1-sol',
+      'gpt-6-astra',
       { SAMSAR_DEPLOYMENT_EDITION: 'production' },
     ),
     false,

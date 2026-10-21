@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 
 
 
@@ -65,7 +66,7 @@ export async function requestRenderPikaVideo(payload) {
   aiVideoRenderPayload.animationType = payload.modelSubType;
 
 
-  const aiVideoRenderPayloadDes = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiVideoRenderPayloadDes = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
 
   await aiVideoRenderPayloadDes.save();
 

@@ -18,7 +18,7 @@ export const MODEL_ADAPTER_STAGE_DEFINITIONS = Object.freeze([
     key: MODEL_ADAPTER_STAGE.INFERENCE,
     label: 'Inference',
     modelKeys: Object.freeze([
-      'gpt-6.1-sol',
+      'gpt-6-astra',
       'claude-opus-5.5',
       'gemini-4-argon',
       'KIMIK3',
@@ -56,7 +56,7 @@ export const MODEL_ADAPTER_STAGE_DEFINITIONS = Object.freeze([
 ]);
 
 const MODEL_LABELS = Object.freeze({
-  'gpt-6.1-sol': 'GPT 6.1 Sol',
+  'gpt-6-astra': 'GPT 6 Astra',
   'claude-opus-5.5': 'Claude Opus 5.5',
   'gemini-4-argon': 'Gemini 4 Argon',
   KIMIK3: 'Kimi K3',
@@ -142,7 +142,7 @@ function normalizeModelToken(value) {
 export function normalizeModelAdapterModelKey(value) {
   const token = normalizeModelToken(normalizeStoredGPTImageModelKey(value));
   if (['GEMINI4', 'GEMINI4ARGON', 'GOOGLEGEMINI4', 'GOOGLEGEMINI4ARGON'].includes(token)) return 'gemini-4-argon';
-  if (['GPT61SOL', 'GPT6ASTRA', 'GPT6', 'GPT56SOL', 'GPT56'].includes(token)) return 'gpt-6.1-sol';
+  if (['GPT61SOL', 'GPT6ASTRA', 'GPT6', 'GPT56SOL', 'GPT56'].includes(token)) return 'gpt-6-astra';
   if (KIMI_MODEL_TOKENS.has(token)) {
     return 'KIMIK3';
   }

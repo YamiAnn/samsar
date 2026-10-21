@@ -2,6 +2,16 @@ import { Schema, model } from 'mongoose';
 
 // 2. Create a Schema corresponding to the document interface.
 const imageGenerationSchema = new Schema({
+  imageBillingPolicy: { type: String, enum: ['adapter', 'pipeline'] },
+  imageBillingPending: { type: Boolean, default: false },
+  imageDeliveryPending: { type: Boolean, default: false },
+  imageBillingSavedResult: Schema.Types.Mixed,
+  imageBillingReceiptId: String,
+  imageBillingFingerprint: String,
+  imageBillingAPIKeyUsage: Schema.Types.Mixed,
+  imageBillingDebits: Schema.Types.Mixed,
+  imageCreditsCharged: { type: Number, default: 0 },
+  imageCreditsRemaining: Number,
   editStatus: String,
   apiEditStatus: { type: String, default: "INIT" },
   sessionId: String,

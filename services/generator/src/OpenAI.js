@@ -1,3 +1,4 @@
+import { checkpointImageResult } from './billing/ImageResultCheckpoint.js';
 import 'dotenv/config';
 import * as fs from 'fs';
 import path from "path";
@@ -183,7 +184,13 @@ async function createInferenceChatCompletionForProvider(
     timeoutMs,
     ...providerRequest
   } = chatRequest || {};
-  const model = providerRequest.model || getDefaultUserInferenceModel();
+  const requestedModel = providerRequest.model || getDefaultUserInferenceModel();
+  const gptAlias = typeof requestedModel === 'string'
+    ? requestedModel.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    : '';
+  const model = /^GPT(?:61SOL|6ASTRA|56SOL|56|6)(?:HIGH|XHIGH|EXTRAHIGH)?$/.test(gptAlias)
+    ? normalizeInferenceModel(requestedModel)
+    : requestedModel;
   const createSamsarCompletion =
     dependencyOverrides.createSamsarExternalChatCompletion ||
     createSamsarExternalChatCompletion;
@@ -299,7 +306,7 @@ export async function createCompatibleInferenceChatCompletion(
   );
 }
 
-export async function getImageFromAPI(prompt, aspectRatio = '1:1') {
+export async function getImageFromAPI(prompt, aspectRatio = '1:1', payload = {}) {
 
 
   let responseSize = '1024x1024';
@@ -311,7 +318,7 @@ export async function getImageFromAPI(prompt, aspectRatio = '1:1') {
 
 
   try {
-    const image = await openai.images.generate({ model: "dall-e-3", prompt: prompt, size: responseSize, response_format: 'b64_json' });
+    const image = await openai.images.generate({ model: "dall-e-3", prompt: prompt, size: responseSize, response_format: 'b64_json' }, { maxRetries: 0 });
 
     const imageData = image.data[0]['b64_json'];
 
@@ -337,7 +344,8 @@ export async function getImageFromAPI(prompt, aspectRatio = '1:1') {
     // Write the file to the filesystem
     await writeFile(savePath, buffer);
 
-    return { 'image': imageName };
+    return checkpointImageResult(payload, { 'image': imageName, imageBillingReceipt: { adapter: 'openai', model: 'dall-e-3',
+      costUsd: responseSize === '1024x1024' ? 0.04 : 0.08 } });
   } catch (error) {
     let errorString = 'An error occurred while generating the image. Please try again with a different prompt.'
     if (error.error && error.error.message) {

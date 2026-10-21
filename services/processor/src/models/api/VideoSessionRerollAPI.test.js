@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 
 import { __testOnly__ } from './VideoSessionRerollAPI.js';
 
-test('historical GPTIMAGE2 sessions reroll with the current key and unchanged image pricing', () => {
+test('rerolls defer video and image calls without a prepaid stage charge', () => {
+  const quote = __testOnly__.buildQuote({ aspectRatio: '16:9', expressGenerativeVideoModel: 'RUNWAYML',
+    layers: [{ _id: 'scene', prompt: 'A new scene', duration: 10 }] }, [1]);
+  assert.equal(quote.totalCredits, 0);
+  assert.equal(quote.aiVideoCredits, 0);
+  assert.equal(quote.videoBilling, 'ON_COMPLETION');
+});
+
+test('historical GPTIMAGE2 rerolls normalize the model and defer image charges to completion', () => {
   const session = {
     aspectRatio: '16:9',
     expressGenerationImageModel: 'GPTIMAGE2',
@@ -13,7 +21,8 @@ test('historical GPTIMAGE2 sessions reroll with the current key and unchanged im
   const current = __testOnly__.buildQuote({ ...session, expressGenerationImageModel: 'GPTIMAGE2.5' }, [1]);
   assert.deepEqual(historical, current);
   assert.equal(historical.imageModel, 'GPTIMAGE2.5');
-  assert.equal(historical.imageCredits, 46);
+  assert.equal(historical.imageCredits, 0);
+  assert.equal(historical.imageBilling, 'ON_COMPLETION');
 });
 
 test('reroll clone integrity allows matching first and last scene positions', () => {

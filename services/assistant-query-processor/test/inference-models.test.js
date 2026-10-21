@@ -23,19 +23,19 @@ import {
 } from '../src/AssistantBilling.js';
 import { getAssistantReasoningEffort } from '../src/OpenAI.js';
 
-test('defaults assistant inference to GPT 6.1 Sol', () => {
-  assert.equal(GPT_56_SOL_INFERENCE_MODEL, 'gpt-6.1-sol');
+test('defaults assistant inference to GPT 6 Astra', () => {
+  assert.equal(GPT_56_SOL_INFERENCE_MODEL, 'gpt-6-astra');
   assert.equal(DEFAULT_INFERENCE_MODEL, GPT_56_SOL_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('GPT 6.1 Sol'), DEFAULT_INFERENCE_MODEL);
-  assert.equal(getProviderModelForInferenceModel('gpt-6.1-sol'), 'gpt-6.1-sol');
+  assert.equal(normalizeInferenceModel('GPT 6 Astra'), DEFAULT_INFERENCE_MODEL);
+  assert.equal(getProviderModelForInferenceModel('gpt-6-astra'), 'gpt-6-astra');
   assert.equal(GPT_56_SOL_REASONING_EFFORT, 'high');
   assert.equal(
-    getAssistantReasoningEffort('gpt-6.1-sol', { reasoningEffort: 'low' }),
+    getAssistantReasoningEffort('gpt-6-astra', { reasoningEffort: 'low' }),
     'high',
   );
 });
 
-test('keeps Gemini reasoning settings separate from the GPT 6.1 Sol default', () => {
+test('keeps Gemini reasoning settings separate from the GPT 6 Astra default', () => {
   assert.equal(
     getAssistantReasoningEffort('gemini-4-argon', {
       reasoningEffort: 'medium',
@@ -45,27 +45,27 @@ test('keeps Gemini reasoning settings separate from the GPT 6.1 Sol default', ()
   );
 });
 
-test('bills GPT 6.1 Sol usage at the configured model rates', () => {
+test('bills GPT 6 Astra usage at the configured model rates', () => {
   const result = calculateAssistantCreditsFromUsage({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     usage: { input_tokens: 100_000, output_tokens: 100_000 },
     pricingMultiplier: 1,
   });
 
-  assert.equal(result.pricingModel, 'gpt-6.1-sol');
-  assert.equal(result.costUsd, 1.2);
-  assert.equal(result.credits, 120);
+  assert.equal(result.pricingModel, 'gpt-6-astra');
+  assert.equal(result.costUsd, 6);
+  assert.equal(result.credits, 600);
 });
 
-test('bills GPT 6.1 Sol usage at long-context rates above 272K input tokens', () => {
+test('bills GPT 6 Astra usage at long-context rates above 272K input tokens', () => {
   const result = calculateAssistantCreditsFromUsage({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     usage: { input_tokens: 300_000, output_tokens: 100_000 },
     pricingMultiplier: 1,
   });
 
-  assert.equal(result.costUsd, 2.7);
-  assert.equal(result.credits, 270);
+  assert.equal(result.costUsd, 13.5);
+  assert.equal(result.credits, 1350);
   assert.equal(result.tokenPricingUsdPerMillion.longContext, true);
   assert.equal(result.tokenPricingUsdPerMillion.longContextInputThreshold, 272_000);
 });
@@ -144,7 +144,7 @@ test('normalizes Kimi K3 aliases and always uses high assistant reasoning', () =
   );
 });
 
-test('bills Kimi K3 cached, uncached, and output tokens at native rates with 1.5x billing', () => {
+test('bills Kimi K3 cached, uncached, and output tokens at native rates with 1.2x billing', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'kimi-k3',
     usage: {
@@ -156,7 +156,7 @@ test('bills Kimi K3 cached, uncached, and output tokens at native rates with 1.5
 
   assert.equal(result.pricingModel, 'kimi-k3');
   assert.equal(result.costUsd, 3.96);
-  assert.equal(result.credits, 594);
+  assert.equal(result.credits, 475.2);
   assert.deepEqual(result.tokenPricingUsdPerMillion, {
     input: 3,
     cachedInput: 0.3,
@@ -171,12 +171,12 @@ test('bills Qwen assistant usage with the configured credit conversion', () => {
     usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
   });
 
-  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.5);
+  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.2);
   assert.equal(result.pricingModel, 'qwen3.8-max');
-  assert.equal(result.credits, 1_500);
+  assert.equal(result.credits, 960);
 });
 
-test('bills Qwen 3.8 Max cached tokens at the configured input rate', () => {
+test('bills Qwen 3.8 Max cached tokens at the discounted input rate', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'qwen3.8-max',
     usage: {
@@ -185,18 +185,18 @@ test('bills Qwen 3.8 Max cached tokens at the configured input rate', () => {
       output_tokens: 0,
     },
   });
-  assert.equal(result.costUsd, 2.5);
-  assert.equal(result.credits, 375);
-  assert.equal(result.tokenPricingUsdPerMillion.cachedInput, 2.5);
+  assert.equal(result.costUsd, 0.25);
+  assert.equal(result.credits, 30);
+  assert.equal(result.tokenPricingUsdPerMillion.cachedInput, 0.25);
 });
 
 
-test('migrates saved Astra selections to GPT 6.1 Sol and preserves explicit xhigh', () => {
-  for (const alias of ['gpt-6-astra', 'GPT 6 Astra High', 'gpt-6.1-sol', 'GPT 6.1 Sol High']) {
-    assert.equal(normalizeInferenceModel(alias), 'gpt-6.1-sol');
+test('migrates saved Astra selections to GPT 6 Astra and preserves explicit xhigh', () => {
+  for (const alias of ['gpt-6-astra', 'GPT 6 Astra High', 'gpt-6-astra', 'GPT 6 Astra High']) {
+    assert.equal(normalizeInferenceModel(alias), 'gpt-6-astra');
     assert.equal(getAssistantReasoningEffort(alias), 'high');
   }
-  for (const alias of ['gpt-6-astra-xhigh', 'GPT 6 Astra Extra High', 'gpt-6.1-sol-xhigh']) {
+  for (const alias of ['gpt-6-astra-xhigh', 'GPT 6 Astra Extra High', 'gpt-6-astra-xhigh']) {
     assert.equal(getAssistantReasoningEffort(alias), 'xhigh');
   }
 });

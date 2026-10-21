@@ -47,7 +47,7 @@ function getOpenAIClient() {
 }
 
 const RESPONSES_ONLY_MODELS = new Set([
-  'gpt-6.1-sol',
+  'gpt-6-astra',
 ]);
 
 function getAuditHash(value) {
@@ -117,7 +117,7 @@ const textWordCustomAnimations = [
 
 
 export async function createTextToVideoPromptFromLayerPrompt(startingPrompt, startingImageDescription,
-  endingImageDescription, userInferenceModel = 'gpt-6.1-sol', useShortFormPrompt = true, indexData, videoTone = 'grounded', auditContext = {}) {
+  endingImageDescription, userInferenceModel = 'gpt-6-astra', useShortFormPrompt = true, indexData, videoTone = 'grounded', auditContext = {}) {
 
   const { isStartScene, isEndScene } = indexData;
 
@@ -252,7 +252,7 @@ function getMotionContinuityInstruction(indexData = {}) {
 export async function createTextToVideoPromptFromStartingLayerPrompt(
   startingPrompt,
   startingImageDescription,
-  userInferenceModel = 'gpt-6.1-sol',
+  userInferenceModel = 'gpt-6-astra',
   useShortFormPrompt = true,
   isSpeakerTransition = false,
   indexData,
@@ -331,7 +331,7 @@ export async function createTextToVideoPromptFromStartingLayerPrompt(
 
 
 
-export async function getTransitionListForLayerSceneDescriptions(layerSceneDescriptions, userInferenceModel = 'gpt-6.1-sol', auditContext = {}) {
+export async function getTransitionListForLayerSceneDescriptions(layerSceneDescriptions, userInferenceModel = 'gpt-6-astra', auditContext = {}) {
 
   const layerSceneDescriptionsString = layerSceneDescriptions.join('\n\n');
 
@@ -394,7 +394,7 @@ export async function getAccentForText(text, auditContext = {}) {
     const inferenceModel = auditContext.inferenceModel ||
       process.env.USER_INFERENCE_MODEL ||
       process.env.DEFAULT_USER_INFERENCE_MODEL ||
-      'gpt-6.1-sol';
+      'gpt-6-astra';
     const responseData = await sendAssistantMessageRequest(messageList, inferenceModel, auditContext);
 
     return responseData.content;
@@ -556,7 +556,7 @@ async function dispatchStructuredMessageRequest(request, provider = '') {
   );
 }
 
-export async function sendAssistantMessageRequest(messageList, userInferenceModel = 'gpt-6.1-sol', auditContext = {}, responseFormat = undefined) {
+export async function sendAssistantMessageRequest(messageList, userInferenceModel = 'gpt-6-astra', auditContext = {}, responseFormat = undefined) {
 
 
   const modelName = getModelNameForInferenceModel(userInferenceModel);
@@ -611,7 +611,7 @@ export async function sendAssistantMessageRequest(messageList, userInferenceMode
 
 export async function sendAssistantStructuredMessageRequest(
   messageList,
-  userInferenceModel = 'gpt-6.1-sol',
+  userInferenceModel = 'gpt-6-astra',
   auditContext = {},
 ) {
 
@@ -632,7 +632,7 @@ export async function sendAssistantStructuredMessageRequest(
         isKimiInferenceModel(selectedInferenceModel) ||
         isClaudeOpus55Model(selectedInferenceModel)
         ? selectedInferenceModel
-        : "gpt-6.1-sol",
+        : "gpt-6-astra",
       response_format: zodResponseFormat(ScreenplayTransitionExtraction, "screenplay_transition_extraction"),
       ...(selectedInferenceModelAuthorization
         ? { authorization: selectedInferenceModelAuthorization }

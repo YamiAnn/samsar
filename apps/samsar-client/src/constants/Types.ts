@@ -384,8 +384,8 @@ export const IMAGE_EDIT_MODEL_TYPES = [
 export const ASSISTANT_MODEL_TYPES = [
   { label: 'Claude Opus 5.5', value: 'claude-opus-5.5' },
   {
-    label: 'GPT 6.1 Sol High',
-    value: 'gpt-6.1-sol',
+    label: 'GPT 6 Astra High',
+    value: 'gpt-6-astra',
   },
   {
     label: 'Gemini 4 Argon',
@@ -408,8 +408,8 @@ export const INFERENCE_MODEL_TYPES = [
 
 
   {
-    label: 'GPT 6.1 Sol High',
-    value: 'gpt-6.1-sol',
+    label: 'GPT 6 Astra High',
+    value: 'gpt-6-astra',
     isBranchedInferenceModel: true,
   },
   {

@@ -35,27 +35,27 @@ test('keeps Qwen out of the OpenAI Responses-only route without changing GPT or 
   assert.equal(isResponsesOnlyModel('QWEN3.8'), false);
   assert.equal(isResponsesOnlyModel('gemini-4-argon'), false);
   assert.equal(isResponsesOnlyModel('kimi-k3'), false);
-  assert.equal(isResponsesOnlyModel('gpt-6.1-sol'), true);
+  assert.equal(isResponsesOnlyModel('gpt-6-astra'), true);
 });
 
-test('retains the legacy GPT 6.1 Sol xhigh alias as an internal effort signal', () => {
-  assert.equal(normalizeInferenceModel('gpt-6.1-sol-high'), 'gpt-6.1-sol');
-  assert.equal(normalizeInferenceModel('gpt-6.1-sol-xhigh'), 'gpt-6.1-sol-xhigh');
-});
-
-
-test('upgrades saved GPT 5.6 selections to GPT 6.1 Sol without losing xhigh effort', () => {
-  assert.equal(normalizeInferenceModel('gpt-5.6-sol'), 'gpt-6.1-sol');
-  assert.equal(normalizeInferenceModel('gpt-5.6-sol-xhigh'), 'gpt-6.1-sol-xhigh');
+test('retains the legacy GPT 6 Astra xhigh alias as an internal effort signal', () => {
+  assert.equal(normalizeInferenceModel('gpt-6-astra-high'), 'gpt-6-astra');
+  assert.equal(normalizeInferenceModel('gpt-6-astra-xhigh'), 'gpt-6-astra-xhigh');
 });
 
 
-test('migrates saved Astra selections to GPT 6.1 Sol and preserves explicit xhigh', () => {
-  for (const alias of ['gpt-6-astra', 'GPT 6 Astra High', 'gpt-6.1-sol', 'GPT 6.1 Sol High']) {
-    assert.equal(normalizeInferenceModel(alias), 'gpt-6.1-sol');
+test('upgrades saved GPT 5.6 selections to GPT 6 Astra without losing xhigh effort', () => {
+  assert.equal(normalizeInferenceModel('gpt-5.6-sol'), 'gpt-6-astra');
+  assert.equal(normalizeInferenceModel('gpt-5.6-sol-xhigh'), 'gpt-6-astra-xhigh');
+});
+
+
+test('migrates saved Astra selections to GPT 6 Astra and preserves explicit xhigh', () => {
+  for (const alias of ['gpt-6-astra', 'GPT 6 Astra High', 'gpt-6-astra', 'GPT 6 Astra High']) {
+    assert.equal(normalizeInferenceModel(alias), 'gpt-6-astra');
     assert.equal(getGPT56SolReasoningEffort(alias), 'high');
   }
-  for (const alias of ['gpt-6-astra-xhigh', 'GPT 6 Astra Extra High', 'gpt-6.1-sol-xhigh']) {
+  for (const alias of ['gpt-6-astra-xhigh', 'GPT 6 Astra Extra High', 'gpt-6-astra-xhigh']) {
     assert.equal(getGPT56SolReasoningEffort(alias), 'xhigh');
   }
 });

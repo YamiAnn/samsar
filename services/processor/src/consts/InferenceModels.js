@@ -1,7 +1,7 @@
 export const INFERENCE_MODELS = Object.freeze({
-  Inference: 'gpt-6.1-sol',
-  BranchedInferenceExtraHigh: 'gpt-6.1-sol-xhigh',
-  PublicationMetadata: 'gpt-6.1-sol',
+  Inference: 'gpt-6-astra',
+  BranchedInferenceExtraHigh: 'gpt-6-astra-xhigh',
+  PublicationMetadata: 'gpt-6-astra',
 });
 
 export const INFERENCE_REASONING_EFFORTS = Object.freeze({
@@ -76,7 +76,7 @@ export const SUPPORTED_INFERENCE_MODEL_VALUES = Object.freeze([
 
 export const INFERENCE_MODEL_OPTIONS = Object.freeze([
   Object.freeze({
-    label: 'GPT 6.1 Sol High',
+    label: 'GPT 6 Astra High',
     value: DEFAULT_INFERENCE_MODEL,
     providerModel: INFERENCE_MODELS.Inference,
     availabilityModel: INFERENCE_MODELS.Inference,
@@ -84,7 +84,7 @@ export const INFERENCE_MODEL_OPTIONS = Object.freeze([
     isBranchedInferenceModel: true,
   }),
   Object.freeze({
-    label: 'GPT 6.1 Sol Extra High',
+    label: 'GPT 6 Astra Extra High',
     value: GPT_56_SOL_XHIGH_INFERENCE_MODEL,
     providerModel: INFERENCE_MODELS.Inference,
     availabilityModel: INFERENCE_MODELS.Inference,

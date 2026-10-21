@@ -245,7 +245,7 @@ def test_development_fallback_is_empty_and_never_guesses_upstream_models():
 
 def test_curated_boundary_contains_only_supported_samsar_contracts():
     assert set(CURATED_SAMSAR_MODELS) == {
-        "gpt-6.1-sol",
+        "gpt-6-astra",
         "gemini-4-argon",
         "QWEN3.8",
         "GPTIMAGE2",
@@ -303,9 +303,9 @@ def test_runtime_models_reflect_only_credential_catalog_routes(
     path = write_catalog(
         tmp_path,
         {
-            "gpt-6.1-sol": {
-                "text": {"modelId": "openai/gpt-6.1-sol", "operation": "chat.completions"},
-                "vision": {"modelId": "openai/gpt-6.1-sol", "operation": "chat.completions"},
+            "gpt-6-astra": {
+                "text": {"modelId": "openai/gpt-6-astra", "operation": "chat.completions"},
+                "vision": {"modelId": "openai/gpt-6-astra", "operation": "chat.completions"},
             },
             "GPTIMAGE2": {
                 "image": {"modelId": "gpt-image-2-generate", "operation": "image.generate"}
@@ -332,7 +332,7 @@ def test_runtime_models_reflect_only_credential_catalog_routes(
         models = client.get("/v1/models").json()["data"]
 
     assert [model["id"] for model in models] == [
-        "gpt-6.1-sol",
+        "gpt-6-astra",
         "GPTIMAGE2",
         "SEEDANCE2.0I2V",
         "SEEDANCE2.5I2V",
@@ -340,8 +340,8 @@ def test_runtime_models_reflect_only_credential_catalog_routes(
         "ELEVENLABS",
     ]
     assert models[0]["metadata"] == {
-        "upstream_model": "openai/gpt-6.1-sol",
-        "upstream_vision_model": "openai/gpt-6.1-sol",
+        "upstream_model": "openai/gpt-6-astra",
+        "upstream_vision_model": "openai/gpt-6-astra",
         "modality": "text",
         "operation": "chat.completions",
     }
@@ -432,8 +432,8 @@ def test_catalog_rejects_unknown_samsar_ids_and_unverified_upstream_models(tmp_p
     mismatch_path = write_catalog(
         tmp_path,
         {
-            "gpt-6.1-sol": {
-                "text": {"modelId": "gpt-6.1-sol"},
+            "gpt-6-astra": {
+                "text": {"modelId": "gpt-6-astra"},
                 "vision": {"modelId": "different-vision-model"},
             }
         },
@@ -605,7 +605,7 @@ def test_chat_maps_model_and_returns_genblaze_raw_unchanged(settings, fake_bindi
 @pytest.mark.parametrize(
     ("samsar_model", "upstream_model"),
     [
-        ("gpt-6.1-sol", "openai/gpt-6.1-sol"),
+        ("gpt-6-astra", "openai/gpt-6-astra"),
         ("gemini-4-argon", "google/gemini-4-argon"),
     ],
 )
@@ -978,13 +978,13 @@ def test_chat_retries_once_without_reasoning_effort_when_gmicloud_rejects_it(
     path = write_catalog(
         tmp_path,
         {
-            "gpt-6.1-sol": {
+            "gpt-6-astra": {
                 "text": {
-                    "modelId": "openai/gpt-6.1-sol",
+                    "modelId": "openai/gpt-6-astra",
                     "operation": "chat.completions",
                 },
                 "vision": {
-                    "modelId": "openai/gpt-6.1-sol",
+                    "modelId": "openai/gpt-6-astra",
                     "operation": "chat.completions",
                 },
             }
@@ -1006,7 +1006,7 @@ def test_chat_retries_once_without_reasoning_effort_when_gmicloud_rejects_it(
         response = client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-6.1-sol",
+                "model": "gpt-6-astra",
                 "messages": [{"role": "user", "content": "reason carefully"}],
                 "reasoning": {"effort": "high"},
             },

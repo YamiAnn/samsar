@@ -423,6 +423,9 @@ export async function generateLipSyncForLayer(sessionId, currentLayer, connected
 
   // 3) Build the generation payload, referencing the padded audio
   const generationPayload = {
+      videoBillingPolicy: sessionData.videoBillingPolicy || 'pipeline',
+      videoBillingAPIKeyUsage: sessionData.videoBillingAPIKeyUsage || null,
+      ...(sessionData.videoBillingPolicy === 'adapter' ? { expireAt: null } : {}),
     videoLink: videoLayerLink,  // The local/remote path to the AI video
     audioLink: paddedAudioReference,
     duration: videoDuration,

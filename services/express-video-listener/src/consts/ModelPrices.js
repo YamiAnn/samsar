@@ -350,7 +350,7 @@ export const TTS_TYPES = [
 
 export const ASSISTANT_MODEL_PRICES = [
   {
-    key: "gpt-6.1-sol",
+    key: "gpt-6-astra",
     prices: [
       {
         operationType: "words",

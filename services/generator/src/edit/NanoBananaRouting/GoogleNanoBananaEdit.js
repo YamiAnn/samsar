@@ -1,3 +1,5 @@
+import { checkpointImageResult } from '../../billing/ImageResultCheckpoint.js';
+import { imageBillingMode } from '../../billing/ImagePricing.js';
 import path from 'path';
 
 import { getDBConnectionString } from '../../DBString.js';
@@ -309,8 +311,11 @@ async function generateAndFinalizeGoogleNanoBananaEdit(payload, caseType) {
   }
 
   const firstResultUrl = uploadedResultUrls[0] || `/generations/${imageNames[0]}`;
+  const checkpoint = await checkpointImageResult(payload, { image: imageNames[0], images: imageNames,
+    resultUrl: firstResultUrl, resultUrls: uploadedResultUrls,
+    imageBillingReceipt: { adapter: 'googleCloud', calls: imageBuffers.imageBillingReceipts } });
   await updateGlobalSessionStatus(_id, {
-    status: 'COMPLETED',
+    status: imageBillingMode(payload) === 'adapter' ? 'PROCESSING' : 'COMPLETED',
     resultUrl: firstResultUrl,
     resultUrls: uploadedResultUrls,
   });
@@ -326,12 +331,7 @@ async function generateAndFinalizeGoogleNanoBananaEdit(payload, caseType) {
     }
   );
 
-  return {
-    image: imageNames[0],
-    images: imageNames,
-    resultUrl: firstResultUrl,
-    resultUrls: uploadedResultUrls,
-  };
+  return checkpoint;
 }
 
 export async function handleGoogleNanoBananaEditDispatch(payload) {
@@ -349,6 +349,7 @@ export async function handleGoogleNanoBananaEditDispatch(payload) {
 
     return null;
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     console.error('[GoogleNanoBananaEdit] edit failed:', error);
     return await markGoogleNanoBananaEditAsFailed(
       payload,

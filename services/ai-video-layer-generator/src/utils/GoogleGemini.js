@@ -1,6 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 
-export const GPT_56_SOL_INFERENCE_MODEL = 'gpt-6.1-sol';
+export const GPT_56_SOL_INFERENCE_MODEL = 'gpt-6-astra';
 export const GPT_56_SOL_REASONING_EFFORT = 'high';
 export const GPT_56_SOL_XHIGH_REASONING_EFFORT = 'xhigh';
 const DEFAULT_INFERENCE_MODEL = GPT_56_SOL_INFERENCE_MODEL;
@@ -142,7 +142,7 @@ async function getAccessToken() {
 
 export function normalizeInferenceModel(value) {
   const gptToken = typeof value === 'string' ? value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
-  // Saved Astra and earlier Sol choices migrate without losing explicit effort.
+  // Saved Sol choices migrate to Astra without losing explicit effort.
   if (/^GPT(?:61SOL|6ASTRA|56SOL|56|6)(?:HIGH|XHIGH|EXTRAHIGH)?$/.test(gptToken)) {
     return /(?:XHIGH|EXTRAHIGH)$/.test(gptToken)
       ? DEFAULT_INFERENCE_MODEL

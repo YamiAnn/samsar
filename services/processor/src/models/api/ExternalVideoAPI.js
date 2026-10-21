@@ -1,3 +1,4 @@
+import { imageSubmissionIdentity } from './ImageRequestBilling.js';
 import mongoose from 'mongoose';
 import { createHash } from 'node:crypto';
 import dns from 'node:dns/promises';
@@ -335,7 +336,7 @@ async function loadOwnedExternalVideoSession(userId, sessionId) {
   }).lean();
 }
 
-function getExternalVideoStageKey(sessionData = {}) {
+export function getExternalVideoStageKey(sessionData = {}) {
   const routeType = normalizeString(
     sessionData.externalVideoRoute ||
     sessionData.external_video_route ||
@@ -350,6 +351,7 @@ function getExternalVideoStageKey(sessionData = {}) {
   }
   if (
     routeType === 'direct_image_to_video' ||
+    routeType === 'direct_text_to_video' ||
     routeType === 'direct_image_to_video_generation'
   ) {
     return 'ai_video_generation';
@@ -432,13 +434,13 @@ function getStageError(sessionData = {}) {
   );
 }
 
-function decorateExternalStageStatus(statusPayload = {}, sessionData = {}, req = null) {
+export function decorateExternalStageStatus(statusPayload = {}, sessionData = {}, req = null) {
   const stageKey = getExternalVideoStageKey(sessionData);
   if (!stageKey) {
     return statusPayload;
   }
 
-  const routeType = getExternalVideoRouteType(stageKey);
+  const routeType = sessionData.externalVideoRoute === 'direct_text_to_video' ? 'text_to_video' : getExternalVideoRouteType(stageKey);
   const resultUrl = normalizeResponseAssetUrl(getExternalStageResultUrl(sessionData, stageKey), req);
   const stageStatus = getExternalStageStatus(sessionData, stageKey);
   const errorMessage = getStageError(sessionData);
@@ -452,6 +454,12 @@ function decorateExternalStageStatus(statusPayload = {}, sessionData = {}, req =
     external_video_stage: stageKey,
     externalVideoStage: stageKey,
     provider: statusPayload.provider || sessionData.expressGenerativeVideoModel || null,
+    ...(sessionData.videoBillingPolicy === 'adapter' ? {
+      creditsCharged: Number(sessionData.videoCreditsCharged) || 0,
+      credits_charged: Number(sessionData.videoCreditsCharged) || 0,
+      remainingCredits: sessionData.videoRemainingCredits ?? null,
+      billingStatus: stageStatus === 'COMPLETED' ? 'COMPLETED' : stageStatus,
+    } : {}),
   };
 
   if (resultUrl && stageStatus === 'COMPLETED') {
@@ -642,9 +650,13 @@ export async function requestExternalDirectImageToVideo({
   payload = {},
   idempotencyKey,
   req = null,
+  textToVideo = false,
 }) {
-  const normalizedPayload = await validateExternalImageToVideoPublicUrls(payload);
-  const startImage = getValidatedDirectStartImage(normalizedPayload);
+  const normalizedPayload = textToVideo ? { ...payload } : await validateExternalImageToVideoPublicUrls(payload);
+  const startImage = textToVideo ? '' : getValidatedDirectStartImage(normalizedPayload);
+  if (textToVideo && !['VEO3.1', 'VEO3.1FAST', 'HAILUOPRO'].includes(getFirstStringValue(payload, ['video_model', 'videoModel', 'model']))) {
+    throw buildExternalVideoError('Unsupported direct text-to-video model.');
+  }
   const identity = buildDirectExternalImageToVideoIdentity(
     userId,
     idempotencyKey ||
@@ -657,6 +669,12 @@ export async function requestExternalDirectImageToVideo({
     payload: normalizedPayload,
     startImage,
   });
+  if (textToVideo) {
+    sessionInsert.externalVideoRoute = 'direct_text_to_video';
+    sessionInsert.layers[0].imageSession.activeItemList = [];
+  }
+  sessionInsert.videoBillingPolicy = 'adapter';
+  sessionInsert.externalVideoFingerprint = imageSubmissionIdentity(userId, 'direct-video', identity.idempotencyKey, normalizedPayload).fingerprint;
 
   await getDBConnectionString();
   const sessionDoc = await VideoSession.findOneAndUpdate(
@@ -664,6 +682,9 @@ export async function requestExternalDirectImageToVideo({
     { $setOnInsert: sessionInsert },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
+  if (sessionDoc.externalVideoFingerprint && sessionDoc.externalVideoFingerprint !== sessionInsert.externalVideoFingerprint) {
+    throw Object.assign(new Error('Video request key was already used with a different payload.'), { status: 409 });
+  }
   const layer = sessionDoc?.layers?.find(
     (candidate) => candidate?._id?.toString?.() === identity.layerId.toString(),
   );
@@ -685,6 +706,7 @@ export async function requestExternalDirectImageToVideo({
       externalRequestIdempotencyKey: identity.idempotencyKey,
       creditIdempotencyKey: `direct-external-i2v:${userId}:${identity.idempotencyKey}`,
       directExternalImageToVideo: true,
+      directExternalTextToVideo: textToVideo,
       model: sessionDoc.expressGenerativeVideoModel,
       prompt: layer?.prompt || '',
       duration: layer?.duration,
@@ -714,10 +736,17 @@ export async function requestExternalDirectImageToVideo({
     request_id: identity.sessionId.toString(),
     session_id: identity.sessionId.toString(),
     status: statusPayload?.status || 'PENDING',
-    route_type: 'image_to_video',
-    external_video_route: 'image_to_video',
+    creditsCharged: statusPayload?.creditsCharged ?? 0,
+    remainingCredits: statusPayload?.remainingCredits ?? null,
+    billingStatus: statusPayload?.billingStatus || 'PENDING',
+    route_type: textToVideo ? 'text_to_video' : 'image_to_video',
+    external_video_route: textToVideo ? 'text_to_video' : 'image_to_video',
     external_video_stage: 'ai_video_generation',
   };
+}
+
+export async function requestExternalDirectTextToVideo(options) {
+  return requestExternalDirectImageToVideo({ ...options, textToVideo: true });
 }
 
 export async function requestExternalImageToVideo(options = {}) {
@@ -775,12 +804,17 @@ async function requestExternalVideoMediaStage({
     audioUrl: summarizePublicMediaUrl(audioUrl),
   });
 
-  const layerId = new mongoose.Types.ObjectId();
+  const key = req?.get?.('Idempotency-Key') || normalizedPayload.client_request_id || normalizedPayload.clientRequestId;
+  const identity = buildDirectExternalImageToVideoIdentity(userId, key ? `${routeType}:${key}` : new mongoose.Types.ObjectId().toString());
+  const layerId = identity.layerId;
   const audioLayerId = new mongoose.Types.ObjectId();
   const now = new Date();
   const isSoundEffect = stageKey === 'sound_effect_generation';
 
-  const sessionDoc = new VideoSession({
+  let sessionDoc = new VideoSession({
+    _id: identity.sessionId,
+    externalVideoFingerprint: imageSubmissionIdentity(userId, routeType, identity.idempotencyKey, normalizedPayload).fingerprint,
+    videoBillingPolicy: 'adapter',
     userId,
     sessionName: `${EXTERNAL_VIDEO_STAGE_LABELS[stageKey] || routeType} request`,
     requestType: 'API',
@@ -839,7 +873,12 @@ async function requestExternalVideoMediaStage({
     }] : [],
   });
 
-  await sessionDoc.save();
+  const fingerprint = sessionDoc.externalVideoFingerprint;
+  sessionDoc = await VideoSession.findOneAndUpdate({ _id: identity.sessionId, userId },
+    { $setOnInsert: sessionDoc.toObject() }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  if (sessionDoc.externalVideoFingerprint && sessionDoc.externalVideoFingerprint !== fingerprint) {
+    throw Object.assign(new Error('Video request key was already used with a different payload.'), { status: 409 });
+  }
   console.log('[external_video][media_stage_request] external video session created', {
     sessionId: sessionDoc._id.toString(),
     layerId: layerId.toString(),
@@ -850,26 +889,30 @@ async function requestExternalVideoMediaStage({
     duration,
   });
 
-  await requestGenerateCustomAIVideo(userId, {
-    sessionId: sessionDoc._id.toString(),
-    videoSessionId: sessionDoc._id.toString(),
-    currentLayerId: layerId.toString(),
-    layerId: layerId.toString(),
-    model,
-    prompt,
-    audioPrompt: prompt,
-    duration,
-    aspectRatio,
-    videoUrl,
-    videoLink: videoUrl,
-    ...(requiresAudio ? { audioLink: audioUrl } : {}),
-    isAudioVideoGeneration: true,
-    clipLayerToAiVideo: false,
-    retryOnFail: false,
-    generationType: stageKey === 'lip_sync_generation' ? 'lip_sync' : 'sound_effect',
-    samsarExternalProviderStage: stageKey,
-    samsarExternalVideoRoute: routeType,
-  });
+  const existingStatus = getExternalStageStatus(sessionDoc, stageKey);
+  if (!isCompletedStatus(existingStatus) && !isFailedStatus(existingStatus)) {
+    await requestGenerateCustomAIVideo(userId, {
+      generationRequestId: identity.generationRequestId.toString(),
+      sessionId: sessionDoc._id.toString(),
+      videoSessionId: sessionDoc._id.toString(),
+      currentLayerId: layerId.toString(),
+      layerId: layerId.toString(),
+      model,
+      prompt,
+      audioPrompt: prompt,
+      duration,
+      aspectRatio,
+      videoUrl,
+      videoLink: videoUrl,
+      ...(requiresAudio ? { audioLink: audioUrl } : {}),
+      isAudioVideoGeneration: true,
+      clipLayerToAiVideo: false,
+      retryOnFail: false,
+      generationType: stageKey === 'lip_sync_generation' ? 'lip_sync' : 'sound_effect',
+      samsarExternalProviderStage: stageKey,
+      samsarExternalVideoRoute: routeType,
+    });
+  }
   console.log('[external_video][media_stage_request] queued external video provider generation', {
     sessionId: sessionDoc._id.toString(),
     layerId: layerId.toString(),
@@ -889,6 +932,9 @@ async function requestExternalVideoMediaStage({
     request_id: sessionDoc._id.toString(),
     session_id: sessionDoc._id.toString(),
     status: statusPayload?.status || 'PENDING',
+    creditsCharged: statusPayload?.creditsCharged ?? 0,
+    remainingCredits: statusPayload?.remainingCredits ?? null,
+    billingStatus: statusPayload?.billingStatus || 'PENDING',
     route_type: routeType,
     external_video_route: routeType,
     external_video_stage: stageKey,

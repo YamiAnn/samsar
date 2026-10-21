@@ -1,5 +1,9 @@
 
 import 'dotenv/config';
+import { billCompletedImage, recoverImageBillingRequests, getPendingImageBillingResult } from './billing/ImageRequestBilling.js';
+import { imageBillingMode } from './billing/ImagePricing.js';
+import { imageCallId } from './billing/ImageSettlement.js';
+import { checkpointForAttempt } from './billing/ImageResultCheckpoint.js';
 import { normalizeStoredGPTImageModelKey } from './consts/GPTImageModelKeys.js';
 import { getImageFromText, getEditImageFromText } from './Dispatcher.js';
 import { getDBConnectionString } from './DBString.js';
@@ -2605,6 +2609,52 @@ async function pruneExpressImageLayerAfterFailure({
   return { pruned: true, branched: prunePlan?.branched === true };
 }
 
+async function settleImageOutput(payload, result) {
+  if (imageBillingMode(payload) !== 'adapter') return;
+  const receipt = result.imageBillingReceipt || {};
+  const adapter = receipt.adapter || (payload.operationType === 'GENERATE'
+    ? resolveImageProviderForModel(payload.model, payload)
+    : resolveImageEditProviderForModel(payload.model, payload));
+  result.imageBillingReceipt = { ...receipt, adapter, model: receipt.model || payload.model };
+  try {
+    const settled = await billCompletedImage(payload, result);
+    if (!settled) return;
+    const field = `imageBillingDebits.${settled._id}`;
+    await ImageGeneration.updateOne({ _id: payload._id }, { $set: {
+      [field]: settled.billing.credits, imageBillingPending: false,
+      imageCreditsRemaining: settled.remainingCredits,
+    } });
+    const latest = await ImageGeneration.findById(payload._id).lean();
+    const total = Object.values(latest?.imageBillingDebits || {}).reduce((sum, value) => sum + Number(value), 0);
+    await ImageGeneration.updateOne({ _id: payload._id }, { $set: { imageCreditsCharged: Math.round(total * 10000) / 10000 } });
+  } catch (error) {
+    error.imageBillingPending = true;
+    const id = result.imageBillingCallId || (payload.imageBillingPending && payload.imageBillingReceiptId
+      ? payload.imageBillingReceiptId : imageCallId(payload, result));
+    await ImageGeneration.updateOne({ _id: payload._id }, { $set: {
+      imageBillingPending: true, imageBillingReceiptId: id, expireAt: null,
+      generationStatus: 'PENDING', apiGenerationStatus: 'PENDING',
+      editStatus: 'PENDING', apiEditStatus: 'PENDING', rowLocked: false,
+      nextAttemptAfter: new Date(Date.now() + 15000),
+    } });
+    throw error;
+  }
+}
+
+async function resumeImageBillingResult(payload) {
+  const receipt = await getPendingImageBillingResult(payload.imageBillingReceiptId);
+  if (!receipt?.result) return false;
+  const result = receipt.result;
+  await settleImageOutput(payload, result);
+  if (payload.operationType === 'GENERATE') await updateImageInSessionLayer(result, payload);
+  else if (payload.operationType === 'UPSCALE') {
+    await finalizeUpscaleSuccess(payload, result.image || result.resultUrl || result.resultUrls?.[0]);
+  } else if (!payload.sessionId && !payload.videoSessionId && !payload.layerId) {
+    await markStandaloneEditAsCompleted(payload, result);
+  } else await markEditImageAsCompleted(payload, result);
+  return true;
+}
+
 async function processNextTask() {
   if (taskQueue.length === 0 || ongoingRequests >= MAX_CONCURRENT_REQUESTS) {
     return;
@@ -2626,6 +2676,23 @@ async function processNextTask() {
     }
 
     activeTask = latestTask;
+    const checkpoint = latestTask.imageDeliveryPending && checkpointForAttempt(latestTask);
+    if (checkpoint) {
+      await settleImageOutput(latestTask, checkpoint);
+      if (latestTask.operationType === 'GENERATE') await updateImageInSessionLayer(checkpoint, latestTask);
+      else if (!latestTask.sessionId && !latestTask.videoSessionId && !latestTask.layerId) {
+        await markStandaloneEditAsCompleted(latestTask, checkpoint);
+      } else if (latestTask.operationType === 'UPSCALE') {
+        await finalizeUpscaleSuccess(latestTask, checkpoint.image || checkpoint.resultUrl);
+      } else await markEditImageAsCompleted(latestTask, checkpoint);
+      return;
+    }
+    if (latestTask.imageBillingPending && latestTask.imageBillingReceiptId) {
+      if (await resumeImageBillingResult(latestTask)) return;
+      // A saved financial result must never be replaced with another call.
+      await ImageGeneration.updateOne({ _id }, { $set: { rowLocked: false } });
+      return;
+    }
 
     if (latestTask.operationType === "GENERATE") {
       if (isTerminalImageRequestStatus(latestTask.generationStatus)) {
@@ -2647,7 +2714,7 @@ async function processNextTask() {
       await processUpscaleRequest(latestTask);
     }
   } catch (error) {
-
+    if (error.imageBillingPending) return;
 
     console.error('[image_generation] unhandled generation task error', {
       requestId: _id?.toString?.() || _id,
@@ -2701,8 +2768,19 @@ async function processNextTask() {
 export async function getAndProcessPendingImageGenerationRows() {
   await getDBConnectionString();
 
+  let lastBillingRecovery = 0;
+  let billingRecovery = null;
   while (true) {
     await getTimeout(1000);
+    if (!billingRecovery && Date.now() - lastBillingRecovery > 15000) {
+      lastBillingRecovery = Date.now();
+      await ImageGeneration.updateMany({ imageBillingPolicy: 'adapter', imageDeliveryPending: true,
+        rowLocked: true, updatedAt: { $lte: new Date(Date.now() - 11 * 60 * 1000) } },
+      { $set: { rowLocked: false } });
+      billingRecovery = recoverImageBillingRequests()
+        .catch(error => console.error('[image-billing] Recovery pending:', error.message))
+        .finally(() => { billingRecovery = null; });
+    }
     await processPendingImageRequests();
   }
 }
@@ -2738,6 +2816,11 @@ function buildPendingImageGenerationEligibilityFilter(now = new Date()) {
             operationType: { $in: ['EDIT', 'UPSCALE'] },
             editStatus: { $nin: terminalStatuses },
             apiEditStatus: { $nin: terminalStatuses },
+          },
+          {
+            imageBillingPolicy: 'adapter',
+            imageDeliveryPending: true,
+            imageBillingSavedResult: { $ne: null },
           },
         ],
       },
@@ -2994,6 +3077,11 @@ async function processDalle3GenerationRequest(pendingRequestData) {
   const prompt = pendingRequestData.prompt;
 
   const imageData = await getImageFromText(pendingRequestData);
+  if (!pendingRequestData.videoSessionId && pendingRequestData.requestType === 'API') {
+    if (imageData?.image) await updateImageInSessionLayer(imageData, pendingRequestData);
+    else await handleNoImageRetryOrFailure(pendingRequestData, imageData);
+    return;
+  }
   let genRowValue = await ImageGeneration.findOne({ _id: requestId });
 
   if (!genRowValue) {
@@ -3043,6 +3131,7 @@ async function processDalle3GenerationRequest(pendingRequestData) {
 
 async function updateImageInSessionLayer(imageData, payload) {
   await getDBConnectionString();
+  await settleImageOutput(payload, imageData);
 
   if (isAvatarVoiceoverImageRequest(payload)) {
     await updateAvatarVoiceoverImageGeneration(imageData, payload);
@@ -4042,6 +4131,8 @@ async function processUpscaleRequest(pendingRequestData) {
     }
 
     if (skipEnhancement) {
+      await settleImageOutput(pendingRequestData, { image: sourceImageRef,
+        imageBillingReceipt: { adapter: 'none', costUsd: 0 } });
       await finalizeUpscaleSuccess(pendingRequestData, sourceImageRef);
       return;
     }
@@ -4056,6 +4147,8 @@ async function processUpscaleRequest(pendingRequestData) {
 
 
     if (!shouldEnhance) {
+      await settleImageOutput(pendingRequestData, { image: sourceImageRef,
+        imageBillingReceipt: { adapter: 'none', costUsd: 0 } });
       await finalizeUpscaleSuccess(pendingRequestData, sourceImageRef);
       return;
     }
@@ -4157,6 +4250,7 @@ async function processUpscaleRequest(pendingRequestData) {
       firstImageRef;
 
     if (resolvedEditImageRef) {
+      await settleImageOutput(editPayload, editedImageData);
       await finalizeUpscaleSuccess(pendingRequestData, resolvedEditImageRef);
     } else if (editedImageData.error) {
       const rotateAdapter =
@@ -4174,6 +4268,7 @@ async function processUpscaleRequest(pendingRequestData) {
       await finalizeUpscaleFailure(pendingRequestData, 'Upscale enhancement completed without an image result');
     }
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     if (await scheduleImageEditAdapterRetry(
       pendingRequestData,
       error?.message || 'Upscale request failed',
@@ -4488,6 +4583,10 @@ async function processEditRequest(pendingRequestData) {
       }
       : pendingRequestData;
     const editedImageData = await getEditImageFromText(editRequestPayload);
+    if (editedImageData?.image || editedImageData?.images?.length) {
+      if (!editedImageData.image) editedImageData.image = editedImageData.images[0];
+      await settleImageOutput(editRequestPayload, editedImageData);
+    }
 
     if (!editedImageData) {
       const latestRequest = await ImageGeneration.findById(requestId).lean();
@@ -4579,6 +4678,7 @@ async function processEditRequest(pendingRequestData) {
       }
     }
   } catch (e) {
+    if (e.imageBillingPending) throw e;
     if (await scheduleImageEditAdapterRetry(
       pendingRequestData,
       e?.message || 'Image edit adapter failed',
@@ -4830,6 +4930,7 @@ async function markStandaloneEditAsCompleted(genRowValue, editedImageData) {
     apiEditStatus: "COMPLETED",
     generationStatus: "COMPLETED",
     apiGenerationStatus: "COMPLETED",
+    imageDeliveryPending: false,
     resultUrl: remoteImageUrl,
     rowLocked: false,
   };
@@ -4842,6 +4943,10 @@ async function markStandaloneEditAsCompleted(genRowValue, editedImageData) {
     completionUpdate,
   );
 
+  await GlobalSession.findOneAndUpdate({ sessionId: String(requestId) }, { $set: {
+    status: 'COMPLETED', resultUrl: remoteImageUrl,
+    resultUrls: editedImageData.resultUrls || (remoteImageUrl ? [remoteImageUrl] : []),
+  } });
   removeTaskFromQueueById(requestId);
 }
 
@@ -4855,6 +4960,7 @@ async function markStandaloneGenerationAsCompleted(payload, imageData) {
     {
       generationStatus: "COMPLETED",
       apiGenerationStatus: "COMPLETED",
+      imageDeliveryPending: false,
       resultUrl,
       resultUrls: resultUrl ? [resultUrl] : [],
       rowLocked: false,

@@ -20,8 +20,8 @@ test('narrative requests keep standalone mixed artifacts and durable polling fie
   assert.equal(paths.duration.instance, 'Number');
   assert.equal(paths.inferenceModel.instance, 'String');
   assert.deepEqual(paths.inferenceModel.enumValues, [
-    'gpt-6.1-sol',
-    'gpt-6.1-sol-xhigh',
+    'gpt-6-astra',
+    'gpt-6-astra-xhigh',
     'claude-opus-5.5',
     'gemini-4-argon',
     'QWEN3.8',
@@ -56,7 +56,7 @@ test('narrative request schema supports singular defaults and branching metadata
     inputPrompt: 'test',
     duration: 30,
     totalDuration: 30,
-    inferenceModel: 'gpt-6.1-sol',
+    inferenceModel: 'gpt-6-astra',
   };
   const singular = new NarrativeRequest(common);
   const branched = new NarrativeRequest({
@@ -88,7 +88,7 @@ test('branching levels must be a positive integer when present', () => {
     inputPrompt: 'test',
     duration: 30,
     totalDuration: 30,
-    inferenceModel: 'gpt-6.1-sol',
+    inferenceModel: 'gpt-6-astra',
   };
 
   const zeroLevels = new NarrativeRequest({ ...common, numLevels: 0 }).validateSync();

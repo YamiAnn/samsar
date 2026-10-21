@@ -281,7 +281,7 @@ const IMAGE_LIST_TO_VIDEO_VIDEO_MODEL_KEYS = [
   'HAPPYHORSEI2V',
   'CUSTOM_IMAGE_TO_VIDEO',
 ];
-const DEFAULT_INFERENCE_MODEL = 'gpt-6.1-sol';
+const DEFAULT_INFERENCE_MODEL = 'gpt-6-astra';
 const JSON_MODE_ASPECT_RATIOS = ['16:9', '9:16'];
 const JSON_MODE_VIDEO_MODEL_SUB_TYPES = ['anime', '3d_animation', 'clay', 'comic', 'cyberpunk'];
 const GENERATION_STEP_MODE_ONE_STEP = 'one_step';
@@ -1051,9 +1051,9 @@ function getRerollLocalCreditEstimate({
     return null;
   }
 
-  const imageCreditsPerLayer = getImageCreditsForModel(imageModel, aspectRatio);
+  const imageCreditsPerLayer = 0; // Image-model calls settle separately on completion.
   const videoStageCreditsPerSecond =
-    getExpressVideoPricingDistributionPerSecondForRateClass(videoModel, 'vidgenie')?.video ?? 0;
+    0; // Model calls settle individually when completed.
   const durationSeconds = selectedLayers.reduce((total, item) => total + (Number(item.duration) || 0), 0);
   const imageCredits = Math.ceil(imageCreditsPerLayer * selectedLayers.length);
   const aiVideoCredits = Math.ceil(Math.max(0, durationSeconds * videoStageCreditsPerSecond));
@@ -1062,6 +1062,7 @@ function getRerollLocalCreditEstimate({
     totalCredits: imageCredits + aiVideoCredits,
     imageCredits,
     aiVideoCredits,
+    imageBilling: 'ON_COMPLETION',
   };
 }
 
@@ -2040,7 +2041,7 @@ function validateCommonJsonInput(input, inferenceModelOptions = INFERENCE_MODEL_
       return 'JSON input.effort must be one of: high, xhigh.';
     }
     if (input.inference_model !== DEFAULT_INFERENCE_MODEL) {
-      return 'JSON input.effort is only supported with gpt-6.1-sol.';
+      return 'JSON input.effort is only supported with gpt-6-astra.';
     }
   } else if (input.inference_model === DEFAULT_INFERENCE_MODEL) {
     input.effort = modelImpliedEffort || 'high';
@@ -6668,7 +6669,6 @@ export default function OneshotEditor() {
     const isClonePending = postProcessingPendingAction === 'clone_render';
     const isRerollPending = postProcessingPendingAction === 'reroll_layers';
     const rerollQuoteTotalCredits = Number(rerollLocalCreditEstimate?.totalCredits);
-    const rerollQuoteImageCredits = Number(rerollLocalCreditEstimate?.imageCredits);
     const rerollQuoteVideoCredits = Number(rerollLocalCreditEstimate?.aiVideoCredits);
     const hasRerollQuote = Number.isFinite(rerollQuoteTotalCredits);
     const isRerollSubmitDisabled =
@@ -7076,10 +7076,7 @@ export default function OneshotEditor() {
               }`}>
                 {hasRerollQuote ? (
                   <span>
-                    Estimated credits: {rerollQuoteTotalCredits}
-                    {Number.isFinite(rerollQuoteImageCredits) && Number.isFinite(rerollQuoteVideoCredits)
-                      ? ` (${rerollQuoteImageCredits} image + ${rerollQuoteVideoCredits} AI video)`
-                      : ''}
+                    Image, AI video, lip-sync and sound-effect model calls are charged individually on completion.
                   </span>
                 ) : (
                   <span className={mutedText}>Select scenes to estimate credits.</span>

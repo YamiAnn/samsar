@@ -702,10 +702,10 @@ export async function buildExternalVideoToVideoInput(payload = {}, route) {
   };
 }
 
-async function buildExternalVideoRouteRequest(client, payload = {}, route) {
+export async function buildExternalVideoRouteRequest(client, payload = {}, route) {
   if (route === 'text_to_video') {
     return {
-      route,
+      route: 'direct_text_to_video',
       body: {
         input: buildExternalTextToVideoInput(payload),
       },

@@ -193,15 +193,11 @@ export default function OverlayPromptGenerator(props) {
   const modelPricing = IMAGE_MODEL_PRICES.find(
     (model) => model.key === selectedGenerationModel
   );
-  const priceObj = modelPricing
-    ? modelPricing.prices.find((price) => price.aspectRatio === aspectRatio)
-    : null;
-  const modelPrice = priceObj ? priceObj.price : 0;
   const usesProviderBilling =
     isStandaloneModelFilteringEnabled && isProviderBilledImagePricing(modelPricing);
   const modelCostTooltip = usesProviderBilling
     ? "Billed directly by the configured provider API"
-    : `Currently selected model cost: ${modelPrice} credits`;
+    : "Usage-based image pricing; charged when each model call completes";
   const selectedModelDefinition = availableImageModels.find(
     (model) => model.key === selectedGenerationModel
   );

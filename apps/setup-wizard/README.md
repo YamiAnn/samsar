@@ -14,7 +14,7 @@ Step 1 presents native OpenAI, Gemini, Kimi K3, and Alibaba inference providers 
 
 | Stable model | OpenRouter coverage |
 | --- | --- |
-| `gpt-6.1-sol` | Text, assistant, and corresponding vision-input calls. |
+| `gpt-6-astra` | Text, assistant, and corresponding vision-input calls. |
 | `gemini-4-argon` | Text, assistant, and corresponding vision-input calls; defaults to OpenRouter model `google/gemini-4-argon`. |
 | `QWEN3.8` | Qwen 3.8 Max text, assistant, and vision inference through Alibaba Cloud, OpenRouter, GMICloud, or Samsar. |
 
@@ -24,7 +24,13 @@ Gemini 4 Argon is configured automatically when OpenRouter, Samsar API, or nativ
 
 For the local Docker runtime configured by this wizard, GPT, Gemini, and Qwen provider priority is direct native credential, OpenRouter, then the Samsar universal fallback. Kimi priority is the native Kimi API, then Samsar. Set `SAMSAR_QWEN_OPENROUTER_ONLY=true` to force Docker Qwen requests through OpenRouter. Hosted production and external-production always apply that OpenRouter-only Qwen policy; a saved native or deployed authorization cannot override it. Other provider keys continue to enable their media, audio, and direct inference families independently.
 
-OpenRouter inference defaults to high reasoning for Qwen and Gemini and `xhigh` for GPT, with a 65,536-token completion allowance and a 10-minute minimum request timeout. Kimi K3 always uses high reasoning. Transient provider errors, including HTTP 429 responses, receive up to three backoff retries and honor `Retry-After` when supplied.
+OpenRouter inference defaults to high reasoning for Qwen and Gemini and `xhigh` for GPT, with a 65,536-token completion allowance and a 10-minute minimum request timeout. Kimi K3 always uses high reasoning. Retry behavior depends on the caller: billed assistant requests disable hidden SDK retries and retain ambiguous provider outcomes for reconciliation; other inference callers use their configured retry policies.
+
+### Assistant billing
+
+Hosted assistant and public chat/assistant API requests, including calls made through `samsar-js`, use the [final input, output, and cached-input token prices](../../pages/assistant-billing.md#final-token-prices) for the listed model and adapter routes. Production agent pipeline inference keeps its flat stage pricing. The standalone Studio queued assistant worker retains its local-credit waiver; providers and a hosted Samsar adapter still charge their own accounts.
+
+Reuse one SDK `idempotencyKey` or `client_request_id` for retries of a logical request. Requests awaiting billing confirmation or completion after a timeout can remain pending; keep the same key while checking completion. See [Assistant billing and retries](../../pages/assistant-billing.md).
 
 ## Secret Handling
 

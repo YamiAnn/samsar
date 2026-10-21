@@ -6,12 +6,11 @@ import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
 import FrameGeneration from '../../schema/FrameGeneration.js';
 import VideoGeneration from '../../schema/VideoGeneration.js';
 import { getDBConnectionString } from '../DBString.js';
-import { deductGenerationCredits } from '../GenerationCredits.js';
 import { upsertGlobalSessionMapping } from '../GlobalSession.js';
 import { addImageGeneratorRequest } from '../Images.js';
 import { copyVideoSession } from './VideoSessionCloneAPI.js';
 import { buildMovieResourceListVisualPrompts } from '../movie_session/TranscriptMovieGenerator.js';
-import { IMAGE_MODEL_PRICES } from '../../consts/ModelPrices.js';
+import { prepareImageRequestBilling } from './ImageRequestBilling.js';
 import { getExpressVideoStageCreditsPerSecond } from '../../consts/pricing/ExpressVideoPricingDistribution.js';
 
 const DEFAULT_IMAGE_MODEL = 'GPTIMAGE2.5';
@@ -117,16 +116,6 @@ function normalizeLayerIndexes(rawLayerIndexes) {
   return indexes.sort((a, b) => a - b);
 }
 
-function getImageCreditsForModel(modelKey, aspectRatio) {
-  const normalizedModel = normalizeModelKey(normalizeStoredGPTImageModelKey(modelKey)) || DEFAULT_IMAGE_MODEL;
-  const pricing = IMAGE_MODEL_PRICES.find((model) => normalizeModelKey(model.key) === normalizedModel);
-  const price =
-    pricing?.prices?.find((entry) => entry.aspectRatio === aspectRatio)?.price ??
-    pricing?.prices?.find((entry) => entry.aspectRatio === '1:1')?.price ??
-    pricing?.prices?.[0]?.price;
-
-  return Number.isFinite(Number(price)) ? Number(price) : DEFAULT_IMAGE_CREDITS;
-}
 
 function getLayerDurationSeconds(layer = {}) {
   const duration = Number(layer.duration);
@@ -414,8 +403,8 @@ function buildQuote(sessionData, layerIndexes) {
   const aspectRatio = normalizeString(sessionData.aspectRatio) || '16:9';
   const imageModel = resolveImageModel(sessionData);
   const videoModel = resolveVideoModel(sessionData);
-  const imageCreditsPerLayer = getImageCreditsForModel(imageModel, aspectRatio);
-  const aiVideoCreditsPerSecond = getExpressVideoStageCreditsPerSecond('ai_video_generation', videoModel);
+  const imageCreditsPerLayer = 0; // Image calls are charged on completion, separately from AI-video stages.
+  const aiVideoCreditsPerSecond = 0;
   const layers = [];
 
   for (const layerIndex of layerIndexes) {
@@ -468,6 +457,8 @@ function buildQuote(sessionData, layerIndexes) {
     imageModel,
     videoModel,
     imageCreditsPerLayer,
+    imageBilling: 'ON_COMPLETION',
+    videoBilling: 'ON_COMPLETION',
     aiVideoCreditsPerSecond,
     durationSeconds,
     imageCredits,
@@ -792,7 +783,7 @@ async function deleteStaleQueuedWork(sessionId, layerIds) {
   };
 }
 
-async function queueImageRerollRequests(userId, sessionData, rerollLayers, quote) {
+async function queueImageRerollRequests(userId, sessionData, rerollLayers, quote, apiKeyId) {
   const aspectRatio = quote.aspectRatio;
   const imageModel = quote.imageModel;
   const customFallbackModel = sessionData.customAdapterFallbacks?.text_to_image;
@@ -830,7 +821,7 @@ async function queueImageRerollRequests(userId, sessionData, rerollLayers, quote
       ...(customFallbackModel ? { customFallbackModel } : {}),
     };
 
-    const imageRequest = await addImageGeneratorRequest(userId, payload, false);
+    const imageRequest = await addImageGeneratorRequest(userId, payload, false, { billOnCompletion: true, billingAdmitted: true, apiKeyId });
   }
 }
 
@@ -846,22 +837,7 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   const normalizedLayerIndexes = normalizeLayerIndexes(layerIndexes);
   const quote = buildQuote(sourceSessionData, normalizedLayerIndexes);
 
-  const creditResult = await deductGenerationCredits(userId, quote.totalCredits, {
-    source: REROLL_CREDIT_SOURCE,
-    apiKeyId,
-    metadata: {
-      sessionId: sourceSessionId,
-      sourceSessionId,
-      layerIndexes: normalizedLayerIndexes,
-      imageModel: quote.imageModel,
-      videoModel: quote.videoModel,
-      aspectRatio: quote.aspectRatio,
-      durationSeconds: quote.durationSeconds,
-      imageCredits: quote.imageCredits,
-      aiVideoCredits: quote.aiVideoCredits,
-      totalCredits: quote.totalCredits,
-    },
-  });
+  await prepareImageRequestBilling(userId, { apiKeyId });
 
   const copyResult = await copyVideoSession(userId, { videoSessionId: sourceSessionId });
   const rerollSessionId = resolveCopiedSessionId(copyResult);
@@ -948,6 +924,10 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   }
   markAllLayersForFrameRegeneration(sessionData);
 
+  sessionData.videoBillingPolicy = 'adapter';
+  sessionData.videoBillingAPIKeyUsage = apiKeyId ? { apiKeyId } : null;
+  sessionData.videoBillingDebits = {};
+  sessionData.videoCreditsCharged = 0;
   sessionData.expressGenerationStatus = nextStatus;
   sessionData.generationStatus = 'PENDING';
   sessionData.videoLink = null;
@@ -977,7 +957,7 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   sessionData.markModified('generatedOutroTileCount');
 
   await sessionData.save();
-  await queueImageRerollRequests(userId, sessionData, rerollLayers, quote);
+  await queueImageRerollRequests(userId, sessionData, rerollLayers, quote, apiKeyId);
   await upsertGlobalSessionMapping({
     sessionId: rerollSessionId,
     sessionType: 'video',
@@ -1014,7 +994,8 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
     layer_ids: rerolledLayerIds,
     creditQuote: quote,
     creditsCharged: quote.totalCredits,
-    remainingCredits: creditResult?.remainingCredits ?? null,
+    remainingCredits: null,
+    billingStatus: 'PENDING',
   };
 }
 

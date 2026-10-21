@@ -70,11 +70,13 @@ if (cluster.isPrimary) {
     { startCreateSingleNarrativeRequestRecovery },
     { startCreateBranchingNarrativeRequestRecovery },
     { startTextToInteractiveVideoRecovery },
+    { startAssistantBillingRecovery },
   ] = await Promise.all([
     import('./src/models/api/MovieAPI.js'),
     import('./src/models/api/NarrativeAPI.js'),
     import('./src/models/api/BranchingNarrativeAPI.js'),
     import('./src/models/api/TextToInteractiveVideoAPI.js'),
+    import('./src/models/api/AssistantBillingRecovery.js'),
   ]);
 
   const server = app.listen(PORT, '0.0.0.0');
@@ -82,6 +84,7 @@ if (cluster.isPrimary) {
   const stopNarrativeRecovery = startCreateSingleNarrativeRequestRecovery();
   const stopBranchingNarrativeRecovery = startCreateBranchingNarrativeRequestRecovery();
   const stopInteractiveVideoRecovery = startTextToInteractiveVideoRecovery();
+  const stopAssistantBillingRecovery = startAssistantBillingRecovery();
   const timeoutMs = getHttpServerTimeoutMs();
   server.timeout = timeoutMs;
   server.requestTimeout = timeoutMs;
@@ -93,4 +96,5 @@ if (cluster.isPrimary) {
   server.on('close', stopNarrativeRecovery);
   server.on('close', stopBranchingNarrativeRecovery);
   server.on('close', stopInteractiveVideoRecovery);
+  server.on('close', stopAssistantBillingRecovery);
 }

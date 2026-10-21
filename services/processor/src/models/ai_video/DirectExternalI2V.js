@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
 
 function normalizeString(value) {
@@ -14,7 +15,7 @@ export function buildDirectExternalI2VGenerationDocument(payload = {}) {
   if (!generationRequestId || !videoSessionId || !currentLayerId) {
     throw new Error('Direct external image-to-video generation identity is required.');
   }
-  if (!startImage || !/^https?:\/\//i.test(startImage)) {
+  if (!payload.directExternalTextToVideo && (!startImage || !/^https?:\/\//i.test(startImage))) {
     throw new Error('Direct external image-to-video requires one public start image URL.');
   }
   if (!model) {
@@ -29,7 +30,7 @@ export function buildDirectExternalI2VGenerationDocument(payload = {}) {
     model,
     status: 'INIT',
     startImage,
-    useStartFrame: true,
+    useStartFrame: !payload.directExternalTextToVideo,
     useEndFrame: false,
     combineLayers: false,
     aspectRatio: normalizeString(payload.aspectRatio) || '16:9',
@@ -46,7 +47,8 @@ export function buildDirectExternalI2VGenerationDocument(payload = {}) {
     rowLocked: false,
     isExternalDirectImageToVideo: true,
     externalRequestIdempotencyKey: normalizeString(payload.externalRequestIdempotencyKey),
-    expireAt: new Date(),
+    ...videoQueueBillingFields(payload),
+    expireAt: payload.videoBillingPolicy === 'adapter' ? null : new Date(),
   };
 }
 

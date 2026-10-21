@@ -92,7 +92,8 @@ test('calls the synchronous Alibaba endpoint with the normalized payload', async
       thinking_mode: true,
     },
   });
-  assert.deepEqual(result, {
+  assert.deepEqual({ ...result, imageBillingReceipt: undefined }, {
+    imageBillingReceipt: undefined,
     imageUrl: 'https://example.com/wan.png',
     requestId: 'request-123',
     usage: null,

@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 import { getDBConnectionString } from '../DBString.js';
 import VideoSession from '../../schema/VideoSession.js';
 import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
@@ -93,6 +94,6 @@ export async function requestRenderVeo3FirstLastFrameVideo(payload) {
     retryOnFail: true,
   };
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   await aiRenderPayload.save();
 }

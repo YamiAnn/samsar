@@ -1,3 +1,5 @@
+import { billCompletedVideo, recoverVideoBillingRequests } from './billing/VideoRequestBilling.js';
+import { completeVideoOutput } from './billing/VideoCompletion.js';
 import { frameCountToSeconds, secondsToFrameCount } from './utils/FrameClock.js';
 import { extractSyncStartingFrame } from './utils/SyncLipSyncFace.js';
 import { shouldPrepareExpressLipSyncFace } from './utils/ExpressLipSyncPrompt.js';
@@ -1814,10 +1816,18 @@ async function getSessionFramesPerSecond(sessionData) {
 
 export async function processPendingAiVideoGenerationRequests() {
   let transientDbFailureCount = 0;
+  let billingRecovery = null;
+  let lastBillingRecoveryAt = 0;
   while (true) {
     try {
       await getTimeout(1000);
       await generatePendingAiVideoLayerRequests();
+      if (!isStandaloneEdition() && !billingRecovery && Date.now() - lastBillingRecoveryAt > 15000) {
+        lastBillingRecoveryAt = Date.now();
+        billingRecovery = recoverVideoBillingRequests().catch(error => {
+          console.error('Video billing recovery will retry:', error.message);
+        }).finally(() => { billingRecovery = null; });
+      }
       transientDbFailureCount = 0;
     } catch (e) {
       if (isTransientMongoError(e)) {
@@ -1870,6 +1880,12 @@ export async function generatePendingAiVideoLayerRequests() {
         throw e;
       }
       console.error('Error while polling request:', getErrorLogPayload(e));
+      if (e.videoBillingPending || request.videoBillingSavedResult) {
+        await AIVideoLayerGeneration.findByIdAndUpdate(request._id, { $set: {
+          rowLocked: false, nextAttemptAfter: new Date(Date.now() + 15000),
+          videoBillingError: e.message, expireAt: null } });
+        continue;
+      }
       if (request.status === 'PENDING' && isTransientProviderError(e)) {
         await deferTransientProviderError(request, e, 'poll');
         continue;
@@ -2257,8 +2273,9 @@ async function generateAIVideoLayer(payload) {
     generationId,
     rowLocked: false,
     requestSubmitAt: requestSubmitAt,
+    videoBillingNativeReceipt: payload.videoBillingNativeReceipt || null,
     transientProviderErrorCount: 0,
-    expireAt: new Date(),
+    expireAt: payload.videoBillingPolicy === 'adapter' ? null : new Date(),
   };
   const submittedAdapter = submissionAdapter;
   if (submittedAdapter) {
@@ -2302,6 +2319,9 @@ async function generateAIVideoLayer(payload) {
 
 export async function pollForAIVideoCompletion(reqPayload) {
   let payload = reqPayload.toObject();
+  if (payload.videoBillingSavedResult) {
+    return finishVideoOutput(payload);
+  }
   const { model } = payload;
   const submittedAdapter = resolveSubmittedVideoAdapter(payload);
   if (!submittedAdapter) {
@@ -2406,16 +2426,7 @@ export async function pollForAIVideoCompletion(reqPayload) {
       await markCustomAiVideoStageSuccess(payload.sessionId);
     }
 
-    let localVideoLink;
-
-    if (remoteUrl) {
-      localVideoLink = await downloadVideoFromRemote(remoteUrl, payload.sessionId, payload.layerId);
-    }
-    else if (responseBlob) {
-      localVideoLink = await downloadVideoFromRemoteBlob(responseBlob, payload.sessionId, payload.layerId);
-    }
-
-    await processVideoGenerationCompletion(payload, localVideoLink);
+    await finishVideoOutput(payload, responseData);
 
 
   } else if (responseStatus === 'FAILED') {
@@ -2465,6 +2476,28 @@ export async function pollForAIVideoCompletion(reqPayload) {
 
 
 
+
+async function finishVideoOutput(payload, response) {
+  return completeVideoOutput(payload, response, {
+    download: downloadVideoFromRemote, downloadBlob: downloadVideoFromRemoteBlob,
+    retain: (job, saved) => billCompletedVideo(job, saved, { deferSettlement: true }),
+    checkpoint: async (id, saved) => {
+      await AIVideoLayerGeneration.findByIdAndUpdate(id, { $set: {
+        videoBillingSavedResult: saved, videoBillingPending: true, expireAt: null } });
+    },
+    bill: billCompletedVideo,
+    recordCharge: async (job, receipt) => {
+      await VideoSession.updateOne({ _id: job.sessionId,
+        [`videoBillingDebits.${receipt._id}`]: { $exists: false } }, {
+        $inc: { videoCreditsCharged: receipt.billing.credits },
+        $set: { [`videoBillingDebits.${receipt._id}`]: receipt.billing.credits,
+          videoRemainingCredits: receipt.remainingCredits } });
+      await AIVideoLayerGeneration.findByIdAndUpdate(job._id, { $set: {
+        videoBillingPending: false, videoBillingReceiptId: receipt._id } });
+    },
+    deliver: processVideoGenerationCompletion,
+  });
+}
 
 async function createGenerateVideoRecord(payload, localVideoPath) {
 

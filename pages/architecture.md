@@ -76,6 +76,12 @@ Provider credentials are loaded from `root.env`. In standalone Docker, inference
 
 The processor, generator, audio generator, AI video layer generator, express video listener, and assistant query processor use the same inference-adapter policy. OpenRouter Qwen text and vision requests map to `qwen/qwen3.8-max`; native Alibaba text and vision use `qwen3.8-max`. In Docker, a validated Alibaba Token Plan endpoint sets the shared `ALIBABA_QWEN_MODEL=qwen3.8-max` override. `ALIBABA_QWEN_TEXT_MODEL` is emitted with the same value only for rolling-container compatibility.
 
+## Assistant Billing and Recovery
+
+Session assistant APIs, public chat/assistant APIs, and hosted queued assistant requests use the [final token prices](assistant-billing.md#final-token-prices) for the listed model and adapter routes. Production agent pipeline inference keeps its flat stage pricing. The standalone Studio assistant worker retains its local-credit waiver; hosted API calls made through a Samsar adapter still incur the hosted endpoint charge.
+
+Reuse the same request key when retrying. Completed replays return the original response and charge without another debit. Requests awaiting billing confirmation or completion after a timeout can remain pending; continue checking the existing request. See [Assistant billing and retries](assistant-billing.md) for the client contract and verification commands.
+
 ## Observability
 
 The logger profile starts Loki, Promtail, and Grafana. Grafana is available only on loopback at `http://localhost:4000` by default and requires the generated administrator credentials from `runtime/secrets/grafana.env`.

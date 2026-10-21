@@ -1,3 +1,4 @@
+import { normalizeAssistantResponseUsage } from './AssistantBilling.js';
 import mongoose from 'mongoose';
 import OpenAI from 'openai';
 import hat from 'hat';
@@ -5,12 +6,10 @@ import VideoSession from '../../schema/VideoSession.js';
 import ExternalUser from '../../schema/ExternalUser.js';
 import User from '../../schema/User.js';
 import { getDBConnectionString } from '../DBString.js';
-import { deductGenerationCredits } from '../GenerationCredits.js';
 import { getModelForUserInferenceModel } from '../agent/ModelUtils.js';
 import { createCompatibleChatCompletion } from '../ai_utils/OpenAICompat.js';
 import { isClaudeOpus55Model } from '../../inference/AnthropicChatAdapter.js';
 import { resolveProviderMediaPayload } from '../ai_utils/ProviderMediaPayload.js';
-import { deductExternalUserCredits } from '../external/User.js';
 import {
   GPT_56_SOL_REASONING_EFFORT,
   getProviderModelForInferenceModel,
@@ -20,14 +19,12 @@ import {
   isQwenInferenceModel,
   normalizeInferenceModel,
 } from '../../consts/InferenceModels.js';
-import {
-  calculateAssistantCreditsFromUsage,
-  calculateLegacyAssistantCredits,
-  DEFAULT_ASSISTANT_PRICING_MULTIPLIER,
-} from './AssistantBilling.js';
+import { assistantRequestIdentity, runAssistantRequest } from './AssistantRequestBilling.js';
+import { assistantBillingStore, admitAssistantRequest, chargeAssistantRequest } from './AssistantBillingStore.js';
 import { isStandaloneEdition } from '../../utils/EnvironmentUtils.js';
+import { getCurrentAPIKeyUsageContext } from './RequestAuthContext.js';
 
-const DEFAULT_ASSISTANT_MODEL = 'gpt-6.1-sol';
+const DEFAULT_ASSISTANT_MODEL = 'gpt-6-astra';
 const DEFAULT_ASSISTANT_COMPLETION_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_ASSISTANT_SYSTEM_PROMPT =
   'You are a helpful assistant for Samsar. Respond clearly, accurately, and preserve any multimodal context provided by the user.';
@@ -108,7 +105,7 @@ export async function setAssistantSystemPromptForUser(userId, payload = {}, { ex
   };
 }
 
-export async function createAssistantCompletion(userId, payload = {}, { externalUser = null } = {}) {
+export async function createAssistantCompletion(userId, payload = {}, { externalUser = null, idempotencyKey, dependencies = {} } = {}) {
   const sessionId = getSessionIdFromPayload(payload);
   if (!sessionId) {
     throw buildError('session_id is required.', 400);
@@ -117,12 +114,12 @@ export async function createAssistantCompletion(userId, payload = {}, { external
     throw buildError('Invalid session_id.', 400);
   }
 
-  await getDBConnectionString();
+  await (dependencies.connect || getDBConnectionString)();
 
   const [user, sessionData, scopedExternalUser] = await Promise.all([
-    User.findById(userId),
-    VideoSession.findById(sessionId),
-    externalUser?._id ? ExternalUser.findById(externalUser._id) : null,
+    (dependencies.User || User).findById(userId),
+    (dependencies.VideoSession || VideoSession).findById(sessionId),
+    externalUser?._id ? (dependencies.ExternalUser || ExternalUser).findById(externalUser._id) : null,
   ]);
 
   if (!user) {
@@ -145,133 +142,55 @@ export async function createAssistantCompletion(userId, payload = {}, { external
     assertExternalUserSessionAccess(sessionData, scopedExternalUser);
   }
 
-  const inputMessages = normalizeInputMessages(
-    payload.input ?? payload.message ?? payload.messages ?? null,
-  );
-  const sessionMessages = Array.isArray(sessionData.sessionMessages)
-    ? [...sessionData.sessionMessages]
-    : [];
-
-  if (inputMessages.length > 0) {
-    sessionMessages.push(...inputMessages);
-    sessionData.sessionMessages = sessionMessages;
-    await sessionData.save();
-  }
-
-  if (sessionMessages.length === 0) {
-    throw buildError('Session has no messages to complete.', 400);
-  }
-
+  const Sessions = dependencies.VideoSession || VideoSession;
+  const identity = assistantRequestIdentity(userId, `session:${sessionId}:${scopedExternalUser?._id || 'internal'}`, payload, idempotencyKey);
   const selectedAssistantModel = normalizeInferenceModel(user.selectedAssistantModel);
-  const selectedAssistantModelAuthorization = normalizeModelAuthorization(
-    user.selectedAssistantModelAuthorization,
-  );
   const model = resolveAssistantModelName(user);
-  const systemPrompt = getAssistantSystemPromptForContext({
-    user,
-    externalUser: scopedExternalUser,
-  });
-  const usesOpenAIResponses =
-    !isClaudeOpus55Model(selectedAssistantModel) &&
-    !isGeminiInferenceModel(selectedAssistantModel) &&
-    !isKimiInferenceModel(selectedAssistantModel) &&
-    !isQwenInferenceModel(selectedAssistantModel);
-  const previousResponseId = usesOpenAIResponses
-    ? resolvePreviousResponseId({ payload, sessionMessages, inputMessages })
-    : null;
-  const responseRequest = buildResponsesRequest({
-    model,
-    inferenceModel: selectedAssistantModel,
-    inputMessages: buildResponsesInputMessages({
-      systemPrompt,
-      sessionMessages,
-      inputMessages,
-      previousResponseId,
-    }),
-    payload,
-    previousResponseId,
-  });
-
-  let response;
   const timeoutMs = getAssistantCompletionTimeoutMs(payload);
-  try {
-    response = await createAssistantResponse(
-      responseRequest,
-      selectedAssistantModel,
-      selectedAssistantModelAuthorization,
-      timeoutMs,
-    );
-  } catch (error) {
-    console.error('[api][assistant][completion] OpenAI request failed', {
-      userId,
-      sessionId,
-      model,
-      selectedAssistantModel,
-      selectedAssistantModelAuthorization,
-      openaiError: summarizeOpenAIError(error),
-    });
-    throw error;
-  }
+  return runAssistantRequest({
+    ...identity, userId, scope: 'assistant_completion', model,
+    context: { sessionId, externalUserId: scopedExternalUser?._id || null, apiKeyUsage: getCurrentAPIKeyUsageContext() },
+    store: dependencies.store || assistantBillingStore, leaseMs: timeoutMs + 60000,
+    admit: () => (dependencies.admit || admitAssistantRequest)(userId, scopedExternalUser),
+    generate: async (requestId) => {
+      const inputMessages = normalizeInputMessages(payload.input ?? payload.message ?? payload.messages ?? null)
+        .map((message, index) => ({ ...message, id: message.id || `assistant-input:${requestId}:${index}` }));
+      const latest = await Sessions.findById(sessionId);
+      if (!latest) throw buildError('Session not found.', 404);
+      const sessionMessages = Array.isArray(latest.sessionMessages) ? [...latest.sessionMessages] : [];
+      const newMessages = inputMessages.filter(message => !sessionMessages.some(existing => existing.id === message.id));
+      if (newMessages.length) {
+        await Sessions.updateOne({ _id: sessionId }, { $push: { sessionMessages: { $each: newMessages } } });
+        sessionMessages.push(...newMessages);
+      }
+      if (!sessionMessages.length) throw buildError('Session has no messages to complete.', 400);
+      const systemPrompt = getAssistantSystemPromptForContext({ user, externalUser: scopedExternalUser });
+      const usesOpenAIResponses = !isClaudeOpus55Model(selectedAssistantModel) &&
+        !isGeminiInferenceModel(selectedAssistantModel) && !isKimiInferenceModel(selectedAssistantModel) &&
+        !isQwenInferenceModel(selectedAssistantModel);
+      const previousResponseId = usesOpenAIResponses
+        ? resolvePreviousResponseId({ payload, sessionMessages, inputMessages }) : null;
+      const responseRequest = buildResponsesRequest({ model, inferenceModel: selectedAssistantModel,
+        inputMessages: buildResponsesInputMessages({ systemPrompt, sessionMessages, inputMessages, previousResponseId }),
+        payload, previousResponseId });
+      return (dependencies.createCompletion || createAssistantResponse)(responseRequest, selectedAssistantModel,
+        normalizeModelAuthorization(user.selectedAssistantModelAuthorization), timeoutMs, requestId);
+    },
+    charge: (credits, context) => (dependencies.charge || chargeAssistantRequest)(userId, credits, {
+      ...context, externalUser: scopedExternalUser, source: 'assistant_api_completion', metadata: { sessionId, apiKeyUsage: context.requestContext?.apiKeyUsage },
+    }),
+    finalize: (...args) => finalizeAssistantSession(Sessions, sessionId, ...args),
+  });
+}
 
-  const outputText = extractResponsesOutputText(response);
-  const billing =
-    calculateAssistantCreditsFromUsage({
-      model: response?.model || model,
-      usage: response?.usage,
-    });
-  const creditsCharged =
-    billing.credits ||
-    calculateLegacyAssistantCredits({
-      inputMessages: responseRequest.input,
-      outputText,
-      inferenceModel: selectedAssistantModel,
-    });
-
-  let chargeResult;
-  try {
-    if (scopedExternalUser) {
-      chargeResult = await deductExternalUserCredits({
-        externalUser: scopedExternalUser,
-        credits: creditsCharged,
-      });
-    } else {
-      chargeResult = await deductGenerationCredits(userId, creditsCharged, {
-        source: 'assistant_api_completion',
-        metadata: {
-          requestType: 'API',
-          category: 'assistant',
-          sessionId,
-          selectedAssistantModel,
-          selectedAssistantModelAuthorization,
-          model: response?.model || model,
-          pricingMultiplier:
-            billing.pricingMultiplier ?? DEFAULT_ASSISTANT_PRICING_MULTIPLIER,
-          costUsd: billing.costUsd ?? null,
-          usage: billing.usage ?? null,
-          creditsCharged,
-        },
-      });
-    }
-  } catch (error) {
-    if (error?.code === 'INSUFFICIENT_CREDITS') {
-      throw error;
-    }
-    throw error;
-  }
-
-  sessionData.sessionMessages = [
-    ...sessionMessages,
-    buildAssistantSessionMessage(response),
-  ];
-  sessionData.sessionMessageGenerationPending = false;
-  sessionData.sessionMessageGenerationError = null;
-  await sessionData.save();
-
-  return {
-    openaiResponse: response,
-    creditsCharged,
-    remainingCredits: chargeResult?.remainingCredits ?? null,
-  };
+export async function finalizeAssistantSession(Sessions, sessionId, response, billing, debit, requestId) {
+  const message = { ...buildAssistantSessionMessage(response), id: `assistant-output:${requestId}`,
+    creditsCharged: billing.credits };
+  await Sessions.updateOne({ _id: sessionId, 'sessionMessages.id': { $ne: message.id } }, {
+    $push: { sessionMessages: message },
+    $set: { sessionMessageGenerationPending: false, sessionMessageGenerationError: null },
+  });
+  return { openaiResponse: response, creditsCharged: billing.credits, remainingCredits: debit.remainingCredits ?? null };
 }
 
 function getSessionIdFromPayload(payload = {}) {
@@ -295,7 +214,7 @@ function resolveAssistantModelName(user) {
 }
 
 function normalizeModelAuthorization(value) {
-  const normalized = normalizeString(value).toLowerCase().replace(/[_\s]+/g, '-');
+  const normalized = (normalizeString(value) || '').toLowerCase().replace(/[_\s]+/g, '-');
   return ['native', 'deployed'].includes(normalized) ? normalized : '';
 }
 
@@ -380,10 +299,10 @@ export function buildResponsesRequest({
     body.max_output_tokens = parsedMaxOutputTokens;
   }
 
-  if (model !== 'gpt-6.1-sol' && payload.temperature !== undefined) {
+  if (model !== 'gpt-6-astra' && payload.temperature !== undefined) {
     body.temperature = payload.temperature;
   }
-  if (model !== 'gpt-6.1-sol' && payload.top_p !== undefined) {
+  if (model !== 'gpt-6-astra' && payload.top_p !== undefined) {
     body.top_p = payload.top_p;
   }
   if (payload.text && typeof payload.text === 'object') {
@@ -495,6 +414,7 @@ async function createAssistantResponse(
   selectedAssistantModel = DEFAULT_ASSISTANT_MODEL,
   selectedAssistantModelAuthorization = '',
   timeoutMs = DEFAULT_ASSISTANT_COMPLETION_TIMEOUT_MS,
+  assistantBillingRequestId,
 ) {
   if (shouldUseCompatibleAssistantRouting(
     selectedAssistantModel,
@@ -512,6 +432,8 @@ async function createAssistantResponse(
         ? { authorization: selectedAssistantModelAuthorization }
         : {}),
       timeout: timeoutMs,
+      assistantBillingRequestId,
+      externalMaxRetries: 0,
       maxRetries: 0,
       externalPolling: selectedAssistantModelAuthorization === 'deployed',
       externalPollTimeoutMs: timeoutMs,
@@ -614,17 +536,8 @@ function normalizeChatCompletionToResponses(chatResponse) {
         ],
       },
     ],
-    usage: {
-      input_tokens: Number(chatResponse?.usage?.prompt_tokens) || 0,
-      input_tokens_details: {
-        cached_tokens: Number(chatResponse?.usage?.prompt_tokens_details?.cached_tokens) || 0,
-      },
-      output_tokens: Number(chatResponse?.usage?.completion_tokens) || 0,
-      output_tokens_details: {
-        reasoning_tokens: Number(chatResponse?.usage?.completion_tokens_details?.reasoning_tokens) || 0,
-      },
-      total_tokens: Number(chatResponse?.usage?.total_tokens) || 0,
-    },
+    samsarBilling: chatResponse?.samsarBilling,
+    usage: normalizeAssistantResponseUsage(chatResponse?.usage),
   };
 }
 

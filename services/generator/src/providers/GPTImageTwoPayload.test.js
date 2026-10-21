@@ -66,3 +66,11 @@ test('normalizes native and Fal results to one shared response contract', () => 
     preserveOriginalForAiVideo: true,
   });
 });
+
+
+test('native image usage survives output normalization for completion billing', () => {
+  const imageBillingReceipt = { adapter: 'openai', model: 'gpt-image-2.5-sunburst',
+    usage: { input_tokens: 10, input_tokens_details: { text_tokens: 10, image_tokens: 0 }, output_tokens: 1000 } };
+  const output = normalizeGPTImageTwoResult({ image: 'generated.png', width: 1024, height: 1024, imageBillingReceipt });
+  assert.deepEqual(output.imageBillingReceipt, imageBillingReceipt);
+});

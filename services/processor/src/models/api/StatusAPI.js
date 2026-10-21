@@ -1,4 +1,5 @@
 import VideoSession from '../../schema/VideoSession.js';
+import { readVideoModelCreditTotal } from './VideoModelStatusBilling.js';
 import GeneratedImage from '../../schema/generations/GeneratedImage.js';
 import { buildSecureMediaDeliveryUrl } from '../AWS.js';
 import { resolveDockerLocalPublicAssetBaseUrl } from '../../consts/DockerDeploymentUrls.js';
@@ -64,6 +65,8 @@ const VIDEO_STATUS_DETAILED_BRANCH_PROJECTION = [
 ];
 
 export const VIDEO_STATUS_SESSION_PROJECTION = [
+  'userId',
+  'videoBillingPolicy',
   'remoteURL',
   'videoLink',
   'narrativeType',
@@ -2609,7 +2612,8 @@ export async function buildVideoStatusResponse({
       && Boolean(completionUrl)
       && (!branchedSession || allBranchResultsCompleted);
 
-    const expressGenerationCreditCharges = sessionSnapshot?.expressGenerationCreditCharges || {
+    const modelCredits = await readVideoModelCreditTotal(sessionSnapshot);
+    const expressGenerationCreditCharges = modelCredits !== null ? { totalCharged: modelCredits, stages: {} } : sessionSnapshot?.expressGenerationCreditCharges || {
       totalCharged: 0,
       stages: {},
     };

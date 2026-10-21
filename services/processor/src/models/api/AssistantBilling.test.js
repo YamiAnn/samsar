@@ -14,8 +14,8 @@ test('Claude assistant usage uses its configured model price for native and Open
     });
     assert.equal(result.pricingModel, 'claude-opus-5.5');
     assert.equal(result.pricingMultiplier, 1.2);
-    assert.equal(result.costUsd, 20.9074);
-    assert.equal(result.credits, 2508.888);
+    assert.equal(result.costUsd, 24);
+    assert.equal(result.credits, 2880);
   }
 });
 
@@ -36,7 +36,7 @@ test('bills GPT 6.1 Sol assistant usage at standard context rates', () => {
   });
 });
 
-test('bills GPT 5.6 Luna metadata usage with the standard 50 percent markup', () => {
+test('bills GPT 5.6 Luna metadata usage with the standard 20 percent markup', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'gpt-5.6-luna',
     usage: {
@@ -48,8 +48,8 @@ test('bills GPT 5.6 Luna metadata usage with the standard 50 percent markup', ()
 
   assert.equal(result.pricingModel, 'gpt-5.6-luna');
   assert.equal(result.costUsd, 0.142);
-  assert.equal(result.credits, 21.3);
-  assert.equal(result.pricingMultiplier, 1.5);
+  assert.equal(result.credits, 17.04);
+  assert.equal(result.pricingMultiplier, 1.2);
   assert.deepEqual(result.tokenPricingUsdPerMillion, {
     input: 1,
     cachedInput: 0.1,
@@ -76,18 +76,18 @@ test('bills Qwen 3.8 Max usage at the Max rate', () => {
     usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
   });
 
-  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.5);
+  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.2);
   assert.equal(result.pricingModel, 'qwen3.8-max');
-  assert.equal(result.costUsd, 10);
-  assert.equal(result.credits, 1_500);
+  assert.equal(result.costUsd, 8);
+  assert.equal(result.credits, 960);
   assert.deepEqual(result.tokenPricingUsdPerMillion, {
-    input: 2.5,
-    cachedInput: 2.5,
-    output: 7.5,
+    input: 2,
+    cachedInput: 0.25,
+    output: 6,
   });
 });
 
-test('bills Qwen 3.8 Max cached tokens at the regular input rate', () => {
+test('bills Qwen 3.8 Max cached tokens at the discounted input rate', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'qwen3.8-max',
     usage: {
@@ -97,9 +97,9 @@ test('bills Qwen 3.8 Max cached tokens at the regular input rate', () => {
     },
   });
 
-  assert.equal(result.costUsd, 2.5);
-  assert.equal(result.credits, 375);
-  assert.equal(result.tokenPricingUsdPerMillion.cachedInput, 2.5);
+  assert.equal(result.costUsd, 0.25);
+  assert.equal(result.credits, 30);
+  assert.equal(result.tokenPricingUsdPerMillion.cachedInput, 0.25);
 });
 
 test('prices provider-qualified OpenRouter model identifiers', () => {
@@ -189,7 +189,7 @@ test('historical Gemini 3.1 receipts retain their separate long-context rates', 
   assert.equal(result.costUsd, 3);
 });
 
-test('bills Kimi K3 cached, uncached, and reasoning-inclusive output at 1.5x native cost', () => {
+test('bills Kimi K3 cached, uncached, and reasoning-inclusive output at 1.2x native cost', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'kimi-k3',
     usage: {
@@ -200,10 +200,10 @@ test('bills Kimi K3 cached, uncached, and reasoning-inclusive output at 1.5x nat
     },
   });
 
-  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.5);
+  assert.equal(DEFAULT_ASSISTANT_PRICING_MULTIPLIER, 1.2);
   assert.equal(result.pricingModel, 'kimi-k3');
   assert.equal(result.costUsd, 3.96);
-  assert.equal(result.credits, 594);
+  assert.equal(result.credits, 475.2);
   assert.deepEqual(result.tokenPricingUsdPerMillion, {
     input: 3,
     cachedInput: 0.3,

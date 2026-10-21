@@ -143,6 +143,19 @@ function createBillingDependencies(harness, { bypassCredits, remainingCredits = 
   };
 }
 
+for (const stageKey of ['ai_video_generation', 'lip_sync_generation', 'sound_effect_generation']) {
+  test(`usage-billed reroll ${stageKey} cannot also incur a flat agent stage debit`, async () => {
+    const harness = createVideoSessionHarness({ _id: 'reroll', userId: 'owner',
+      videoBillingPolicy: 'adapter', expressGenerativeVideoModel: 'RUNWAYML', totalDuration: 10 });
+    const { dependencies, calls } = createBillingDependencies(harness, { bypassCredits: false });
+    const result = await chargeExpressVideoStageCredits({ sessionId: 'reroll', stageKey }, dependencies);
+    assert.equal(result.adapterBilled, true);
+    assert.equal(result.creditsCharged, 0);
+    assert.equal(calls.internalDebits.length, 0);
+    assert.equal(calls.externalOperations.length, 0);
+  });
+}
+
 test('standalone provider billing waives listener stage credits', () => {
   assert.equal(shouldBypassGenerationCredits({
     SAMSAR_DEPLOYMENT_EDITION: 'standalone',

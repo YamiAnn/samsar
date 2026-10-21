@@ -135,6 +135,8 @@ router.get('/status', validateAPIKeyAndUserId, async (req, res) => {
       requestId,
       userId: req.userId,
     });
+    if (response?.creditsCharged !== undefined) res.set('x-credits-charged', String(response.creditsCharged));
+    if (response?.remainingCredits != null) res.set('x-credits-remaining', String(response.remainingCredits));
 
     const responsePayload = stringifyJsonResponse(res, response);
     return sendStatusResponse({
@@ -733,7 +735,7 @@ router.post('/enhance', validateAPIKeyAndUserId, async (req, res) => {
       mode: 'NANOBANANA2EDIT',
     };
 
-    const response = await enhanceImage(payload);
+    const response = await enhanceImage({ ...payload, idempotencyKey: req.get?.('Idempotency-Key') || req.body?.client_request_id });
 
     if (response?.creditsCharged !== undefined) {
       res.set('x-credits-charged', response.creditsCharged.toString());
@@ -772,7 +774,7 @@ router.post('/remove_branding', validateAPIKeyAndUserId, async (req, res) => {
       mode: 'NANOBANANA2EDIT',
     };
 
-    const response = await removeBrandingFromImage(payload);
+    const response = await removeBrandingFromImage({ ...payload, idempotencyKey: req.get?.('Idempotency-Key') || req.body?.client_request_id });
 
     if (response?.creditsCharged !== undefined) {
       res.set('x-credits-charged', response.creditsCharged.toString());
@@ -839,7 +841,7 @@ async function handleTextToImageRequest(req, res) {
       userId: req.userId,
     };
 
-    const response = await generateTextToImage(payload);
+    const response = await generateTextToImage({ ...payload, idempotencyKey: req.get?.('Idempotency-Key') || req.body?.client_request_id });
 
     if (response?.creditsCharged !== undefined) {
       res.set('x-credits-charged', response.creditsCharged.toString());
@@ -917,7 +919,7 @@ async function handleAddImageSet(req, res) {
       mode: 'NANOBANANA2EDIT',
     };
 
-    const response = await updateImageSet(payload);
+    const response = await updateImageSet({ ...payload, idempotencyKey: req.get?.('Idempotency-Key') || req.body?.client_request_id });
 
     if (response?.creditsCharged !== undefined) {
       res.set('x-credits-charged', response.creditsCharged.toString());
