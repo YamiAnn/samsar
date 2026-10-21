@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "node --check index.js && rg --files -0 -g \"*.js\" src | xargs -0 -n 50 node --check",
-    "test": "node --test $(rg --files src -g '*test.js')",
+    "test": "node --test $(rg --files src -g '*test.js' -g '!src/ExpressListener.test.js' -g '!src/Transcript.test.js' -g '!src/ai_video/utils/ImageRenderUtils.test.js')",
+    "test:canvas": "node --test src/ExpressListener.test.js src/Transcript.test.js src/ai_video/utils/ImageRenderUtils.test.js",
+    "test:all": "npm test && npm run test:canvas",
     "test:frame-drift": "node --test src/utils/FrameClock.test.js src/video/FrameDrift.test.js"
   },
   "author": "",
