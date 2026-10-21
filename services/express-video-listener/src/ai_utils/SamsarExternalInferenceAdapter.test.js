@@ -129,7 +129,7 @@ test('Samsar stays ahead of OpenRouter for Qwen in Docker', () => {
     SAMSAR_API_KEY: 'samsar-key',
   }, () => {
     assert.equal(resolveConfiguredInferenceProvider('QWEN3.8'), DOCKER_INFERENCE_PROVIDER.SAMSAR);
-    for (const model of ['gemini-3.1-pro', 'gpt-6.1-sol']) {
+    for (const model of ['gemini-4-argon', 'gpt-6.1-sol']) {
       assert.equal(resolveConfiguredInferenceProvider(model), DOCKER_INFERENCE_PROVIDER.OPENROUTER);
     }
     assert.equal(getOpenRouterModelForInferenceRequest({
@@ -244,7 +244,7 @@ test('the existing GPT and Gemini native-credential decisions are unchanged', ()
     OPENAI_API_KEY: 'openai-key',
   }, () => {
     assert.equal(shouldUseSamsarExternalInference({ model: 'gpt-6.1-sol' }), false);
-    assert.equal(shouldUseSamsarExternalInference({ model: 'gemini-3.1-pro' }), true);
+    assert.equal(shouldUseSamsarExternalInference({ model: 'gemini-4-argon' }), true);
   });
 });
 
@@ -296,7 +296,7 @@ test('an explicit native authorization falls back to Samsar when its provider ke
       authorization: 'native',
     }), true);
     assert.equal(shouldUseSamsarExternalInference({
-      model: 'gemini-3.1-pro',
+      model: 'gemini-4-argon',
       authorization: 'native',
     }), true);
     assert.equal(shouldUseSamsarExternalInference({
@@ -367,7 +367,7 @@ test('Qwen OpenRouter applies Qwen 3.8 Max routing with bounded settings', async
     plugins: [{ id: 'existing-plugin' }],
   });
   await createOpenRouterChatCompletion({
-    model: 'gemini-3.1-pro',
+    model: 'gemini-4-argon',
     messages: [{ role: 'user', content: 'hello' }],
   });
   await createOpenRouterChatCompletion({

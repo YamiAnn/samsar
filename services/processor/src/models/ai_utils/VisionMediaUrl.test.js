@@ -568,7 +568,7 @@ test('VisionUtils keeps the canonical mounted reference for native Gemini inline
 
   const result = await getDescriptionForImageToCreateImageList(
     sourceReference,
-    'gemini-3.1-pro',
+    'gemini-4-argon',
     {
       resolveImageUrl: async () => {
         resolverCalled = true;
@@ -632,7 +632,7 @@ test('AdUtils keeps mounted image references canonical for native Gemini inlineD
   let resolverCalled = false;
   let capturedPayload;
 
-  const result = await processThemesFromStartImages(sourceReferences, 'gemini-3.1-pro', {
+  const result = await processThemesFromStartImages(sourceReferences, 'gemini-4-argon', {
     resolveImageUrl: async () => {
       resolverCalled = true;
       throw new Error('Native Gemini must not create a public media tunnel.');

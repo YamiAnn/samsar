@@ -41,7 +41,7 @@ export const modalities = [
 ];
 
 const inference = new Map(INFERENCE_MODEL_OPTIONS.filter(row => row.exposeInCatalog !== false).map(row => [row.availabilityModel, row]));
-const native = { 'gpt-6.1-sol': 'openai', 'claude-opus-5.5': 'anthropic', 'gemini-3.1-pro': 'googleCloud', KIMIK3: 'kimi', 'QWEN3.8': 'alibabaCloud' };
+const native = { 'gpt-6.1-sol': 'openai', 'claude-opus-5.5': 'anthropic', 'gemini-4-argon': 'googleCloud', KIMIK3: 'kimi', 'QWEN3.8': 'alibabaCloud' };
 const notes = {
   'gpt-6.1-sol': 'Current public key. Older setup files may contain gpt-5.6-sol or gpt-6-astra; the processor normalizes that alias. GenBlaze still requires an exact validated mapping.',
   KIMIK3: 'Setup key KIMIK3; inference requests use kimi-k3. Native Kimi first, then Samsar; OpenRouter is not in this chain.',

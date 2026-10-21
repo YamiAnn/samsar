@@ -360,7 +360,7 @@ export const ASSISTANT_MODEL_PRICES = [
     ]
   },
   {
-    key: "gemini-3.1-pro",
+    key: "gemini-4-argon",
     prices: [
       {
         operationType: "words",

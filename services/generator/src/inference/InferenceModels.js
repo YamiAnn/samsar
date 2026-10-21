@@ -3,8 +3,8 @@ export const GPT_56_SOL_XHIGH_INFERENCE_MODEL = 'gpt-6.1-sol-xhigh';
 export const DEFAULT_INFERENCE_MODEL = GPT_56_SOL_INFERENCE_MODEL;
 export const GPT_56_SOL_REASONING_EFFORT = 'high';
 export const GPT_56_SOL_XHIGH_REASONING_EFFORT = 'xhigh';
-export const GEMINI_31_PRO_INFERENCE_MODEL = 'gemini-3.1-pro';
-export const DEFAULT_GEMINI_31_PRO_VERTEX_MODEL = 'gemini-3.1-pro-preview';
+export const GEMINI_4_ARGON_INFERENCE_MODEL = 'gemini-4-argon';
+export const DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL = 'gemini-4-argon';
 export const QWEN_38_INFERENCE_MODEL = 'QWEN3.8';
 export const DEFAULT_QWEN_38_MAX_MODEL = 'qwen3.8-max';
 export const KIMI_K3_INFERENCE_MODEL = 'kimi-k3';
@@ -13,21 +13,19 @@ export const CLAUDE_OPUS_55_INFERENCE_MODEL = 'claude-opus-5.5';
 export const ANTHROPIC_OPUS_55_PROVIDER_MODEL = 'claude-opus-5-5';
 
 const GEMINI_ALIASES = new Set([
-  GEMINI_31_PRO_INFERENCE_MODEL,
-  'gemini-3.1-pro-preview',
-  'gemini-3-pro',
-  'gemini-3-pro-preview',
+  GEMINI_4_ARGON_INFERENCE_MODEL,
+  'gemini-4',
+  'gemini4',
+  'gemini 4',
+  'gemini 4 argon',
+  'google/gemini-4-argon',
 ]);
 
 const GEMINI_ALIAS_TOKENS = new Set([
-  'GEMINI31PRO',
-  'GEMINI31PROPREVIEW',
-  'GEMINI3PRO',
-  'GEMINI3PROPREVIEW',
-  'GOOGLEGEMINI31PRO',
-  'GOOGLEGEMINI31PROPREVIEW',
-  'GOOGLEGEMINI3PRO',
-  'GOOGLEGEMINI3PROPREVIEW',
+  'GEMINI4',
+  'GEMINI4ARGON',
+  'GOOGLEGEMINI4',
+  'GOOGLEGEMINI4ARGON',
 ]);
 
 const QWEN_38_ALIASES = new Set([
@@ -69,7 +67,7 @@ function normalizeAliasToken(value) {
   return normalizeString(value).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 }
 
-function isGemini31ProAlias(value) {
+function isGeminiArgonAlias(value) {
   const normalized = normalizeString(value).toLowerCase();
   return GEMINI_ALIASES.has(normalized) || GEMINI_ALIAS_TOKENS.has(normalizeAliasToken(value));
 }
@@ -106,8 +104,8 @@ export function normalizeInferenceModel(value) {
       ? GPT_56_SOL_XHIGH_INFERENCE_MODEL
       : DEFAULT_INFERENCE_MODEL;
   }
-  if (isGemini31ProAlias(value)) {
-    return GEMINI_31_PRO_INFERENCE_MODEL;
+  if (isGeminiArgonAlias(value)) {
+    return GEMINI_4_ARGON_INFERENCE_MODEL;
   }
   if (isQwen38Alias(value)) {
     return QWEN_38_INFERENCE_MODEL;
@@ -130,7 +128,7 @@ export function getGPT56SolReasoningEffort(model, requestedEffort = null) {
 
 export function isGeminiInferenceModel(value) {
   const normalized = normalizeString(value).toLowerCase();
-  return normalized.startsWith('gemini-') || isGemini31ProAlias(value);
+  return normalized.startsWith('gemini-') || isGeminiArgonAlias(value);
 }
 
 export function isQwenInferenceModel(value) {
@@ -140,7 +138,7 @@ export function isQwenInferenceModel(value) {
 export function normalizeGeminiProviderModel(value) {
   const normalized = normalizeString(value).toLowerCase();
   if (!normalized) return '';
-  return isGemini31ProAlias(value) ? DEFAULT_GEMINI_31_PRO_VERTEX_MODEL : normalized;
+  return isGeminiArgonAlias(value) ? DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL : normalized;
 }
 
 export function getProviderModelForInferenceModel(value) {
@@ -154,9 +152,9 @@ export function getProviderModelForInferenceModel(value) {
     }
 
     return (
-      normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_31_PRO_MODEL) ||
+      normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_4_ARGON_MODEL) ||
       normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_PRO_MODEL) ||
-      DEFAULT_GEMINI_31_PRO_VERTEX_MODEL
+      DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL
     );
   }
   if (isQwenInferenceModel(value)) {

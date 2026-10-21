@@ -24,7 +24,7 @@ test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.5x', () => 
     {
       stage: 'narrative_generation',
       attempt: 2,
-      model: 'gemini-3.1-pro',
+      model: 'gemini-4-argon',
       provider: 'google',
       usageMetadata: {
         promptTokenCount: 100_000,
@@ -45,13 +45,13 @@ test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.5x', () => 
         completion_tokens_details: { reasoning_tokens: 2_000 },
       },
     },
-  ]);
+  ], { pricingTimestampMs: Date.UTC(2026, 10, 21) });
 
   assert.equal(NARRATIVE_PRICING_MULTIPLIER, 1.5);
-  assert.equal(result.underlyingCostUsd, 1.21);
-  assert.equal(result.costUsd, 1.21);
-  assert.equal(result.underlyingCredits, 121);
-  assert.equal(result.credits, 181.5);
+  assert.equal(result.underlyingCostUsd, 1.157);
+  assert.equal(result.costUsd, 1.157);
+  assert.equal(result.underlyingCredits, 115.7);
+  assert.equal(result.credits, 173.55);
   assert.equal(result.pricingMultiplier, 1.5);
   assert.equal(result.creditsPerDollar, 100);
   assert.deepEqual(result.usage, {
@@ -62,11 +62,11 @@ test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.5x', () => 
   });
   assert.deepEqual(
     result.receipts.map((receipt) => receipt.underlyingCostUsd),
-    [0.262, 0.398, 0.55],
+    [0.262, 0.345, 0.55],
   );
   assert.deepEqual(
     result.receipts.map((receipt) => receipt.underlyingCredits),
-    [26.2, 39.8, 55],
+    [26.2, 34.5, 55],
   );
   assert.deepEqual(result.receipts[1].usage, {
     inputTokens: 100_000,

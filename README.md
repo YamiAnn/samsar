@@ -364,7 +364,7 @@ The [complete model matrix](pages/model-matrix.md) lists **all 46 model keys in 
 
 | Modality | Models in the deployment registry | Explore and build |
 | --- | --- | --- |
-| Inference & vision | GPT 6.1 Sol, Claude Opus 5.5, Gemini 3.1 Pro, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
+| Inference & vision | GPT 6.1 Sol, Claude Opus 5.5, Gemini 4 Argon, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
 | Image generation | GPTImage 2.5, Seedream 5 Pro, Nano Banana 2 / Pro, Qwen Image 3.0 Pro, Wan 2.7 Pro | [Matrix](pages/model-matrix.md#image) · [Image API](https://docs.samsar.one/image-api) |
 | Image editing | GPTImage 2.5 Edit, Nano Banana 2 / Pro Edit, BRIA Eraser / GenFill | [Matrix](pages/model-matrix.md#image-edit) · [Edit API](https://docs.samsar.one/v2#v2-image-edit-routes) |
 | Video generation | Runway; Veo 3.1 text / fast / I2V / first-last-frame; Cosmos 3; Seedance 1.5 / 2.0 / 2.5; Kling 3 / 1.6 / 2.1 variants; Hailuo; Happy Horse 1.1 | [Every video key](pages/model-matrix.md#video) · [Video API](https://docs.samsar.one/video) |

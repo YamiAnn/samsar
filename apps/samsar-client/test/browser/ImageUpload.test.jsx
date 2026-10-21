@@ -13,10 +13,15 @@ function svgFile(name = 'wide.svg', width = 800, height = 400) {
   return new File([`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="teal"/></svg>`], name, { type: 'image/svg+xml' });
 }
 
+function fileTransfer(files = []) {
+  const transfer = new DataTransfer();
+  for (const file of files) transfer.items.add(file);
+  return transfer;
+}
+
 function choose(files) {
-  // File selection is dispatched with real File objects so browser FileReader,
-  // image decoding and object URLs execute, without an external media server.
-  fireEvent.change(document.querySelector('#image-upload-input'), { target: { files } });
+  // Chromium requires a native FileList for an input's files property.
+  fireEvent.change(document.querySelector('#image-upload-input'), { target: { files: fileTransfer(files).files } });
 }
 
 describe('image and video upload dialog', () => {
@@ -97,8 +102,11 @@ describe('image and video upload dialog', () => {
     await expect.element(page.getByText('Drop now', { exact: true })).toBeVisible();
     fireEvent.dragLeave(zone);
     await expect.element(page.getByText('Click or drag', { exact: true })).toBeVisible();
+    const transfer = fileTransfer([svgFile()]);
     const clearData = vi.fn();
-    fireEvent.drop(zone, { dataTransfer: { files: [svgFile()], clearData } });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: { files: transfer.files, clearData } });
+    fireEvent(zone, drop);
     await waitFor(() => expect(uploaded).toHaveBeenCalledOnce());
     expect(clearData).toHaveBeenCalledOnce();
   });
@@ -107,9 +115,14 @@ describe('image and video upload dialog', () => {
     const uploaded = vi.fn();
     const { container } = mount({ setUploadURL: uploaded });
     const zone = container.querySelector('.upload-container');
-    fireEvent.paste(zone, { clipboardData: { items: [{ type: 'text/plain', getAsFile: () => null }, { type: 'image/png', getAsFile: () => null }] } });
+    const paste = (items) => {
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: { items } });
+      fireEvent(zone, event);
+    };
+    paste([{ type: 'text/plain', getAsFile: () => null }]);
     expect(uploaded).not.toHaveBeenCalled();
-    fireEvent.paste(zone, { clipboardData: { items: [{ type: 'image/svg+xml', getAsFile: () => svgFile() }] } });
+    paste([{ type: 'image/svg+xml', getAsFile: () => svgFile() }]);
     await waitFor(() => expect(uploaded).toHaveBeenCalledOnce());
   });
 

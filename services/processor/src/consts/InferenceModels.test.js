@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import {
   DEFAULT_INFERENCE_MODEL,
-  DEFAULT_GEMINI_31_PRO_VERTEX_MODEL,
-  GEMINI_31_PRO_INFERENCE_MODEL,
+  DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL,
+  GEMINI_4_ARGON_INFERENCE_MODEL,
   GPT_56_SOL_XHIGH_INFERENCE_MODEL,
   GPT_56_SOL_REASONING_EFFORT,
   INFERENCE_MODEL_KEYS,
@@ -20,6 +20,7 @@ import {
   getPublicationMetadataInferenceSettings,
   getProviderModelForInferenceModel,
   isOpenAIInferenceModel,
+  isGeminiArgonProviderModel,
   isKimiInferenceModel,
   isQwenInferenceModel,
   normalizeGeminiProviderModel,
@@ -72,33 +73,36 @@ test('uses the session inference provider for publication metadata', () => {
     model: 'gpt-6.1-sol',
     reasoning: { effort: 'xhigh' },
   });
-  assert.deepEqual(getPublicationMetadataInferenceSettings('gemini-3.1-pro'), {
-    model: 'gemini-3.1-pro',
+  assert.deepEqual(getPublicationMetadataInferenceSettings('gemini-4-argon'), {
+    model: 'gemini-4-argon',
   });
   assert.deepEqual(getPublicationMetadataInferenceSettings('QWEN3.8'), {
     model: 'QWEN3.8',
   });
 });
 
-test('normalizes Gemini 3.1 Pro assistant model aliases to the current Vertex model', () => {
-  assert.equal(INFERENCE_MODEL_KEYS.GEMINI_31_PRO, 'gemini-3.1-pro');
+test('normalizes Gemini 4 Argon assistant model aliases to the current Vertex model', () => {
+  assert.equal(INFERENCE_MODEL_KEYS.GEMINI_4_ARGON, 'gemini-4-argon');
   assert.equal(
-    INFERENCE_PROVIDER_MODEL_KEYS[INFERENCE_MODEL_KEYS.GEMINI_31_PRO],
-    DEFAULT_GEMINI_31_PRO_VERTEX_MODEL,
+    INFERENCE_PROVIDER_MODEL_KEYS[INFERENCE_MODEL_KEYS.GEMINI_4_ARGON],
+    DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL,
   );
-  assert.equal(normalizeInferenceModel('gemini-3.1-pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini-3.1-pro-preview'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini-3-pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini-3-pro-preview'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('Gemini 3.1 Pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('GEMINI3.1'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini31pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('Google Gemini 3.1 Pro Preview'), GEMINI_31_PRO_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('Gemini 4 Argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('GEMINI4'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini4'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('Google Gemini 4 Argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
 
-  assert.equal(getProviderModelForInferenceModel('gemini-3.1-pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
-  assert.equal(normalizeGeminiProviderModel('gemini-3.1-pro-preview'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
-  assert.equal(normalizeGeminiProviderModel('gemini-3-pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
-  assert.equal(getProviderModelForInferenceModel('Gemini 3.1 Pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
+  assert.equal(getProviderModelForInferenceModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(normalizeGeminiProviderModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(normalizeGeminiProviderModel('gemini-4'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(getProviderModelForInferenceModel('Gemini 4 Argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(getProviderModelForInferenceModel('gemini-4-argon-20261013'), 'gemini-4-argon-20261013');
+  assert.equal(isGeminiArgonProviderModel('gemini-4-argon-20261013'), true);
+  assert.equal(isGeminiArgonProviderModel('gemini-4-argonish'), false);
 });
 
 test('normalizes Qwen aliases while selecting Qwen 3.8 Max by default', () => {

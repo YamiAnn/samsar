@@ -280,7 +280,7 @@ test('external completion limits do not leak into any native inference adapter',
 
     for (const model of [
       'gpt-6.1-sol',
-      'gemini-3.1-pro',
+      'gemini-4-argon',
       'QWEN3.8',
       'kimi-k3',
     ]) {

@@ -33,7 +33,7 @@ describe('password reset', () => {
   it('prefills the email from the link and keeps the initial form editable', async () => {
     mount();
     await expect.element(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
-    await expect.element(page.getByRole('textbox')).toHaveValue('jane@example.com');
+    await expect.element(page.getByRole('textbox', { name: 'Email', exact: true })).toHaveValue('jane@example.com');
     await expect.element(page.getByRole('button', { name: 'Reset password', exact: true })).toBeEnabled();
     await expect.element(page.getByRole('button', { name: 'Send new reset email' })).not.toBeInTheDocument();
   });
@@ -69,7 +69,7 @@ describe('password reset', () => {
     let resolveRequest;
     axios.post.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
     mount();
-    await page.getByRole('textbox').fill('other@example.com');
+    await page.getByRole('textbox', { name: 'Email', exact: true }).fill('other@example.com');
     await passwords(' new private secret ');
     await page.getByRole('button', { name: 'Reset password', exact: true }).click();
     await expect.element(page.getByRole('button', { name: 'Submitting...' })).toBeDisabled();

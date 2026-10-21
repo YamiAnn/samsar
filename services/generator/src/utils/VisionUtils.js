@@ -9,7 +9,7 @@ import { getAccessibleMediaUrlForProvider } from './MediaReferenceUtils.js';
 import { getCurrentEnvironment } from './Environment.js';
 import {
   DEFAULT_INFERENCE_MODEL,
-  GEMINI_31_PRO_INFERENCE_MODEL,
+  GEMINI_4_ARGON_INFERENCE_MODEL,
   KIMI_K3_INFERENCE_MODEL,
   QWEN_38_INFERENCE_MODEL,
   getDefaultUserInferenceModel,
@@ -117,7 +117,7 @@ function resolveVisionInferenceModel(userInferenceModel = getDefaultUserInferenc
     return KIMI_K3_INFERENCE_MODEL;
   }
   return isGeminiInferenceModel(userInferenceModel)
-    ? GEMINI_31_PRO_INFERENCE_MODEL
+    ? GEMINI_4_ARGON_INFERENCE_MODEL
     : normalizeInferenceModel(userInferenceModel || DEFAULT_INFERENCE_MODEL);
 }
 
@@ -454,6 +454,16 @@ export async function assignScoreForTheImage(
   const characterDefects = videoMode === 'grounded'
     ? 'Human characters have biologically implausible anatomy, extra or missing hands/fingers/limbs, partial bodies, distorted faces, or other visible defects'
     : 'Characters or central objects have visible defects such as incorrect anatomy, extra or missing limbs/fingers, partial bodies, distorted faces, malformed objects, or broken rendering';
+  const spatialPlacementDefects = videoMode === 'grounded'
+    ? 'Objects, creatures, or characters are unnaturally placed, spatially misaligned or imbalanced, physically inconsistent, incorrectly interacting with one another or their environment, or contextually wrong for the scene'
+    : 'Objects, creatures, or characters are unnaturally placed, physically inconsistent, incorrectly interacting with the environment, or contextually wrong for the scene';
+  const centralSubjectRule = videoMode === 'grounded'
+    ? ''
+    : '- The central subject is spatially misaligned, imbalanced, or unnaturally positioned relative to the scene.\n';
+  const styleMismatchRules = videoMode === 'grounded'
+    ? '- The described visual medium, style, or theme conflicts with the input prompt, expected visual scene context, or Theme. Apply a severe deduction and return a score from 0 to 10.'
+    : `- The image visual medium/style/theme does not match the requested prompt, expected visual scene context, or Theme. Apply a severe deduction when the description says or clearly implies a different medium/style or conflicts with the provided Theme; for example, if anime, animated, cel-shaded, manga, cartoon, or illustrated style is requested but the description says photorealistic, photographic, live-action, real-world photo, or not anime/cel-shaded, return a score from 0 to 10.
+- If description style conflicts with Theme, score near zero.`;
 
   const systemPrompt =
 `You are an image-scoring assistant. Score whether the generated image is appropriate as the frame layer image for the current ${sceneTypeLabel}.
@@ -461,18 +471,16 @@ ${themeContextSection}${scoringSourceText} Start from 100 and deduct points in p
 ${groundedInstruction}
 
 Deduct points when:
-- The scene theme, setting, style, cinematography, lighting, or ${contextDetails} do not match the prompt.
+- The scene ${videoMode === 'grounded' ? 'setting' : 'theme, setting, style'}, cinematography, lighting, or ${contextDetails} do not match the prompt.
 - Required subjects, actions, objects, relationships, ${importantDetails}.
 - Prompt-specified character attributes such as gender, race, ethnicity, age, identity, clothing, appearance, pose, or role do not match the image.
 - ${characterDefects}.
-- Objects, creatures, or characters are unnaturally placed, physically inconsistent, incorrectly interacting with the environment, or contextually wrong for the scene.
+- ${spatialPlacementDefects}.
 - Text visible in the image has spelling, grammar, content, or placement errors relative to the prompt.
 - For technical or diagram images, labels, equations, charts, axes, or UI text are rotated, garbled, unreadable, or incorrectly oriented relative to the image.
 ${groundedDeductionRules}- The image contains partial nudity or NSFW content.
-- The central subject is spatially misaligned, imbalanced, or unnaturally positioned relative to the scene.
-- Heavily penalize contextless detached hands or body parts.
-- The image visual medium/style/theme does not match the requested prompt, expected visual scene context, or Theme. Apply a severe deduction when the description says or clearly implies a different medium/style or conflicts with the provided Theme; for example, if anime, animated, cel-shaded, manga, cartoon, or illustrated style is requested but the description says photorealistic, photographic, live-action, real-world photo, or not anime/cel-shaded, return a score from 0 to 10.
-- If description style conflicts with Theme, score near zero.
+${centralSubjectRule}- Heavily penalize contextless detached hands or body parts.
+${styleMismatchRules}
 - The image does not visually cover the canvas because of black borders, empty margins, or letterboxing.
 - The image description says or clearly implies the visual content is rotated, sideways, upside down, turned 90 degrees, or only upright after rotating the image. Apply a severe deduction for this issue and return a score from 0 to 5.
 Return only a JSON object containing "score", a single integer between 0 and 100.`;

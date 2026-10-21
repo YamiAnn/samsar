@@ -91,7 +91,7 @@ test('standalone assistant requests use preference-aware routing without changin
   );
   assert.equal(
     shouldUseCompatibleAssistantRouting(
-      'gemini-3.1-pro',
+      'gemini-4-argon',
       '',
       { SAMSAR_DEPLOYMENT_EDITION: 'production' },
     ),

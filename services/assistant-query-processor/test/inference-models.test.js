@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import {
   DEFAULT_INFERENCE_MODEL,
-  DEFAULT_GEMINI_31_PRO_VERTEX_MODEL,
-  GEMINI_31_PRO_INFERENCE_MODEL,
+  DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL,
+  GEMINI_4_ARGON_INFERENCE_MODEL,
   GPT_56_SOL_INFERENCE_MODEL,
   GPT_56_SOL_REASONING_EFFORT,
   KIMI_K3_INFERENCE_MODEL,
@@ -37,7 +37,7 @@ test('defaults assistant inference to GPT 6.1 Sol', () => {
 
 test('keeps Gemini reasoning settings separate from the GPT 6.1 Sol default', () => {
   assert.equal(
-    getAssistantReasoningEffort('gemini-3.1-pro', {
+    getAssistantReasoningEffort('gemini-4-argon', {
       reasoningEffort: 'medium',
       effort: 'xhigh',
     }),
@@ -70,39 +70,39 @@ test('bills GPT 6.1 Sol usage at long-context rates above 272K input tokens', ()
   assert.equal(result.tokenPricingUsdPerMillion.longContextInputThreshold, 272_000);
 });
 
-test('normalizes Gemini 3.1 Pro label to the assistant inference model', () => {
-  assert.equal(normalizeInferenceModel('gemini-3.1-pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(DEFAULT_GEMINI_31_PRO_VERTEX_MODEL, 'gemini-3.1-pro-preview');
-  assert.equal(getProviderModelForInferenceModel('gemini-3.1-pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
+test('normalizes Gemini 4 Argon label to the assistant inference model', () => {
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL, 'gemini-4-argon');
+  assert.equal(getProviderModelForInferenceModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
 });
 
 test('maps stale Gemini 3 provider aliases to the current Vertex model', () => {
-  assert.equal(normalizeInferenceModel('gemini-3.1-pro-preview'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini-3-pro'), GEMINI_31_PRO_INFERENCE_MODEL);
-  assert.equal(normalizeInferenceModel('gemini-3-pro-preview'), GEMINI_31_PRO_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4'), GEMINI_4_ARGON_INFERENCE_MODEL);
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), GEMINI_4_ARGON_INFERENCE_MODEL);
 
-  assert.equal(normalizeGeminiProviderModel('gemini-3.1-pro-preview'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
-  assert.equal(normalizeGeminiProviderModel('gemini-3-pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
-  assert.equal(normalizeGeminiProviderModel('gemini-3-pro-preview'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
+  assert.equal(normalizeGeminiProviderModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(normalizeGeminiProviderModel('gemini-4'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
+  assert.equal(normalizeGeminiProviderModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
 });
 
 test('passes through explicit custom Gemini provider models', () => {
   assert.equal(
-    getProviderModelForInferenceModel('gemini-3.1-pro-preview-custom'),
-    'gemini-3.1-pro-preview-custom',
+    getProviderModelForInferenceModel('gemini-4-argon-custom'),
+    'gemini-4-argon-custom',
   );
 });
 
-test('uses the processor Gemini provider model for Gemini 3.1 Pro even with stale env override', () => {
-  const previousModel = process.env.GOOGLE_GEMINI_31_PRO_MODEL;
-  process.env.GOOGLE_GEMINI_31_PRO_MODEL = 'gemini-3.1-pro';
+test('uses the processor Gemini provider model for Gemini 4 Argon even with stale env override', () => {
+  const previousModel = process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
+  process.env.GOOGLE_GEMINI_4_ARGON_MODEL = 'gemini-4-argon';
   try {
-    assert.equal(getProviderModelForInferenceModel('gemini-3.1-pro'), DEFAULT_GEMINI_31_PRO_VERTEX_MODEL);
+    assert.equal(getProviderModelForInferenceModel('gemini-4-argon'), DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL);
   } finally {
     if (previousModel === undefined) {
-      delete process.env.GOOGLE_GEMINI_31_PRO_MODEL;
+      delete process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
     } else {
-      process.env.GOOGLE_GEMINI_31_PRO_MODEL = previousModel;
+      process.env.GOOGLE_GEMINI_4_ARGON_MODEL = previousModel;
     }
   }
 });

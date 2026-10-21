@@ -17,7 +17,7 @@ afterEach(() => {
   }
 });
 const rejected = Object.assign(new Error('Fal key rejected'), { code: 'SAMSAR_FAL_AUDIO_AUTH_REJECTED' });
-const payload = { _id: 'audio-1', status: 'INIT', submittedAdapter: 'fal', generationType: 'speech', ttsProvider: 'ELEVENLABS', prompt: 'Unchanged narration' };
+const payload = { _id: 'audio-1', status: 'INIT', submittedAdapter: 'fal', generationType: 'speech', ttsProvider: 'PLAYAI', prompt: 'Unchanged narration' };
 
 test('falls back once after a confirmed rejection and persists the adapter before submitting', async () => {
   const calls = [];
@@ -27,7 +27,7 @@ test('falls back once after a confirmed rejection and persists the adapter befor
       calls.push('samsar');
       assert.equal(next.prompt, payload.prompt);
       assert.equal(next.submittedAdapter, 'samsar');
-      assert.equal(resolveDockerSpeechProvider('ELEVENLABS', next), 'samsar');
+      assert.equal(resolveDockerSpeechProvider('PLAYAI', next), 'samsar');
       assert.equal(resolveDockerMusicProvider('ELEVENLABS_MUSIC', next), 'samsar');
       assert.equal(canFallbackAfterAudioAuthenticationRejection(next, rejected), false);
       return 'accepted';
@@ -114,4 +114,16 @@ test('requires an enabled standalone route and a Samsar credential', () => {
   delete process.env.SAMSAR_EXTERNAL_AUDIO_ENABLED;
   delete process.env.SAMSAR_API_KEY;
   assert.equal(canFallbackAfterAudioAuthenticationRejection(payload, rejected), false);
+});
+
+test('ElevenLabs speech stays on its Fal-only route after authentication rejection', async () => {
+  const elevenLabsPayload = { ...payload, ttsProvider: 'ELEVENLABS' };
+  assert.equal(resolveDockerSpeechProvider('ELEVENLABS', elevenLabsPayload), 'fal');
+  assert.equal(canFallbackAfterAudioAuthenticationRejection(elevenLabsPayload, rejected), false);
+  await assert.rejects(withAudioAuthenticationFallback(elevenLabsPayload,
+    async () => { throw rejected; },
+    async () => assert.fail('ElevenLabs must not fall back to Samsar'), {
+      audioGenerationModel: { async findOneAndUpdate() { assert.fail('must not move the job'); } },
+      recordUsage: async () => assert.fail('must not record a fallback'),
+    }), (error) => error === rejected);
 });

@@ -3,8 +3,8 @@ export const GPT_56_SOL_XHIGH_INFERENCE_MODEL = 'gpt-6.1-sol-xhigh';
 export const DEFAULT_INFERENCE_MODEL = GPT_56_SOL_INFERENCE_MODEL;
 export const GPT_56_SOL_REASONING_EFFORT = 'high';
 export const GPT_56_SOL_XHIGH_REASONING_EFFORT = 'xhigh';
-export const GEMINI_31_PRO_INFERENCE_MODEL = 'gemini-3.1-pro';
-export const DEFAULT_GEMINI_31_PRO_VERTEX_MODEL = 'gemini-3.1-pro-preview';
+export const GEMINI_4_ARGON_INFERENCE_MODEL = 'gemini-4-argon';
+export const DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL = 'gemini-4-argon';
 export const QWEN_38_INFERENCE_MODEL = 'QWEN3.8';
 export const DEFAULT_QWEN_38_MAX_MODEL = 'qwen3.8-max';
 export const KIMI_K3_INFERENCE_MODEL = 'kimi-k3';
@@ -12,10 +12,12 @@ export const KIMIK3 = 'KIMIK3';
 export const CLAUDE_OPUS_55_INFERENCE_MODEL = 'claude-opus-5.5';
 
 const GEMINI_ALIASES = new Set([
-  GEMINI_31_PRO_INFERENCE_MODEL,
-  'gemini-3.1-pro-preview',
-  'gemini-3-pro',
-  'gemini-3-pro-preview',
+  GEMINI_4_ARGON_INFERENCE_MODEL,
+  'gemini-4',
+  'gemini4',
+  'gemini 4',
+  'gemini 4 argon',
+  'google/gemini-4-argon',
 ]);
 
 const QWEN_38_ALIASES = new Set([
@@ -91,7 +93,7 @@ export function normalizeInferenceModel(value) {
       : DEFAULT_INFERENCE_MODEL;
   }
   if (GEMINI_ALIASES.has(normalized)) {
-    return GEMINI_31_PRO_INFERENCE_MODEL;
+    return GEMINI_4_ARGON_INFERENCE_MODEL;
   }
   if (isQwen38Alias(value)) {
     return QWEN_38_INFERENCE_MODEL;
@@ -114,7 +116,7 @@ export function getGPT56SolReasoningEffort(model, requestedEffort = null) {
 
 export function isGeminiInferenceModel(value) {
   const normalized = normalizeString(value).toLowerCase();
-  return normalized.startsWith('gemini-') || normalizeInferenceModel(normalized) === GEMINI_31_PRO_INFERENCE_MODEL;
+  return normalized.startsWith('gemini-') || normalizeInferenceModel(normalized) === GEMINI_4_ARGON_INFERENCE_MODEL;
 }
 
 export function isQwenInferenceModel(value) {
@@ -126,16 +128,16 @@ export function normalizeGeminiProviderModel(value) {
   if (!normalized) {
     return '';
   }
-  return GEMINI_ALIASES.has(normalized) ? DEFAULT_GEMINI_31_PRO_VERTEX_MODEL : normalized;
+  return GEMINI_ALIASES.has(normalized) ? DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL : normalized;
 }
 
 export function getProviderModelForInferenceModel(value) {
   if (normalizeInferenceModel(value) === CLAUDE_OPUS_55_INFERENCE_MODEL) return 'claude-opus-5-5';
   if (isGeminiInferenceModel(value)) {
     return (
-      normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_31_PRO_MODEL) ||
+      normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_4_ARGON_MODEL) ||
       normalizeGeminiProviderModel(process.env.GOOGLE_GEMINI_PRO_MODEL) ||
-      DEFAULT_GEMINI_31_PRO_VERTEX_MODEL
+      DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL
     );
   }
   if (isQwenInferenceModel(value)) {

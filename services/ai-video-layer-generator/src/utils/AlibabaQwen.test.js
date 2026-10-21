@@ -18,7 +18,7 @@ test('normalizes Qwen aliases to the canonical application setting', () => {
   assert.equal(isQwenInferenceModel('qwen3.8-max'), true);
   assert.equal(normalizeInferenceModel('Alibaba Cloud Qwen 3.8 Max'), 'QWEN3.8');
   assert.equal(normalizeInferenceModel('gpt-6.1-sol'), 'gpt-6.1-sol');
-  assert.equal(normalizeInferenceModel('gemini-3.1-pro'), 'gemini-3.1-pro');
+  assert.equal(normalizeInferenceModel('gemini-4-argon'), 'gemini-4-argon');
 });
 
 test('accepts all supported Alibaba Cloud API key aliases', () => {

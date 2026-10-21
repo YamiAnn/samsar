@@ -109,7 +109,7 @@ test('prices provider-qualified OpenRouter model identifiers', () => {
     pricingMultiplier: 1,
   });
   const gemini = calculateAssistantCreditsFromUsage({
-    model: 'google/gemini-3.1-pro-preview',
+    model: 'google/gemini-4-argon',
     usage: { input_tokens: 1_000, output_tokens: 100 },
     pricingMultiplier: 1,
   });
@@ -120,14 +120,14 @@ test('prices provider-qualified OpenRouter model identifiers', () => {
   });
 
   assert.equal(gpt.pricingModel, 'gpt-6.1-sol');
-  assert.equal(gemini.pricingModel, 'gemini-3.1-pro');
+  assert.equal(gemini.pricingModel, 'gemini-4-argon');
   assert.equal(qwen.pricingModel, 'qwen3.8-max');
   assert.ok(gpt.credits > 0);
   assert.ok(gemini.credits > 0);
   assert.ok(qwen.credits > 0);
 });
 
-test('does not silently price an unknown Gemini deployment as Gemini 3.1 Pro', () => {
+test('does not silently price an unknown Gemini deployment as Gemini 4 Argon', () => {
   const result = calculateAssistantCreditsFromUsage({
     model: 'google/gemini-2.5-flash',
     usage: { input_tokens: 1000, output_tokens: 100 },
@@ -137,6 +137,56 @@ test('does not silently price an unknown Gemini deployment as Gemini 3.1 Pro', (
   assert.equal(result.pricingModel, null);
   assert.equal(result.costUsd, 0);
   assert.equal(result.credits, 0);
+});
+
+test('versioned and provider-qualified Argon receipts use Gemini 4 billing', () => {
+  for (const model of ['gemini-4-argon-20261013', 'google/gemini-4-argon']) {
+    const result = calculateAssistantCreditsFromUsage({
+      model, usage: { input_tokens: 1000, output_tokens: 100 }, pricingMultiplier: 1,
+      pricingTimestampMs: Date.UTC(2026, 10, 30),
+    });
+    assert.equal(result.pricingModel, 'gemini-4-argon');
+    assert.ok(result.credits > 0);
+  }
+});
+
+test('Argon billing uses published global rates across the December 1 UTC boundary without a long-context surcharge', () => {
+  const usage = {
+    input_tokens: 300_000,
+    input_tokens_details: { cached_tokens: 100_000 },
+    output_tokens: 200_000,
+  };
+  const before = calculateAssistantCreditsFromUsage({
+    model: 'google/gemini-4-argon', usage, pricingMultiplier: 1,
+    pricingTimestampMs: Date.UTC(2026, 10, 30, 23, 59, 59, 999),
+  });
+  const after = calculateAssistantCreditsFromUsage({
+    model: 'google/gemini-4-argon', usage, pricingMultiplier: 1,
+    pricingTimestampMs: Date.UTC(2026, 11, 1),
+  });
+
+  assert.deepEqual(before.tokenPricingUsdPerMillion, { input: 2, cachedInput: 0.1, output: 10 });
+  assert.equal(before.costUsd, 2.41);
+  assert.equal(before.credits, 241);
+  assert.deepEqual(after.tokenPricingUsdPerMillion, { input: 4, cachedInput: 0.2, output: 20 });
+  assert.equal(after.costUsd, 4.82);
+  assert.equal(after.credits, 482);
+});
+
+test('historical Gemini 3.1 receipts retain their separate long-context rates', () => {
+  const result = calculateAssistantCreditsFromUsage({
+    model: 'gemini-3.1-pro-preview',
+    usage: { input_tokens: 300_000, output_tokens: 100_000 },
+    pricingMultiplier: 1,
+    pricingTimestampMs: Date.UTC(2026, 11, 1),
+  });
+
+  assert.equal(result.pricingModel, 'gemini-3.1-pro');
+  assert.deepEqual(result.tokenPricingUsdPerMillion, {
+    input: 4, cachedInput: 0.4, output: 18,
+    longContext: true, longContextInputThreshold: 200_000,
+  });
+  assert.equal(result.costUsd, 3);
 });
 
 test('bills Kimi K3 cached, uncached, and reasoning-inclusive output at 1.5x native cost', () => {

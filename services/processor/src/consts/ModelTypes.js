@@ -640,8 +640,8 @@ export const ASSISTANT_MODEL_TYPES = [
     value: 'gpt-6.1-sol',
   },
   {
-    label: 'Gemini 3.1 Pro',
-    value: 'gemini-3.1-pro',
+    label: 'Gemini 4 Argon',
+    value: 'gemini-4-argon',
   },
   {
     label: 'Qwen 3.8 Max',
@@ -662,8 +662,8 @@ export const INFERENCE_MODEL_TYPES = [
     isBranchedInferenceModel: true,
   },
   {
-    label: 'Gemini 3.1 Pro',
-    value: 'gemini-3.1-pro',
+    label: 'Gemini 4 Argon',
+    value: 'gemini-4-argon',
     isBranchedInferenceModel: false,
   },
   {

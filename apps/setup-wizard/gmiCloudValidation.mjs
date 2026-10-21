@@ -15,9 +15,9 @@ export const GMI_CLOUD_CHAT_MODEL_SPECS = Object.freeze({
     text: Object.freeze({ candidates: Object.freeze(['openai/gpt-6.1-sol']) }),
     vision: Object.freeze({ candidates: Object.freeze(['openai/gpt-6.1-sol']) }),
   }),
-  'gemini-3.1-pro': Object.freeze({
-    text: Object.freeze({ candidates: Object.freeze(['google/gemini-3.1-pro-preview']) }),
-    vision: Object.freeze({ candidates: Object.freeze(['google/gemini-3.1-pro-preview']) }),
+  'gemini-4-argon': Object.freeze({
+    text: Object.freeze({ candidates: Object.freeze(['google/gemini-4-argon']) }),
+    vision: Object.freeze({ candidates: Object.freeze(['google/gemini-4-argon']) }),
   }),
   'QWEN3.8': Object.freeze({
     text: Object.freeze({ candidates: Object.freeze(['Qwen/Qwen3.8-Max']) }),

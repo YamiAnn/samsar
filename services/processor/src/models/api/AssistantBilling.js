@@ -2,6 +2,12 @@ const TOKENS_PER_MILLION = 1_000_000;
 const CREDITS_PER_DOLLAR = 100;
 export const DEFAULT_ASSISTANT_PRICING_MULTIPLIER = 1.5;
 export const EXTERNAL_CHAT_PRICING_MULTIPLIER = 1.25;
+const GEMINI_4_ARGON_STANDARD_PRICING_START_MS = Date.UTC(2026, 11, 1);
+const GEMINI_4_ARGON_STANDARD_PRICING = Object.freeze({
+  input: 4,
+  cachedInput: 0.2,
+  output: 20,
+});
 
 const TOKEN_PRICING_USD_PER_MILLION = Object.freeze({
   'claude-opus-5.5': { input: 0.8374, cachedInput: 0.8374, output: 20.07 },
@@ -50,6 +56,8 @@ const TOKEN_PRICING_USD_PER_MILLION = Object.freeze({
     longContextOutput: 18,
     longContextInputThreshold: 200_000,
   },
+  // Google Cloud global Standard pricing through November 30, 2026.
+  'gemini-4-argon': { input: 2, cachedInput: 0.1, output: 10 },
   'qwen3.8-max': {
     input: 2.5,
     cachedInput: 2.5,
@@ -66,11 +74,15 @@ export function calculateAssistantCreditsFromUsage({
   model,
   usage,
   pricingMultiplier,
+  pricingTimestampMs = Date.now(),
 } = {}) {
   const pricingModel = resolvePricingModel(model);
   pricingMultiplier ??= pricingModel === 'claude-opus-5.5'
     ? 1.2 : DEFAULT_ASSISTANT_PRICING_MULTIPLIER;
-  const pricing = pricingModel ? TOKEN_PRICING_USD_PER_MILLION[pricingModel] : null;
+  const billedAtMs = Number.isFinite(pricingTimestampMs) ? pricingTimestampMs : Date.now();
+  const pricing = pricingModel === 'gemini-4-argon' && billedAtMs >= GEMINI_4_ARGON_STANDARD_PRICING_START_MS
+    ? GEMINI_4_ARGON_STANDARD_PRICING
+    : pricingModel ? TOKEN_PRICING_USD_PER_MILLION[pricingModel] : null;
   const normalizedUsage = normalizeUsage(usage);
 
   if (!pricing || (!normalizedUsage.inputTokens && !normalizedUsage.outputTokens)) {
@@ -183,6 +195,10 @@ function resolvePricingModel(model) {
 
   if (providerModel.startsWith('gpt-5.6-sol')) {
     return 'gpt-5.6-sol';
+  }
+
+  if (providerModel.startsWith('gemini-4-argon')) {
+    return 'gemini-4-argon';
   }
 
   if (providerModel.startsWith('gemini-3.1')) {

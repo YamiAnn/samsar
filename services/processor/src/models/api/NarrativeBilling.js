@@ -14,7 +14,7 @@ export const NARRATIVE_PRICING_MULTIPLIER = 1.5;
  * @param {Array<object>} usageReceipts
  * @returns {object}
  */
-export function calculateNarrativeBilling(usageReceipts = []) {
+export function calculateNarrativeBilling(usageReceipts = [], { pricingTimestampMs } = {}) {
   const aggregateUsage = createEmptyUsage();
   const receipts = [];
   let underlyingCostUsd = 0;
@@ -30,6 +30,7 @@ export function calculateNarrativeBilling(usageReceipts = []) {
       model,
       usage,
       pricingMultiplier: 1,
+      pricingTimestampMs,
     });
 
     underlyingCostUsd += billing.costUsd;

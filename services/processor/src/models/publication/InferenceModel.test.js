@@ -9,7 +9,7 @@ import {
 test('prefers the inference model persisted for express generation', () => {
   const sessionData = {
     expressGenerationInferenceModel: 'QWEN3.8',
-    inferenceModel: 'gemini-3.1-pro',
+    inferenceModel: 'gemini-4-argon',
   };
 
   assert.equal(getStoredSessionInferenceModel(sessionData), 'QWEN3.8');
@@ -21,8 +21,8 @@ test('prefers the inference model persisted for express generation', () => {
 
 test('uses the standard or legacy persisted session inference model', () => {
   assert.equal(
-    resolvePublicationMetadataInferenceModel({ inferenceModel: 'gemini-3.1-pro' }),
-    'gemini-3.1-pro',
+    resolvePublicationMetadataInferenceModel({ inferenceModel: 'gemini-4-argon' }),
+    'gemini-4-argon',
   );
   assert.equal(
     resolvePublicationMetadataInferenceModel({
@@ -34,8 +34,8 @@ test('uses the standard or legacy persisted session inference model', () => {
 
 test('falls back to the user inference model for older sessions', () => {
   assert.equal(
-    resolvePublicationMetadataInferenceModel({}, 'gemini-3.1-pro'),
-    'gemini-3.1-pro',
+    resolvePublicationMetadataInferenceModel({}, 'gemini-4-argon'),
+    'gemini-4-argon',
   );
   assert.equal(resolvePublicationMetadataInferenceModel({}), 'gpt-6.1-sol');
 });

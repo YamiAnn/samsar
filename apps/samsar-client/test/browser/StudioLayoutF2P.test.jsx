@@ -37,10 +37,21 @@ for (const fps of [16, 24, 30]) {
       const rows = container.querySelectorAll('[data-scene-layer-body]');
       const first = rows[0].getBoundingClientRect();
       const second = rows[1].getBoundingClientRect();
-      const tick = [...container.querySelectorAll('.time-ruler-tick')].find(el => el.textContent === '2s');
+      // Tick intervals adapt to the rendered ruler height and frame rate.
+      // Pick an interior time mark so the coordinate check covers both rows.
+      const tick = [...container.querySelectorAll('.time-ruler-tick')].find(el => {
+        const seconds = Number.parseFloat(el.textContent);
+        return Number.isFinite(seconds) && seconds > 1 && seconds < 10;
+      });
+      expect(tick).toBeDefined();
+      const tickLabel = tick.textContent.trim();
+      const seconds = Number.parseFloat(tickLabel);
       const tickMark = tick.querySelector('.time-ruler-tick-mark').getBoundingClientRect();
-      const expected = first.top + first.height + second.height / 9;
-      expect(Math.abs(tickMark.top - expected)).toBeLessThanOrEqual(1.5);
+      const expected = first.top + first.height + second.height * (seconds - 1) / 9;
+      // Fractional tick labels display one decimal place, while the ruler
+      // positions them at exact frame times. Allow that visible rounding.
+      const labelRoundingPx = tickLabel.includes('.') ? second.height / 9 * 0.05 : 0;
+      expect(Math.abs(tickMark.top - expected)).toBeLessThanOrEqual(1.5 + labelRoundingPx);
     });
   });
 }

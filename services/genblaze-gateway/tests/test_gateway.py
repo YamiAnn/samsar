@@ -246,7 +246,7 @@ def test_development_fallback_is_empty_and_never_guesses_upstream_models():
 def test_curated_boundary_contains_only_supported_samsar_contracts():
     assert set(CURATED_SAMSAR_MODELS) == {
         "gpt-6.1-sol",
-        "gemini-3.1-pro",
+        "gemini-4-argon",
         "QWEN3.8",
         "GPTIMAGE2",
         "GPTIMAGE2EDIT",
@@ -606,7 +606,7 @@ def test_chat_maps_model_and_returns_genblaze_raw_unchanged(settings, fake_bindi
     ("samsar_model", "upstream_model"),
     [
         ("gpt-6.1-sol", "openai/gpt-6.1-sol"),
-        ("gemini-3.1-pro", "google/gemini-3.1-pro-preview"),
+        ("gemini-4-argon", "google/gemini-4-argon"),
     ],
 )
 def test_high_reasoning_and_corresponding_vision_model_are_preserved(

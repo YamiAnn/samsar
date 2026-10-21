@@ -73,7 +73,7 @@ const narrativeRequestSchema = new Schema({
       'gpt-6.1-sol',
       'gpt-6.1-sol-xhigh',
       'claude-opus-5.5',
-      'gemini-3.1-pro',
+      'gemini-4-argon',
       'QWEN3.8',
       'kimi-k3',
     ],

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { page, userEvent } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import ImageLayersPanel from '../../src/components/image/ImageLayersPanel.jsx';
@@ -93,7 +93,9 @@ describe('image layer editing in Chromium', () => {
   it('reorders with the native drag handle keyboard interaction and tracks selection', async () => {
     const persist = vi.fn();
     render(<Layers persist={persist} />);
-    await page.getByRole('button', { name: 'Reorder layer' }).first().click();
+    const handle = screen.getAllByRole('button', { name: 'Reorder layer' })[0];
+    handle.focus();
+    expect(handle).toHaveFocus();
     await userEvent.keyboard(' ');
     const dragged = () => document.querySelector('[data-rbd-draggable-id="caption"]');
     await expect.poll(() => dragged().style.position).toBe('fixed');

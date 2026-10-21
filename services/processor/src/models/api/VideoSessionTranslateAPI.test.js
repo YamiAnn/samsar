@@ -366,7 +366,7 @@ test('add subtitles prep clears translation-only metadata for the audio language
   const result = await __testOnly__.prepareSubtitleLanguageMetadataForAddition({
     clonedSession,
     subtitleLanguage: 'ja-JP',
-    inferenceModel: 'gemini-3.1-pro',
+    inferenceModel: 'gemini-4-argon',
     translateSpeechImpl: () => {
       throw new Error('same-language subtitles must not invoke translation');
     },

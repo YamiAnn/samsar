@@ -10,7 +10,7 @@ import {
 test('an explicit request model wins over session and saved user settings', () => {
   assert.equal(resolveRequestInferenceModel({
     request: { inferenceModel: 'QWEN3.8' },
-    session: { expressGenerationInferenceModel: 'gemini-3.1-pro' },
+    session: { expressGenerationInferenceModel: 'gemini-4-argon' },
     user: { selectedInferenceModel: 'gpt-6.1-sol' },
   }), 'QWEN3.8');
 });
@@ -19,7 +19,7 @@ test('the express session model wins over the account setting and generic sessio
   assert.equal(resolveRequestInferenceModel({
     session: {
       expressGenerationInferenceModel: 'QWEN3.8',
-      inferenceModel: 'gemini-3.1-pro',
+      inferenceModel: 'gemini-4-argon',
     },
     user: { selectedInferenceModel: 'gpt-6.1-sol' },
   }), 'QWEN3.8');
@@ -28,7 +28,7 @@ test('the express session model wins over the account setting and generic sessio
 test('preserves Kimi K3 from the express request through the canonical model contract', () => {
   assert.equal(resolveRequestInferenceModel({
     request: { expressGenerationInferenceModel: 'Kimi K3' },
-    session: { expressGenerationInferenceModel: 'gemini-3.1-pro' },
+    session: { expressGenerationInferenceModel: 'gemini-4-argon' },
     user: { selectedInferenceModel: 'gpt-6.1-sol' },
   }), 'kimi-k3');
 });

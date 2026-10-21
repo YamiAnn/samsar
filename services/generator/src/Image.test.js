@@ -147,13 +147,14 @@ test('image scoring context diagnostics identifies selected prompt source', () =
   assert.equal(details.diagnostics.selectedPromptText.length, 'Kenji layer prompt'.length);
 });
 
-test('grounded scoring relaxes to 50 only after multiple score-only failures', () => {
+test('grounded scoring starts at 60 and relaxes to 50 only after multiple score-only failures', () => {
+  assert.equal(__testOnly__.getScoreThresholdCutoff('grounded'), 60);
   assert.equal(
     __testOnly__.getScoreThresholdCutoff('grounded', {
       failureRetryCount: 0,
       filterRetryCount: 1,
     }),
-    55,
+    60,
   );
   assert.equal(
     __testOnly__.getScoreThresholdCutoff('grounded', {
@@ -167,7 +168,7 @@ test('grounded scoring relaxes to 50 only after multiple score-only failures', (
       failureRetryCount: 0,
       filterRetryCount: 2,
     }),
-    55,
+    60,
   );
 });
 
@@ -177,7 +178,7 @@ test('image generation failures do not enable score-only layer pruning', () => {
     filterRetryCount: 2,
   });
 
-  assert.equal(policy.fallbackScoreCutoff, 45);
+  assert.equal(policy.fallbackScoreCutoff, 50);
   assert.equal(policy.allowExpressLayerPrune, false);
   assert.equal(
     __testOnly__.hasReachedScoreOnlyFilterRelaxation({

@@ -740,7 +740,7 @@ const env = {
 	  OPENAI_API_KEY: config.providers?.openai?.apiKey || '',
   ANTHROPIC_API_KEY: config.providers?.anthropic?.apiKey || '',
 	  OPENROUTER_API_KEY: effectiveProviderConfig.openrouter.apiKey,
-	  OPENROUTER_GEMINI_31_PRO_MODEL: effectiveProviderConfig.openrouter.gemini31ProModel,
+	  OPENROUTER_GEMINI_4_ARGON_MODEL: effectiveProviderConfig.openrouter.gemini4ArgonModel,
 	  KIMI_K3_API_KEY: config.providers?.kimi?.apiKey || '',
 	  ALIBABA_API_KEY: alibabaApiKey,
 	  ALIBABA_API_HOST: alibabaApiHost,

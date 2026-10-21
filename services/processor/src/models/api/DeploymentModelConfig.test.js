@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   filterModelsForDeploymentAvailability,
+  hasRuntimeGenBlazeCatalogRoute,
   mergeRuntimeInferenceDeploymentAvailability,
   readDeploymentAvailableModels,
 } from './DeploymentModelConfig.js';
@@ -47,6 +48,20 @@ function restoreEnv() {
 }
 
 test.afterEach(restoreEnv);
+
+test('Gemini 4 availability retains provider ordering', () => {
+  clearEnv();
+  process.env.CURRENT_ENV = 'docker';
+  const result = mergeRuntimeInferenceDeploymentAvailability({
+    providers: ['googleCloud'],
+    models: ['gemini-4-argon'],
+    modelProviders: { 'gemini-4-argon': 'googleCloud' },
+    modelProviderPriority: { 'gemini-4-argon': ['googleCloud', 'openrouter'] },
+  });
+  assert.ok(result.models.includes('gemini-4-argon'));
+  assert.equal(result.modelProviders['gemini-4-argon'], 'googleCloud');
+  assert.deepEqual(result.modelProviderPriority['gemini-4-argon'], ['googleCloud', 'openrouter']);
+});
 
 test('a raw Alibaba key enables native Qwen and Alibaba media models', () => {
   clearEnv();
@@ -281,7 +296,7 @@ test('standalone Samsar advertises inference and Seedance video models', () => {
   assert.deepEqual(result.models, [
     'gpt-6.1-sol',
     'claude-opus-5.5',
-    'gemini-3.1-pro',
+    'gemini-4-argon',
     'QWEN3.8',
     'KIMIK3',
     'HAPPYHORSEI2V',
@@ -316,12 +331,12 @@ test('OpenRouter runtime credentials advertise all inference models without medi
 
   const result = mergeRuntimeInferenceDeploymentAvailability({});
   assert.deepEqual(result.providers, ['openrouter']);
-  assert.deepEqual(result.models, ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-3.1-pro', 'QWEN3.8']);
+  assert.deepEqual(result.models, ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-4-argon', 'QWEN3.8']);
   assert.deepEqual(result.actions, ['chat', 'assistant']);
   assert.deepEqual(result.modelProviders, {
     'gpt-6.1-sol': 'openrouter',
     'claude-opus-5.5': 'openrouter',
-    'gemini-3.1-pro': 'openrouter',
+    'gemini-4-argon': 'openrouter',
     'QWEN3.8': 'openrouter',
   });
 });
@@ -342,7 +357,7 @@ test('standalone raw provider credentials expose declared branched media capabil
     GOOGLE_APPLICATION_CREDENTIALS_JSON: '{"project_id":"test-project"}',
   });
   assert.deepEqual(google.models, [
-    'gemini-3.1-pro',
+    'gemini-4-argon',
     'VEO3.1I2V',
     'VEO3.1I2VFAST',
   ]);
@@ -390,6 +405,53 @@ test('GenBlaze runtime advertises exact GMICloud Qwen text and vision inference'
       'samsar',
       'openrouter',
     ]);
+  } finally {
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test('stale GenBlaze Gemini routes do not advertise Argon', () => {
+  clearEnv();
+  process.env.CURRENT_ENV = 'docker';
+  process.env.SAMSAR_GENBLAZE_ENABLED = 'true';
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'samsar-genblaze-argon-'));
+  process.env.SAMSAR_GENBLAZE_MODEL_CATALOG_PATH = path.join(tempDirectory, 'catalog.json');
+  const writeCatalog = (modelKey, modelId) => fs.writeFileSync(
+    process.env.SAMSAR_GENBLAZE_MODEL_CATALOG_PATH,
+    JSON.stringify({
+      provider: 'gmicloud',
+      models: {
+        [modelKey]: {
+          text: { modelId, operation: 'chat.completions' },
+          vision: { modelId, operation: 'chat.completions' },
+        },
+      },
+    }),
+  );
+
+  try {
+    for (const [modelKey, modelId] of [
+      ['gemini-3.1-pro', 'google/gemini-3.1-pro-preview'],
+      ['gemini-4-argon', 'google/gemini-3.1-pro-preview'],
+    ]) {
+      writeCatalog(modelKey, modelId);
+      const result = mergeRuntimeInferenceDeploymentAvailability({});
+      assert.equal(result.models.includes('gemini-4-argon'), false);
+      assert.equal(result.providers.includes('gmicloud'), false);
+      assert.equal(hasRuntimeGenBlazeCatalogRoute('gemini-4-argon', 'text'), false);
+      const saved = mergeRuntimeInferenceDeploymentAvailability({
+        providers: ['gmicloud'],
+        models: ['gemini-3.1-pro'],
+        modelProviders: { 'gemini-3.1-pro': 'gmicloud' },
+      });
+      assert.equal(saved.models.includes('gemini-4-argon'), false);
+      assert.equal(saved.modelProviders['gemini-4-argon'], undefined);
+    }
+
+    writeCatalog('gemini-4-argon', 'google/gemini-4-argon');
+    const current = mergeRuntimeInferenceDeploymentAvailability({});
+    assert.equal(current.modelProviders['gemini-4-argon'], 'gmicloud');
+    assert.equal(hasRuntimeGenBlazeCatalogRoute('gemini-4-argon', 'text'), true);
   } finally {
     fs.rmSync(tempDirectory, { recursive: true, force: true });
   }
@@ -843,8 +905,8 @@ test('branched GPT reasoning variants share the physical deployment availability
       availabilityModel: 'gpt-6.1-sol',
     },
     {
-      value: 'gemini-3.1-pro',
-      availabilityModel: 'gemini-3.1-pro',
+      value: 'gemini-4-argon',
+      availabilityModel: 'gemini-4-argon',
     },
   ];
 

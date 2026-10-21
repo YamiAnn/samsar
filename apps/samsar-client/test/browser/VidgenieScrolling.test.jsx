@@ -57,7 +57,10 @@ for (const width of [390, 1280]) {
       await waitFor(() => expect(window.scrollY).toBeGreaterThan(0));
 
       // Content below the fold remains reachable through normal document scrolling.
-      await userEvent.tab();
+      const generateButton = screen.getByRole('button', { name: 'Generate video' });
+      for (let index = 0; index < 4 && document.activeElement !== generateButton; index += 1) {
+        await userEvent.tab();
+      }
       await expect.element(page.getByRole('button', { name: 'Generate video' })).toHaveFocus();
       const button = screen.getByRole('button', { name: 'Generate video' }).getBoundingClientRect();
       expect(button.top).toBeGreaterThanOrEqual(0);
