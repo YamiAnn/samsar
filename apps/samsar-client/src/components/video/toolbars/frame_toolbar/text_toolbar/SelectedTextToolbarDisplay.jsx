@@ -1,5 +1,5 @@
 import { useStudioFrameRate } from '../../../StudioFrameRateContext.jsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import SecondaryButton from '../../../../common/SecondaryButton.tsx';
 import { FaPlus, FaTimes, FaEye, FaEyeSlash, FaCheck, FaPlay, FaMagic, FaChevronCircleLeft } from 'react-icons/fa';
 import { FaRegCircleStop } from "react-icons/fa6";
@@ -18,6 +18,7 @@ export default function SelectedTextToolbarDisplay(props) {
   const {
     handleStartTimeChange,
     handleEndTimeChange,
+    onTimingChange,
     removeTextLayer,
     selectedTextTrack,
     bgColor,
@@ -47,8 +48,26 @@ export default function SelectedTextToolbarDisplay(props) {
   const startFrame = selectedAnimation ? selectedAnimation.startFrame : selectedTextTrack.startFrame;
   const endFrame = selectedAnimation ? selectedAnimation.endFrame : selectedTextTrack.endFrame;
 
-  const displayedStartTime = (startFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2);
-  const displayedEndTime = (endFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2);
+  const [displayedStartTime, setDisplayedStartTime] = useState('');
+  const [displayedEndTime, setDisplayedEndTime] = useState('');
+  useEffect(() => {
+    setDisplayedStartTime((startFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2));
+    setDisplayedEndTime((endFrame / DISPLAY_FRAMES_PER_SECOND).toFixed(2));
+  }, [startFrame, endFrame, DISPLAY_FRAMES_PER_SECOND, selectedTextTrack.id]);
+  const changeStartTime = event => {
+    setDisplayedStartTime(event.target.value);
+    handleStartTimeChange?.(event);
+    const start = Number(event.target.value);
+    const end = Number(displayedEndTime);
+    if (event.target.value.trim() && Number.isFinite(start) && start >= 0 && end > start) onTimingChange?.(start, end);
+  };
+  const changeEndTime = event => {
+    setDisplayedEndTime(event.target.value);
+    handleEndTimeChange?.(event);
+    const start = Number(displayedStartTime);
+    const end = Number(event.target.value);
+    if (event.target.value.trim() && Number.isFinite(end) && start >= 0 && end > start) onTimingChange?.(start, end);
+  };
 
   const textTrackId = `${selectedTextTrack.layerId}_${selectedTextTrack.id}`;
 
@@ -104,7 +123,7 @@ export default function SelectedTextToolbarDisplay(props) {
                 name="startTime"
                 value={displayedStartTime}
                 className={`w-[50px] ${bgColor} pl-2 text-sm`}
-                onChange={handleStartTimeChange}
+                onChange={changeStartTime}
               />
             </div>
 
@@ -117,7 +136,7 @@ export default function SelectedTextToolbarDisplay(props) {
                 name="endTime"
                 value={displayedEndTime}
                 className={`w-[50px] ${bgColor}`}
-                onChange={handleEndTimeChange}
+                onChange={changeEndTime}
               />
             </div>
 
@@ -153,7 +172,7 @@ export default function SelectedTextToolbarDisplay(props) {
                 name="startTime"
                 value={displayedStartTime}
                 className={`w-[50px] ${bgColor} pl-2 text-sm`}
-                onChange={handleStartTimeChange}
+                onChange={changeStartTime}
               />
             </div>
 
@@ -166,7 +185,7 @@ export default function SelectedTextToolbarDisplay(props) {
                 name="endTime"
                 value={displayedEndTime}
                 className={`w-[50px] ${bgColor}`}
-                onChange={handleEndTimeChange}
+                onChange={changeEndTime}
               />
             </div>
 

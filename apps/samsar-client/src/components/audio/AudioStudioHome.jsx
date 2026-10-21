@@ -268,6 +268,9 @@ export default function AudioStudioHome() {
   const joinPollTimerRef = useRef(null);
   const activeJoinRequestRef = useRef('');
   const libraryRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const generationStatusRevisionRef = useRef(0);
+  const joinStatusRevisionRef = useRef(0);
 
   const surfaceClass = isDark
     ? 'bg-[#0c0d12] text-slate-100'
@@ -325,7 +328,7 @@ export default function AudioStudioHome() {
     libraryTypeOverride,
     searchOverride,
   } = {}) => {
-    if (!user?._id) return [];
+    if (!mountedRef.current || !user?._id) return [];
     const requestNumber = libraryRequestRef.current + 1;
     libraryRequestRef.current = requestNumber;
     const requestedLibraryType = libraryTypeOverride || (
@@ -381,19 +384,30 @@ export default function AudioStudioHome() {
     return () => window.clearTimeout(timer);
   }, [fetchLibrary]);
 
-  useEffect(() => () => {
-    if (generationPollTimerRef.current) window.clearTimeout(generationPollTimerRef.current);
-    if (joinPollTimerRef.current) window.clearTimeout(joinPollTimerRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      libraryRequestRef.current += 1;
+      generationStatusRevisionRef.current += 1;
+      joinStatusRevisionRef.current += 1;
+      activeJoinRequestRef.current = '';
+      if (generationPollTimerRef.current) window.clearTimeout(generationPollTimerRef.current);
+      if (joinPollTimerRef.current) window.clearTimeout(joinPollTimerRef.current);
+    };
   }, []);
 
   const checkGenerationStatus = useCallback(async (requestId) => {
-    if (!requestId) return;
+    if (!mountedRef.current || !requestId) return;
+    const revision = ++generationStatusRevisionRef.current;
+    const isCurrentRequest = () => mountedRef.current && generationStatusRevisionRef.current === revision;
     if (generationPollTimerRef.current) window.clearTimeout(generationPollTimerRef.current);
     try {
       const response = await axios.get(`${PROCESSOR_API}/audio/studio/status`, {
         ...(getHeaders() || {}),
         params: { requestId },
       });
+      if (!isCurrentRequest()) return;
       const status = (response.data?.status || 'PENDING').toString().toUpperCase();
       setGenerationStatus(status === 'PENDING' || status === 'INIT' ? 'Generating your audio…' : status);
 
@@ -429,6 +443,7 @@ export default function AudioStudioHome() {
         AUDIO_GENERATION_POLL_INTERVAL_MS
       );
     } catch (error) {
+      if (!isCurrentRequest()) return;
       const statusCode = error?.response?.status;
       if (statusCode === 404 || statusCode === 401) {
         localStorage.removeItem(PENDING_AUDIO_STUDIO_REQUEST_KEY);
@@ -452,13 +467,16 @@ export default function AudioStudioHome() {
   }, [checkGenerationStatus, user?._id]);
 
   const checkJoinStatus = useCallback(async (requestId) => {
-    if (!requestId) return;
+    if (!mountedRef.current || !requestId) return;
+    const revision = ++joinStatusRevisionRef.current;
+    const isCurrentRequest = () => mountedRef.current && joinStatusRevisionRef.current === revision;
     if (joinPollTimerRef.current) window.clearTimeout(joinPollTimerRef.current);
     try {
       const response = await axios.get(`${PROCESSOR_API}/audio/join/status`, {
         ...(getHeaders() || {}),
         params: { requestId },
       });
+      if (!isCurrentRequest()) return;
       const status = (response.data?.status || 'PENDING').toString().toUpperCase();
       setJoinPending(!['COMPLETED', 'FAILED', 'ERROR', 'CANCELLED'].includes(status));
       setJoinStatus(status === 'PROCESSING' ? 'Joining selected audio…' : 'Join queued…');
@@ -502,6 +520,7 @@ export default function AudioStudioHome() {
         AUDIO_JOIN_POLL_INTERVAL_MS
       );
     } catch (error) {
+      if (!isCurrentRequest()) return;
       const statusCode = error?.response?.status;
       if (statusCode === 404 || statusCode === 401) {
         localStorage.removeItem(PENDING_AUDIO_JOIN_REQUEST_KEY);
@@ -579,11 +598,13 @@ export default function AudioStudioHome() {
       const requestId = response.data?.request_id || response.data?.requestId;
       if (!requestId) throw new Error('The audio generation response did not include a request id.');
       localStorage.setItem(PENDING_AUDIO_STUDIO_REQUEST_KEY, requestId);
+      if (!mountedRef.current) return;
       setGenerationStatus('Generating your audio…');
       setLibraryType(generationType);
       await getUserAPI();
       void checkGenerationStatus(requestId);
     } catch (error) {
+      if (!mountedRef.current) return;
       setGenerationPending(false);
       setGenerationStatus('');
       setGenerationError(getApiErrorMessage(error, 'Unable to request audio generation.'));
@@ -651,10 +672,12 @@ export default function AudioStudioHome() {
       const requestId = response.data?.requestId || response.data?.request_id;
       if (!requestId) throw new Error('The audio join response did not include a request id.');
       localStorage.setItem(PENDING_AUDIO_JOIN_REQUEST_KEY, requestId);
+      if (!mountedRef.current) return;
       activeJoinRequestRef.current = requestId;
       setJoinStatus('Join queued…');
       void checkJoinStatus(requestId);
     } catch (error) {
+      if (!mountedRef.current) return;
       setJoinPending(false);
       setJoinStatus('');
       setJoinError(getApiErrorMessage(error, 'Unable to join the selected audio items.'));
@@ -669,8 +692,8 @@ export default function AudioStudioHome() {
 
   return (
     <CommonContainer>
-      <div className={`${surfaceClass} grid h-[100dvh] grid-cols-1 overflow-hidden pt-14 lg:grid-cols-[minmax(0,1fr)_minmax(290px,18%)]`}>
-        <main className="min-h-0 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className={`${surfaceClass} workspace-page grid h-[100dvh] grid-cols-1 overflow-hidden pt-[var(--app-nav-height)] lg:grid-cols-[minmax(0,1fr)_minmax(290px,18%)]`}>
+        <main className="workspace-scroll min-h-0 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {activeAction === 'generate' ? (
             <div className="mx-auto max-w-6xl">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -702,7 +725,7 @@ export default function AudioStudioHome() {
               ) : null}
 
               {selectedItem ? (
-                <section className={`mt-6 overflow-hidden rounded-3xl border ${panelClass}`} aria-label="Selected audio preview">
+                <section className={`mt-6 app-panel overflow-hidden rounded-3xl border ${panelClass}`} aria-label="Selected audio preview">
                   <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_260px]">
                     <div className="p-6 sm:p-8">
                       <div className="flex items-center gap-3">
@@ -777,7 +800,7 @@ export default function AudioStudioHome() {
                   </label>
                 </div>
 
-                {libraryError ? <div className="mt-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-300">{libraryError}</div> : null}
+                {libraryError ? <div className="mt-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm status-error">{libraryError}</div> : null}
                 {libraryLoading && libraryItems.length === 0 ? (
                   <div className="grid gap-4 py-6 sm:grid-cols-2 xl:grid-cols-3">
                     {[0, 1, 2].map((item) => <div key={item} className={`h-40 animate-pulse rounded-2xl border ${panelClass}`} />)}
@@ -892,7 +915,7 @@ export default function AudioStudioHome() {
           )}
         </main>
 
-        <aside className={`min-h-0 overflow-y-auto border-t p-4 lg:border-l lg:border-t-0 lg:p-5 ${panelClass}`} aria-label="Audio Studio actions">
+        <aside className={`app-panel workspace-scroll min-h-0 overflow-y-auto border-t p-4 lg:border-l lg:border-t-0 lg:p-5 ${panelClass}`} aria-label="Audio Studio actions">
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
             <button
               type="button"
@@ -1039,7 +1062,7 @@ export default function AudioStudioHome() {
                   No provider for this audio type is configured on this deployment.
                 </div>
               ) : null}
-              {generationError ? <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-300">{generationError}</div> : null}
+              {generationError ? <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs status-error">{generationError}</div> : null}
               {generationStatus && !generationError ? <div className={`mt-4 text-xs ${mutedText}`}>{generationStatus}</div> : null}
 
               <button
@@ -1113,8 +1136,8 @@ export default function AudioStudioHome() {
                 </label>
               ) : null}
 
-              {joinError ? <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-300">{joinError}</div> : null}
-              {joinSuccess ? <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">{joinSuccess}</div> : null}
+              {joinError ? <div className="mt-4 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-xs status-error">{joinError}</div> : null}
+              {joinSuccess ? <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-xs status-success">{joinSuccess}</div> : null}
               {joinPending && joinStatus ? <div className={`mt-4 text-xs ${mutedText}`}>{joinStatus}</div> : null}
 
               {selectedJoinIds.length > 0 ? (

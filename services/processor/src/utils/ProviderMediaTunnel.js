@@ -1,3 +1,4 @@
+import { resolvePrivateProviderAssetUrl } from './PrivateProviderUrlClient.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -236,11 +237,28 @@ export async function resolveFreshManagedProviderMediaUrl({
     throw new TypeError('expectedContentTypePrefix must be a MIME type prefix ending in /.');
   }
 
-  const initial = await findReachableCandidate(
-    normalizedMediaPath,
-    getBaseUrlCandidates,
-    normalizedContentTypePrefix,
-  );
+  let privateAssetUrl;
+  let privateAssetError;
+  try {
+    privateAssetUrl = await resolvePrivateProviderAssetUrl({
+      mediaPath: normalizedMediaPath,
+      expectedContentTypePrefix: normalizedContentTypePrefix,
+    });
+  } catch (error) {
+    if (error?.tunnelRefreshRequired !== true) throw error;
+    privateAssetError = error;
+  }
+  if (privateAssetUrl) return privateAssetUrl;
+
+  // A private signer failure must refresh and re-sign the exact asset. Never
+  // return an anonymous tunnel URL after private delivery has been selected.
+  const initial = privateAssetError
+    ? { url: '', attemptedUrls: [] }
+    : await findReachableCandidate(
+      normalizedMediaPath,
+      getBaseUrlCandidates,
+      normalizedContentTypePrefix,
+    );
   if (initial.url) {
     return initial.url;
   }
@@ -277,6 +295,19 @@ export async function resolveFreshManagedProviderMediaUrl({
 
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(1, deadline - Date.now()))));
+    if (privateAssetError) {
+      try {
+        const refreshedPrivateUrl = await resolvePrivateProviderAssetUrl({
+          mediaPath: normalizedMediaPath,
+          expectedContentTypePrefix: normalizedContentTypePrefix,
+        });
+        if (refreshedPrivateUrl) return refreshedPrivateUrl;
+      } catch (error) {
+        if (error?.tunnelRefreshRequired !== true) throw error;
+        privateAssetError = error;
+      }
+      continue;
+    }
     const refreshed = await findReachableCandidate(
       normalizedMediaPath,
       getBaseUrlCandidates,
@@ -293,5 +324,6 @@ export async function resolveFreshManagedProviderMediaUrl({
     mediaPath: normalizedMediaPath,
     attemptedUrls,
     refreshRequestPath,
+    cause: privateAssetError,
   });
 }

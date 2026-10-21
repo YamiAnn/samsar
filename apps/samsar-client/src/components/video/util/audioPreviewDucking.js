@@ -75,7 +75,8 @@ function roundAudioNumber(value, precision = AUDIO_VOLUME_PRECISION) {
 export function clampAudioVolumeValue(value, fallbackValue = 100) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return roundAudioNumber(Math.max(0, Number(fallbackValue) || 100));
+    const fallbackVolume = Number(fallbackValue);
+    return roundAudioNumber(Math.max(0, Number.isFinite(fallbackVolume) ? fallbackVolume : 100));
   }
 
   return roundAudioNumber(Math.max(0, numericValue));
@@ -198,6 +199,11 @@ export function hasManualAudioVolumeAutomation(audioLayer = {}, durationOverride
     && buildAudioLayerVolumeAutomationPoints(audioLayer, durationOverride).length >= 2;
 }
 
+function resolveAutomationPointGain(point) {
+  const gain = Number(point?.gain ?? point?.volume ?? 1);
+  return Number.isFinite(gain) ? gain : 1;
+}
+
 export function getAudioVolumeGainAtTime(layerTimeSeconds, points = []) {
   if (!Array.isArray(points) || points.length === 0) {
     return 1;
@@ -209,7 +215,7 @@ export function getAudioVolumeGainAtTime(layerTimeSeconds, points = []) {
   const sortedPoints = [...points].sort((leftPoint, rightPoint) => leftPoint.time - rightPoint.time);
 
   if (time <= sortedPoints[0].time) {
-    return Number(sortedPoints[0].gain ?? sortedPoints[0].volume ?? 1) || 1;
+    return resolveAutomationPointGain(sortedPoints[0]);
   }
 
   for (let index = 1; index < sortedPoints.length; index += 1) {
@@ -219,8 +225,8 @@ export function getAudioVolumeGainAtTime(layerTimeSeconds, points = []) {
       continue;
     }
 
-    const previousGain = Number(previousPoint?.gain ?? previousPoint?.volume ?? 1) || 1;
-    const nextGain = Number(nextPoint?.gain ?? nextPoint?.volume ?? 1) || 1;
+    const previousGain = resolveAutomationPointGain(previousPoint);
+    const nextGain = resolveAutomationPointGain(nextPoint);
     const segmentDuration = Number(nextPoint.time) - Number(previousPoint.time);
 
     if (segmentDuration <= AUDIO_TIME_EPSILON) {
@@ -231,7 +237,7 @@ export function getAudioVolumeGainAtTime(layerTimeSeconds, points = []) {
     return previousGain + ((nextGain - previousGain) * progress);
   }
 
-  return Number(sortedPoints[sortedPoints.length - 1].gain ?? sortedPoints[sortedPoints.length - 1].volume ?? 1) || 1;
+  return resolveAutomationPointGain(sortedPoints[sortedPoints.length - 1]);
 }
 
 export function resolvePreviewLayerBaseVolume(audioLayer = {}) {
@@ -306,7 +312,7 @@ function resolvePreviewMediaUrl(value, baseUrl = '') {
     return null;
   }
 
-  if (/^https?:\/\//i.test(trimmedValue)) {
+  if (/^(?:https?:\/\/|blob:|data:)/i.test(trimmedValue)) {
     return trimmedValue;
   }
 

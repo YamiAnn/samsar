@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { isContainerRuntime } from './CleanupConfig.js';
 
 const DEFAULT_DOCKER_INTERVAL_HOURS = 3;
 const DEFAULT_RETRY_MINUTES = 5;
@@ -15,24 +16,11 @@ function parsePositiveNumber(value, fallbackValue, name) {
   return parsedValue;
 }
 
-function isDockerRuntime(
-  env = process.env,
-  dockerMarkerPresent = fs.existsSync('/.dockerenv'),
-) {
-  const samsarRuntime = String(env.SAMSAR_RUNTIME || '').trim().toLowerCase();
-  const currentEnv = String(env.CURRENT_ENV || '').trim().toLowerCase();
-  return (
-    dockerMarkerPresent
-    || samsarRuntime === 'docker'
-    || currentEnv === 'docker'
-  );
-}
-
 export function getTaskProcessorSchedule(
   env = process.env,
   dockerMarkerPresent = fs.existsSync('/.dockerenv'),
 ) {
-  const defaultIntervalHours = isDockerRuntime(env, dockerMarkerPresent)
+  const defaultIntervalHours = isContainerRuntime(env, dockerMarkerPresent)
     ? DEFAULT_DOCKER_INTERVAL_HOURS
     : 0;
   const intervalHours = parsePositiveNumber(

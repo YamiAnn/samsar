@@ -1937,10 +1937,11 @@ export default function VideoEditorToolbar(props) {
 
   const toolbarPanel = (
     <div
-      className={`${panelSurface} m-auto fixed top-[72px] bottom-4 right-4 overflow-y-auto pl-2 pr-2 toolbar-container ${disabledShellClass}`}
+      className={`${panelSurface} app-panel workspace-scroll m-auto fixed bottom-4 right-4 overflow-y-auto pl-2 pr-2 toolbar-container ${disabledShellClass}`}
       aria-disabled={isRenderPending}
       style={{
         width: containerWidth,
+        top: 'calc(var(--app-nav-height) + var(--workspace-inset))',
         maxWidth: 'calc(100vw - 32px)',
         paddingBottom: 'calc(var(--assistant-sidebar-safe-bottom, 0px) + 1rem)',
         zIndex: rightPanelZIndex,

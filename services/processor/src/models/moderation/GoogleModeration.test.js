@@ -2,12 +2,32 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const {
+  buildModerationRequestBody,
   buildGoogleModerationInferenceReceipt,
   extractGeminiModerationPayload,
   getGoogleModerationCredentialOptions,
   normalizeGeminiModerationPayload,
   normalizeGoogleModerationResponse,
 } = await import('./GoogleModeration.js');
+
+test('Argon moderation keeps JSON classification while using supported thinking settings', () => {
+  const { generationConfig } = buildModerationRequestBody('A harmless landscape', {
+    model: 'gemini-4-argon', maxOutputTokens: 100000,
+  });
+  assert.deepEqual(generationConfig.thinkingConfig, { thinkingLevel: 'LOW' });
+  assert.equal(generationConfig.maxOutputTokens, 32768);
+  assert.equal(generationConfig.temperature, undefined);
+  assert.equal(generationConfig.topP, undefined);
+  assert.equal(generationConfig.responseMimeType, 'application/json');
+  assert.ok(generationConfig.responseSchema.properties.flagged);
+  const versionedConfig = buildModerationRequestBody('A harmless landscape', {
+    model: 'gemini-4-argon-production', maxOutputTokens: 100000,
+  }).generationConfig;
+  assert.deepEqual(versionedConfig, generationConfig);
+  const legacyConfig = buildModerationRequestBody('A harmless landscape', { model: 'gemini-2.5-flash' }).generationConfig;
+  assert.equal(legacyConfig.temperature, 0);
+  assert.equal(legacyConfig.thinkingConfig, undefined);
+});
 
 test('buildGoogleModerationInferenceReceipt exposes every paid Vertex token counter', () => {
   const usageMetadata = {
@@ -18,12 +38,12 @@ test('buildGoogleModerationInferenceReceipt exposes every paid Vertex token coun
   };
 
   assert.deepEqual(buildGoogleModerationInferenceReceipt({
-    modelVersion: 'gemini-3.1-pro-preview-20260701',
+    modelVersion: 'gemini-4-argon-20260701',
     usageMetadata,
-  }, { model: 'gemini-3.1-pro-preview', attempt: 3 }), {
+  }, { model: 'gemini-4-argon', attempt: 3 }), {
     stage: 'moderation',
     attempt: 3,
-    model: 'gemini-3.1-pro-preview-20260701',
+    model: 'gemini-4-argon-20260701',
     provider: 'google',
     usageMetadata,
   });
@@ -81,8 +101,8 @@ test('normalizeGeminiModerationPayload preserves OpenAI-compatible moderation sh
         score: 0.12,
       },
     ],
-  }, { model: 'gemini-3.1-pro-preview' }), {
-    model: 'gemini-3.1-pro-preview',
+  }, { model: 'gemini-4-argon' }), {
+    model: 'gemini-4-argon',
     results: [
       {
         flagged: true,
@@ -107,7 +127,7 @@ test('normalizeGoogleModerationResponse flags Vertex prompt filter blocks', () =
     promptFeedback: {
       blockReason: 'PROHIBITED_CONTENT',
     },
-  }, { model: 'gemini-3.1-pro-preview' });
+  }, { model: 'gemini-4-argon' });
 
   assert.equal(normalized.results[0].flagged, true);
   assert.equal(normalized.results[0].categories.prohibited_content, true);
@@ -118,7 +138,7 @@ test('normalizeGoogleModerationResponse flags Vertex prompt filter blocks', () =
 test('normalizeGoogleModerationResponse includes Gemini response metadata', () => {
   const normalized = normalizeGoogleModerationResponse({
     responseId: 'response-id',
-    modelVersion: 'gemini-3.1-pro-preview',
+    modelVersion: 'gemini-4-argon',
     promptFeedback: {},
     candidates: [
       {
@@ -138,24 +158,24 @@ test('normalizeGoogleModerationResponse includes Gemini response metadata', () =
         },
       },
     ],
-  }, { model: 'gemini-3.1-pro-preview' });
+  }, { model: 'gemini-4-argon' });
 
   assert.equal(normalized.results[0].flagged, false);
   assert.deepEqual(normalized.results[0].categories, {});
   assert.equal(normalized.google.finishReason, 'STOP');
   assert.equal(normalized.google.responseId, 'response-id');
-  assert.equal(normalized.google.modelVersion, 'gemini-3.1-pro-preview');
+  assert.equal(normalized.google.modelVersion, 'gemini-4-argon');
 });
 
 test('normalizeGoogleModerationResponse uses Gemini inference model override by default', () => {
   const previousModerationModel = process.env.GOOGLE_GEMINI_MODERATION_MODEL;
   const previousVertexModerationModel = process.env.GOOGLE_MODERATION_VERTEX_MODEL;
   const previousGenericModerationModel = process.env.GOOGLE_MODERATION_MODEL;
-  const previousGemini31Model = process.env.GOOGLE_GEMINI_31_PRO_MODEL;
+  const previousGemini31Model = process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
   process.env.GOOGLE_GEMINI_MODERATION_MODEL = '';
   process.env.GOOGLE_MODERATION_VERTEX_MODEL = '';
   process.env.GOOGLE_MODERATION_MODEL = '';
-  process.env.GOOGLE_GEMINI_31_PRO_MODEL = 'gemini-3.1-pro-production';
+  process.env.GOOGLE_GEMINI_4_ARGON_MODEL = 'gemini-4-argon-production';
 
   try {
     const normalized = normalizeGoogleModerationResponse({
@@ -164,7 +184,11 @@ test('normalizeGoogleModerationResponse uses Gemini inference model override by 
       },
     });
 
-    assert.equal(normalized.model, 'gemini-3.1-pro-production');
+    assert.equal(normalized.model, 'gemini-4-argon-production');
+    assert.deepEqual(
+      buildModerationRequestBody('A harmless landscape').generationConfig.thinkingConfig,
+      { thinkingLevel: 'LOW' },
+    );
   } finally {
     if (previousModerationModel === undefined) {
       delete process.env.GOOGLE_GEMINI_MODERATION_MODEL;
@@ -182,9 +206,9 @@ test('normalizeGoogleModerationResponse uses Gemini inference model override by 
       process.env.GOOGLE_MODERATION_MODEL = previousGenericModerationModel;
     }
     if (previousGemini31Model === undefined) {
-      delete process.env.GOOGLE_GEMINI_31_PRO_MODEL;
+      delete process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
     } else {
-      process.env.GOOGLE_GEMINI_31_PRO_MODEL = previousGemini31Model;
+      process.env.GOOGLE_GEMINI_4_ARGON_MODEL = previousGemini31Model;
     }
   }
 });
@@ -203,13 +227,13 @@ test('getGoogleModerationCredentialOptions strips caller credentials in producti
     google_credentials_json_b64: 'encoded-user-credentials',
     credentialsJsonB64: 'encoded-user-credentials',
     location: 'global',
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-4-argon',
     timeoutMs: 1234,
   });
 
   assert.deepEqual(options, {
     location: 'global',
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-4-argon',
     timeoutMs: 1234,
   });
 });

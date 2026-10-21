@@ -121,6 +121,20 @@ npm run sync
 
 The sync script excludes common secret and generated paths when copying projects into this monorepo. Skip this workflow in a standalone clone.
 
+After updating sibling source projects, sync all services, start the setup wizard,
+and rebuild the configured local stack with:
+
+```bash
+npm run sync:restart
+```
+
+This finishes the sync, starts the setup wizard on `http://localhost:8089`, and
+waits for it before building application images. With an existing runtime config,
+all image builds finish before application containers are replaced; data volumes
+are preserved and the command waits for the configured services. A fresh install
+opens the wizard for configuration and deployment. `npm run docker:restart`
+performs the same wizard-first rebuild without another source sync.
+
 It also packages the Vast.ai FLUX.2 standalone utility under
 `utils/vast-flux2`. From a synchronized workspace or standalone clone:
 
@@ -191,6 +205,12 @@ setup.cmd
 ```
 
 `npm run setup-wizard` remains available as a developer convenience, but is not required for installation.
+
+For a workspace with Node.js and npm, `npm run deploy` (also available as
+`npm run docker:up`) starts the wizard first. With no saved runtime config, complete
+configuration and deployment in that browser window. With a saved config, the
+command continues into the application build after the wizard is ready. The
+wizard stays available if an application build fails.
 
 The launcher installs or starts Docker when supported, builds and starts the containerized setup wizard, waits for it to respond, and opens a one-time authenticated URL on `http://localhost:8089`. The wizard binds to loopback by default; use `scripts/setup-wizard-remote.sh` for remote hosts so access travels through an SSH tunnel. Set `SAMSAR_SETUP_OPEN_BROWSER=0` to skip browser auto-open.
 
@@ -312,7 +332,7 @@ Follow a workflow from the hosted Samsar.js API into its local deployment detail
 | Area | Directory | Purpose |
 | --- | --- | --- |
 | Studio app | `apps/samsar-client` | Samsar Studio and VidGenie frontend. Runs on port `3000` in Docker. |
-| Setup wizard | `apps/setup-wizard` | Browser setup flow for providers, services, data, mail, and admin configuration. Runs on port `8089` when started. |
+| Setup wizard | `apps/setup-wizard` | Browser setup flow for providers, services, data, mail, and admin configuration. Starts on port `8089` before application builds through `deploy`, `docker:up`, and `docker:restart`. |
 | Processor API | `services/processor` | Public API, Studio API, auth, billing, session orchestration, search/recommendation APIs, and status endpoints. Runs on port `3002`. |
 | Generation workers | `services/generator`, `services/ai-video-layer-generator`, `services/video-generator`, `services/audio-generator`, `services/frames-processor` | Image generation/editing, AI video layers, final rendering, speech/music/sound effects, frame processing, and media processing. |
 | Workflow workers | `services/express-video-listener`, `services/assistant-query-processor`, `services/task-processor` | Express video state machine, assistant queries, and scheduled/background tasks. |
@@ -344,7 +364,7 @@ The [complete model matrix](pages/model-matrix.md) lists **all 46 model keys in 
 
 | Modality | Models in the deployment registry | Explore and build |
 | --- | --- | --- |
-| Inference & vision | GPT 6.1 Sol, Claude Opus 5.5, Gemini 3.1 Pro, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
+| Inference & vision | GPT 6.1 Sol, Claude Opus 5.5, Gemini 4 Argon, Kimi K3, Qwen 3.8 Max | [Matrix](pages/model-matrix.md#inference) · [Hosted chat](https://docs.samsar.one/external-requests#chat) |
 | Image generation | GPTImage 2.5, Seedream 5 Pro, Nano Banana 2 / Pro, Qwen Image 3.0 Pro, Wan 2.7 Pro | [Matrix](pages/model-matrix.md#image) · [Image API](https://docs.samsar.one/image-api) |
 | Image editing | GPTImage 2.5 Edit, Nano Banana 2 / Pro Edit, BRIA Eraser / GenFill | [Matrix](pages/model-matrix.md#image-edit) · [Edit API](https://docs.samsar.one/v2#v2-image-edit-routes) |
 | Video generation | Runway; Veo 3.1 text / fast / I2V / first-last-frame; Cosmos 3; Seedance 1.5 / 2.0 / 2.5; Kling 3 / 1.6 / 2.1 variants; Hailuo; Happy Horse 1.1 | [Every video key](pages/model-matrix.md#video) · [Video API](https://docs.samsar.one/video) |
@@ -467,7 +487,14 @@ Validate the rendered Compose configuration:
 npm run docker:config
 ```
 
-`npm run docker:up` renders `runtime/secrets/root.env`, durable infrastructure credential env files, and `runtime/config/available-models.json`, then initializes authenticated MongoDB and starts the local default profiles. The setup wizard adds the reverse-proxy profile only when nginx access is enabled.
+`npm run docker:up` first starts the setup wizard and waits for port `8089` to
+respond. With `runtime/config/samsar.config.json` present, it renders
+`runtime/secrets/root.env`, durable infrastructure credential env files, and
+`runtime/config/available-models.json`, then initializes authenticated MongoDB and
+starts the configured profiles. Without a saved config, it leaves configuration
+and deployment to the wizard. The setup wizard adds the reverse-proxy profile only
+when nginx access is enabled. A wizard startup failure stops deployment before
+runtime configuration or application containers are changed.
 
 | Profile | Services |
 | --- | --- |

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FaGoogle } from 'react-icons/fa6';
 import LoginButton from './LoginButton.tsx';
 import { useColorMode } from '../../contexts/ColorMode.jsx';
@@ -21,11 +21,14 @@ export default function Login(props) {
 
   const { colorMode } = useColorMode();
   const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
-  const submitUserLogin = (e) => {
+  const submitUserLogin = async (e) => {
     e.preventDefault();
-    const email = e.target.email.value.trim().toLowerCase();
-    const password = e.target.password.value;
+    if (submittingRef.current) return;
+    const email = e.currentTarget.elements.namedItem('email').value.trim().toLowerCase();
+    const password = e.currentTarget.elements.namedItem('password').value;
 
     if (!email || !password) {
       setError('Email and password are required.');
@@ -33,25 +36,26 @@ export default function Login(props) {
     }
 
     setError(null);
+    submittingRef.current = true;
+    setIsSubmitting(true);
     const payload = { email, password };
 
-    axios
-      .post(`${PROCESSOR_SERVER}/users/login`, payload)
-      .then((dataRes) => {
-        const userData = dataRes.data;
-        const authToken = userData.authToken;
-        persistAuthToken(authToken);
-        setUser(userData);
-        closeAlertDialog();
-        getOrCreateUserSession(userData);
-      })
-      .catch((err) => {
-        if (err.response && err.response.data && err.response.data.message) {
-          setError(err.response.data.message);
-        } else {
-          setError('Invalid email or password. Please try again.');
-        }
-      });
+    try {
+      const { data: userData } = await axios.post(`${PROCESSOR_SERVER}/users/login`, payload);
+      persistAuthToken(userData.authToken);
+      setUser(userData);
+      closeAlertDialog();
+      await getOrCreateUserSession(userData);
+    } catch (err) {
+      if (err.response && err.response.data && err.response.data.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Invalid email or password. Please try again.');
+      }
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const cardClasses =
@@ -160,7 +164,7 @@ export default function Login(props) {
             required
           />
         </div>
-        <LoginButton type="submit" extraClasses="w-full">Login</LoginButton>
+        <LoginButton type="submit" isPending={isSubmitting} extraClasses="w-full">Login</LoginButton>
       </form>
 
       <div className="text-center text-xs text-slate-500">

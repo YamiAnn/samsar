@@ -1,3 +1,4 @@
+import { getStudioMediaIdentity } from '../video/util/studioMediaIdentity.mjs';
 // ProgressIndicator.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaPause, FaPlay, FaSpinner, FaStepForward, FaVolumeMute, FaVolumeUp } from 'react-icons/fa';
@@ -12,6 +13,7 @@ import {
   shouldDuckMusicAgainstAudioType,
 } from '../video/util/audioPreviewDucking.js';
 import { IS_STANDALONE_DEPLOYMENT } from '../../utils/environment.jsx';
+import { resolvePrivateMediaUrl } from '../../utils/privateMediaUrl.mjs';
 
 const PROCESSOR_API_URL = import.meta.env.VITE_PROCESSOR_API;
 const STATIC_ASSET_BASE_URL = (
@@ -87,6 +89,11 @@ function normalizeAssetUrl(url) {
   if (typeof url !== 'string') return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
+  const privateMediaUrl = resolvePrivateMediaUrl(trimmed, {
+    processorApiUrl: PROCESSOR_API_URL,
+    staticCdnUrl: STATIC_ASSET_BASE_URL,
+  });
+  if (privateMediaUrl) return privateMediaUrl;
   const relativePath = trimmed.replace(/^\/+/, '');
   if (relativePath.startsWith(USER_RESOURCES_PREFIX)) {
     return `${STATIC_ASSET_BASE_URL}/${relativePath}`;
@@ -597,7 +604,7 @@ function normalizePreviewAspectRatio(sessionPreview) {
 
 function getPreviewVisualCacheKey(segment) {
   if (!segment?.url) return null;
-  return `${segment.type || 'media'}:${segment.url}`;
+  return `${segment.type || 'media'}:${getStudioMediaIdentity(segment.url)}`;
 }
 
 function canCachePreviewVisualUrl(url) {
@@ -809,70 +816,55 @@ function markPreviewVisualReady(cacheKey) {
 }
 
 function preloadPreviewImage(url, cacheKey) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const image = new Image();
     let settled = false;
     let timeoutId = null;
-
-    const finish = () => {
+    const finish = (ready = false) => {
       if (settled) return;
       settled = true;
       if (timeoutId) window.clearTimeout(timeoutId);
-      markPreviewVisualReady(cacheKey);
-      resolve();
+      image.onload = image.onerror = null;
+      if (ready) markPreviewVisualReady(cacheKey);
+      resolve(ready);
     };
-
     image.onload = () => {
-      if (typeof image.decode === 'function') {
-        image.decode().then(finish).catch(finish);
-        return;
-      }
-      finish();
+      if (typeof image.decode === 'function') image.decode().then(() => finish(true)).catch(() => finish(false));
+      else finish(true);
     };
-    image.onerror = finish;
-    timeoutId = window.setTimeout(finish, PREVIEW_MEDIA_PRELOAD_TIMEOUT_MS);
+    image.onerror = () => finish(false);
+    timeoutId = window.setTimeout(() => finish(false), PREVIEW_MEDIA_PRELOAD_TIMEOUT_MS);
     image.src = url;
-
-    if (image.complete) {
-      finish();
-    }
+    if (image.complete && image.naturalWidth > 0) image.onload();
   });
 }
 
 function preloadPreviewVideo(url, cacheKey) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const video = document.createElement('video');
     let settled = false;
     let timeoutId = null;
-
-    const cleanup = () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-      video.removeEventListener('loadeddata', finish);
-      video.removeEventListener('canplay', finish);
-      video.removeEventListener('error', finish);
-      video.removeAttribute('src');
-      try {
-        video.load();
-      } catch {
-        // Ignore cleanup failures from detached media elements.
-      }
-    };
-
-    const finish = () => {
+    const finish = (ready = false) => {
       if (settled) return;
       settled = true;
-      cleanup();
-      markPreviewVisualReady(cacheKey);
-      resolve();
+      if (timeoutId) window.clearTimeout(timeoutId);
+      video.removeEventListener('loadeddata', readyHandler);
+      video.removeEventListener('canplay', readyHandler);
+      video.removeEventListener('error', errorHandler);
+      video.removeAttribute('src');
+      try { video.load(); } catch { /* Detached browser element. */ }
+      if (ready) markPreviewVisualReady(cacheKey);
+      resolve(ready);
     };
-
+    const readyHandler = () => finish(true);
+    const errorHandler = () => finish(false);
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
-    video.addEventListener('loadeddata', finish);
-    video.addEventListener('canplay', finish);
-    video.addEventListener('error', finish);
-    timeoutId = window.setTimeout(finish, PREVIEW_MEDIA_PRELOAD_TIMEOUT_MS);
+    video.addEventListener('loadeddata', readyHandler);
+    video.addEventListener('canplay', readyHandler);
+    video.addEventListener('error', errorHandler);
+    timeoutId = window.setTimeout(errorHandler, PREVIEW_MEDIA_PRELOAD_TIMEOUT_MS);
     video.src = url;
     video.load();
   });
@@ -895,6 +887,9 @@ function preloadPreviewVisualSegment(segment) {
     ? preloadPreviewVideo(segment.url, cacheKey)
     : preloadPreviewImage(segment.url, cacheKey);
   previewVisualPreloadPromises.set(cacheKey, promise);
+  promise.finally(() => {
+    if (previewVisualPreloadPromises.get(cacheKey) === promise) previewVisualPreloadPromises.delete(cacheKey);
+  });
   return promise;
 }
 
@@ -1384,7 +1379,7 @@ export default function ProgressIndicator(props) {
       : 'border-amber-200 bg-amber-50 text-amber-900';
 
   return (
-    <div className={`vidgenie-progress-panel ${panelShell} rounded-xl p-3 pt-3 transition-shadow duration-200 sm:rounded-2xl sm:p-4`}>
+    <div className={`app-panel vidgenie-progress-panel ${panelShell} rounded-xl p-3 pt-3 transition-shadow duration-200 sm:rounded-2xl sm:p-4`}>
       {errorMessage && (
         <div className={`${errorPanel} p-3 rounded-xl mb-3`}>
           {errorMessage.error}

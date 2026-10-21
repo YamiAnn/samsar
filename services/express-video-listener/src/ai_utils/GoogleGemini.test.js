@@ -55,7 +55,7 @@ test('Gemini provider failures preserve HTTP status and provider code', async (t
 
   await assert.rejects(
     createGoogleGeminiChatCompletion({
-      model: 'gemini-3.1-pro',
+      model: 'gemini-4-argon',
       messages: [{ role: 'user', content: 'hello' }],
     }),
     (error) => {
@@ -65,4 +65,47 @@ test('Gemini provider failures preserve HTTP status and provider code', async (t
       return true;
     },
   );
+});
+
+test('versioned Argon environment model keeps native sampling and trims trailing model turns', async (t) => {
+  const previousProject = process.env.GOOGLE_CLOUD_PROJECT;
+  const previousModel = process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
+  process.env.GOOGLE_CLOUD_PROJECT = 'argon-shape-project';
+  process.env.GOOGLE_GEMINI_4_ARGON_MODEL = 'gemini-4-argon-20261013';
+  t.after(() => {
+    if (previousProject === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
+    else process.env.GOOGLE_CLOUD_PROJECT = previousProject;
+    if (previousModel === undefined) delete process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
+    else process.env.GOOGLE_GEMINI_4_ARGON_MODEL = previousModel;
+  });
+
+  let capturedUrl;
+  let capturedBody;
+  t.mock.method(GoogleAuth.prototype, 'getClient', async () => ({
+    getAccessToken: async () => ({ token: 'test-token' }),
+  }));
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    capturedUrl = url;
+    capturedBody = JSON.parse(options.body);
+    return { ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }) };
+  });
+
+  await createGoogleGeminiChatCompletion({
+    model: 'gemini-4-argon',
+    messages: [
+      { role: 'user', content: 'First prompt' },
+      { role: 'assistant', content: 'Previous answer' },
+    ],
+    temperature: 0.5,
+    top_p: 0.8,
+    max_tokens: 50000,
+    thinking_level: 'HIGH',
+  });
+
+  assert.match(capturedUrl, /models\/gemini-4-argon-20261013:generateContent$/);
+  assert.deepEqual(capturedBody.contents.map(({ role }) => role), ['user']);
+  assert.equal(capturedBody.generationConfig.temperature, undefined);
+  assert.equal(capturedBody.generationConfig.topP, undefined);
+  assert.equal(capturedBody.generationConfig.maxOutputTokens, 32768);
+  assert.deepEqual(capturedBody.generationConfig.thinkingConfig, { thinkingLevel: 'HIGH' });
 });

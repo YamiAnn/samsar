@@ -118,8 +118,8 @@ test('uses strict text-to-video inference aliases and falls back to the user sel
     'gpt-6.1-sol',
   );
   assert.equal(
-    resolveNarrativeInferenceModel({ inference_model: 'GEMINI3.1' }, 'QWEN3.8'),
-    'gemini-3.1-pro',
+    resolveNarrativeInferenceModel({ inference_model: 'GEMINI4' }, 'QWEN3.8'),
+    'gemini-4-argon',
   );
   assert.equal(resolveNarrativeInferenceModel({}, 'QWEN3.8'), 'QWEN3.8');
   assert.equal(

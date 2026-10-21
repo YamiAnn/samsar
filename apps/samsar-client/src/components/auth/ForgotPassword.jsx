@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useColorMode } from '../../contexts/ColorMode.jsx';
 import axios from 'axios';
 
@@ -9,25 +9,35 @@ export default function ForgotPassword(props) {
   const { colorMode } = useColorMode();
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const formBgColor = colorMode === 'light' ? 'bg-neutral-50' : 'bg-neutral-900';
   const formTextColor = colorMode === 'light' ? 'text-neutral-900' : 'text-neutral-50';
 
-  const handleForgotPassword = (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
-    const email = e.target.email.value;
+    if (submittingRef.current) return;
+    const email = e.currentTarget.elements.namedItem('email').value.trim().toLowerCase();
+    if (!email) {
+      setError('Email is required.');
+      setSuccess(null);
+      return;
+    }
 
-    axios
-      .post(`${PROCESSOR_SERVER}/users/forgot_password`, { email })
-      .then(() => {
-        setSuccess('Check your email for password reset instructions.');
-        setError(null);
-      })
-      .catch(() => {
-        
-        setError('Failed to send reset email. Please try again.');
-        setSuccess(null);
-      });
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await axios.post(`${PROCESSOR_SERVER}/users/forgot_password`, { email });
+      setSuccess('Check your email for password reset instructions.');
+    } catch {
+      setError('Failed to send reset email. Please try again.');
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -40,23 +50,28 @@ export default function ForgotPassword(props) {
       </p>
       <form onSubmit={handleForgotPassword} className="w-full">
         <div className="form-group">
-          <div className="text-xs text-left font-bold pl-1">Email</div>
+          <label htmlFor="forgot-password-email" className="text-xs text-left font-bold pl-1">Email</label>
           <input
+            id="forgot-password-email"
             type="email"
             name="email"
+            autoComplete="email"
+            required
             className={`form-control mb-4 mt-2 rounded-lg p-1 pl-4 h-[45px] w-full ${formBgColor} ${formTextColor}`}
             placeholder="Email"
           />
         </div>
         <button
           type="submit"
+          disabled={isSubmitting}
+          aria-busy={isSubmitting || undefined}
           className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg"
         >
           Reset Password
         </button>
       </form>
       <div className="mt-4 text-center text-xs text-neutral-500">
-        <a href="#" onClick={() => setCurrentLoginView('login')}>
+        <a href="#" onClick={(event) => { event.preventDefault(); setCurrentLoginView('login'); }}>
           Back to Login
         </a>
       </div>

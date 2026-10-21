@@ -1,3 +1,4 @@
+import { buildTimelineViewportGeometry } from '../../util/timelineViewport.mjs';
 import { getLayerDisplayFrameRanges } from '../../util/studioPreviewTimeline.mjs';
 import { useStudioFrameRate } from '../../StudioFrameRateContext.jsx';
 // FrameToolbar.js
@@ -1290,6 +1291,10 @@ export default function FrameToolbar(props) {
         const updatedAnimation = { ...updatedItem.animations[animIndex] };
         updatedAnimation.startFrame = start;
         updatedAnimation.endFrame = end;
+        const parentStart = secondsToDisplayFrames(layer.durationOffset);
+        updatedAnimation.frameRate = sessionFramesPerSecond;
+        updatedAnimation.frameOffset = displayFramesToActualFrames(start - parentStart);
+        updatedAnimation.frameDuration = Math.max(1, displayFramesToActualFrames(end - parentStart) - updatedAnimation.frameOffset);
 
         // Replace the animation in the array
         const updatedAnimations = [...updatedItem.animations];
@@ -1362,24 +1367,9 @@ export default function FrameToolbar(props) {
   }, []);
 
   const updateHighlightBoundary = (selectedLayerId) => {
-
-    const selectedLayerElement = layerRefs.current[selectedLayerId];
-
-    if (selectedLayerElement) {
-      const parentElement = parentRef.current;
-      const parentRect = parentElement.getBoundingClientRect();
-      const selectedRect = selectedLayerElement.getBoundingClientRect();
-      const safeParentHeight = Math.max(0, parentRect.height || 0);
-      const startPixels = Math.floor(
-        clamp(selectedRect.top - parentRect.top, 0, safeParentHeight)
-      );
-      const endPixels = Math.ceil(
-        clamp(selectedRect.bottom - parentRect.top, startPixels, safeParentHeight)
-      );
-      const heightPixels = Math.max(0, endPixels - startPixels);
-
-      setHighlightBoundaries({ start: startPixels, height: heightPixels });
-    }
+    const layout = visibleLayerLayoutById[selectedLayerId];
+    const next = layout ? { start: layout.top, height: layout.height } : null;
+    setHighlightBoundaries(previous => previous?.start === next?.start && previous?.height === next?.height ? previous : next);
   };
 
   const [audioTrackListDisplay, setAudioTrackListDisplay] = useState([]);
@@ -2340,53 +2330,15 @@ export default function FrameToolbar(props) {
   const resolvedLayerViewportHeight = layerViewportHeight > 0
     ? layerViewportHeight
     : (parentRef.current?.clientHeight || 500);
-  const visibleLayerPixelLayout = useMemo(() => (
-    buildLayerPixelLayout(
-      visibleLayers,
-      visibleLayerDurationFramesById,
-      resolvedLayerViewportHeight,
-      DISPLAY_FRAMES_PER_SECOND,
-    )
-  ), [
-    DISPLAY_FRAMES_PER_SECOND,
-    resolvedLayerViewportHeight,
-    visibleLayerDurationFramesById,
-    visibleLayers,
-  ]);
-  const displayedLayerViewportGeometry = useMemo(() => {
-    let nextPixelStart = 0;
-    const segments = displayedVisibleLayerMetadata.map((layerMeta, index) => {
-      const layerId = layerMeta.layer?._id?.toString?.() || layerMeta.layer?._id || `${layerMeta.originalIndex}`;
-      const frameStart = Math.max(timelineDisplayFrameRange[0], layerMeta.startFrame);
-      const frameEnd = Math.max(
-        frameStart + 1,
-        Math.min(timelineDisplayFrameRange[1], layerMeta.endFrame),
-      );
-      const pixelHeight = Math.max(0, visibleLayerPixelLayout.layerHeightsInPixels[index] ?? 0);
-      const segment = {
-        layerId: layerId.toString(),
-        frameStart,
-        frameEnd,
-        pixelStart: nextPixelStart,
-        pixelEnd: nextPixelStart + pixelHeight,
-        pixelHeight,
-      };
-
-      nextPixelStart += pixelHeight;
-      return segment;
-    });
-
-    return {
-      segments,
-      totalPixels: nextPixelStart,
-      frameStart: segments[0]?.frameStart ?? timelineDisplayFrameRange[0],
-      frameEnd: segments[segments.length - 1]?.frameEnd ?? timelineDisplayFrameRange[1],
-    };
-  }, [
-    displayedVisibleLayerMetadata,
-    timelineDisplayFrameRange,
-    visibleLayerPixelLayout.layerHeightsInPixels,
-  ]);
+  const displayedLayerViewportGeometry = useMemo(() => buildTimelineViewportGeometry(
+    displayedVisibleLayerMetadata, timelineDisplayFrameRange, resolvedLayerViewportHeight, MIN_LAYER_HEIGHT,
+  ), [displayedVisibleLayerMetadata, timelineDisplayFrameRange, resolvedLayerViewportHeight]);
+  const visibleLayerPixelLayout = useMemo(() => ({
+    layerHeightsInPixels: displayedVisibleLayerMetadata.map(meta => {
+      const id = meta.layer?._id?.toString?.() || String(meta.originalIndex);
+      return displayedLayerViewportGeometry.segments.find(segment => segment.layerId === id)?.pixelHeight || 0;
+    }),
+  }), [displayedVisibleLayerMetadata, displayedLayerViewportGeometry]);
   const displayedFrameRange = useMemo(
     () => getViewportGeometryFrameRange(displayedLayerViewportGeometry),
     [displayedLayerViewportGeometry],
@@ -2410,6 +2362,7 @@ export default function FrameToolbar(props) {
   }, [displayedLayerViewportGeometry, selectedHintLayerData]);
   const visibleLayerLayoutById = useMemo(() => (
     displayedLayerViewportGeometry.segments.reduce((accumulator, segment) => {
+      if (!segment.layerId) return accumulator;
       accumulator[segment.layerId] = {
         top: segment.pixelStart,
         height: segment.pixelHeight,
@@ -2482,91 +2435,36 @@ export default function FrameToolbar(props) {
     }
   }, [computeScenePopupPosition, durationChanged]);
 
-  // Compute whether we can navigate further
-  const canGoPrev = false;
-  const canGoNext = false;
-
-  // Handle Previous Click
-  const handlePrevClick = () => {
-    if (!canGoPrev || isAnimating) return;
-
-    const numLayersToMove = Math.min(3, visibleLayersStartIndex);
-    const newStartIndex = visibleLayersStartIndex - numLayersToMove;
-    const newVisibleLayers = allVisibleLayerMetadata
-      .slice(newStartIndex, newStartIndex + MAX_VISIBLE_LAYERS)
-      .map((layerMeta) => layerMeta.layer);
-
-    setIncomingVisibleLayers(newVisibleLayers);
-    setAnimationDirection('prev');
-    setIsAnimating(true);
+  const canGoPrev = selectedLayerIndex > 0;
+  const canGoNext = selectedLayerIndex >= 0 && selectedLayerIndex < layers.length - 1;
+  const selectAdjacentScene = (index) => {
+    if (index < 0 || index >= layers.length) return;
+    setSelectedLayerIndex(index);
+    setSelectedLayer(layers[index]);
+    setCurrentLayerSeek(layerFrameMetadata[index].startFrame);
   };
+  const handlePrevClick = () => { if (canGoPrev) selectAdjacentScene(selectedLayerIndex - 1); };
+  const handleNextClick = () => { if (canGoNext) selectAdjacentScene(selectedLayerIndex + 1); };
 
-  // Handle Next Click
-  const handleNextClick = () => {
-    if (!canGoNext || isAnimating) return;
-
-    const numLayersToMove = Math.min(
-      3,
-      allVisibleLayerMetadata.length - (visibleLayersStartIndex + MAX_VISIBLE_LAYERS)
-    );
-    const newStartIndex = visibleLayersStartIndex + numLayersToMove;
-    const newVisibleLayers = allVisibleLayerMetadata
-      .slice(newStartIndex, newStartIndex + MAX_VISIBLE_LAYERS)
-      .map((layerMeta) => layerMeta.layer);
-
-    setIncomingVisibleLayers(newVisibleLayers);
-    setAnimationDirection('next');
-    setIsAnimating(true);
-  };
-
-
-
-  // Replace useEffect with useLayoutEffect
   useLayoutEffect(() => {
-
-
-    if (layers && layers[selectedLayerIndex]) {
-      const selectedLayerId = layers[selectedLayerIndex]._id.toString();
-
-      if (layerRefs.current[selectedLayerId]) {
-        updateHighlightBoundary(selectedLayerId);
-      }
-    }
-  }, [selectedLayerIndex, selectedFrameRange,
-    frameToolbarView,
-    layers,
-
-  ]);
-
+    const selectedId = layers[selectedLayerIndex]?._id?.toString?.();
+    if (selectedId) updateHighlightBoundary(selectedId);
+    else setHighlightBoundaries(null);
+  }, [selectedLayerIndex, visibleLayerLayoutById, layers]);
 
   useEffect(() => {
     const parent = parentRef.current;
-    if (!parent) return;
-
-    setLayerViewportHeight(parent.clientHeight || 0);
-
-    const observer = new ResizeObserver(() => {
-      setLayerViewportHeight(parent.clientHeight || 0);
-
-      if (layers && layers[selectedLayerIndex]) {
-        const selectedLayerId = layers[selectedLayerIndex]._id.toString();
-
-
-        setTimeout(() => {
-          updateHighlightBoundary(selectedLayerId);
-        }, [200]);
-
-      }
-    });
-
+    if (!parent) return undefined;
+    const measure = () => setLayerViewportHeight(parent.clientHeight || 0);
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [parentRef, layers, selectedLayerIndex]);
-
-
-  useEffect(() => {
-    setHighlightBoundaries(null);
-  }, [isExpandedTrackView, layers, totalDurationInFrames]);
+  }, []);
 
   useEffect(() => {
     setGridSnapPoints([]);
@@ -2928,10 +2826,13 @@ export default function FrameToolbar(props) {
 
 
   const onUpdateDuration = () => {
-    const newDuration = pendingDuration;
+    const newDuration = Number(pendingDuration);
+    const selectedLayer = layers[selectedLayerIndex];
+    if (!Number.isFinite(newDuration) || newDuration <= 0 || !selectedLayer) {
+      return;
+    }
     setLayerDuration(newDuration, selectedLayerIndex);
-    let layer = layers[selectedLayerIndex];
-    layer.duration = newDuration;
+    const layer = { ...selectedLayer, duration: newDuration };
 
     const clipPayload = {
       clipStart: clipStartValue > 0,
@@ -4561,11 +4462,21 @@ export default function FrameToolbar(props) {
     // The new animation ID will be the next integer
     const newAnimationId = `animation_${maxIdNum + 1}`;
 
+    const parentLayer = layers.find(layer => layer._id === selectedTextTrackDisplay.layerId);
+    const parentStart = Math.round((Number(parentLayer?.durationOffset) || 0) * DISPLAY_FRAMES_PER_SECOND);
+    const requestedStart = secondsToDisplayFrames(animationObject.startTime);
+    const requestedEnd = secondsToDisplayFrames(animationObject.endTime);
+    const startFrame = Math.max(selectedTextTrackDisplay.startFrame, requestedStart);
+    const endFrame = Math.min(selectedTextTrackDisplay.endFrame, requestedEnd);
+    if (!Number.isFinite(startFrame) || endFrame <= startFrame) return;
     const newAnimationObject = {
-      id: newAnimationId, // Assign the unique ID
+      id: newAnimationId,
       type: animationObject.value,
-      startFrame: selectedTextTrackDisplay.startFrame,
-      endFrame: selectedTextTrackDisplay.endFrame,
+      startFrame,
+      endFrame,
+      frameRate: sessionFramesPerSecond,
+      frameOffset: displayFramesToActualFrames(startFrame - parentStart),
+      frameDuration: displayFramesToActualFrames(endFrame - parentStart) - displayFramesToActualFrames(startFrame - parentStart),
       isPending: true,
     };
 
@@ -4716,6 +4627,9 @@ export default function FrameToolbar(props) {
         setShowTextTrackAnimations={setShowTextTrackAnimations}
         showTextTrackAnimations={showTextTrackAnimations}
         handleSaveChanges={handleSaveChanges}
+        onTimingChange={selectedAnimation
+          ? (start, end) => updateTrackAnimationBoundariesForTextLayer(selectedAnimation, secondsToDisplayFrames(start), secondsToDisplayFrames(end))
+          : updateTextItemTime}
         updateChangesToActiveSessionLayers={updateChangesToActiveSessionLayers}
         removeTextLayer={removeTextLayer}
         removeAnimationLayer={removeAnimationLayer}
@@ -5062,8 +4976,12 @@ export default function FrameToolbar(props) {
                   {...provided.draggableProps}
                   {...provided.dragHandleProps}
                   data-scene-layer-body="true"
-                  className={`layer-scene-item group ${layerSurfaceClass} ${index > 0 ? '-mt-px' : ''} ml-1 mr-1 cursor-pointer border relative overflow-hidden rounded-[3px] shadow-none`}
+                  className={`layer-scene-item group ${layerSurfaceClass} ml-1 mr-1 cursor-pointer border relative overflow-hidden rounded-[3px] shadow-none`}
                   style={{
+                    position: 'absolute',
+                    top: `${keyPrefix === 'current' ? visibleLayerLayoutById[layerId]?.top || 0 : layerHeightsInPixels.slice(0, index).reduce((sum, value) => sum + value, 0)}px`,
+                    left: 0,
+                    right: 0,
                     height: `${layerHeightInPixels}px`,
                     maxHeight: `${layerHeightInPixels}px`,
                     boxSizing: 'border-box', // Include borders in height
@@ -5285,7 +5203,7 @@ export default function FrameToolbar(props) {
       startTime,
       endTime,
       speedMultiplier: toolConfig.type === 'SPEED'
-        ? Math.max(2, Number(toolConfig.speedMultiplier) || 2)
+        ? Math.min(VIDEO_EDIT_MAX_SPEED_MULTIPLIER, Math.max(VIDEO_EDIT_MIN_SPEED_MULTIPLIER, Number(toolConfig.speedMultiplier) || VIDEO_EDIT_DEFAULT_SPEED_MULTIPLIER))
         : 1,
     };
 
@@ -5767,6 +5685,7 @@ export default function FrameToolbar(props) {
           <div
             ref={audioTrackRailContentRef}
             className="audio-track-rail__content"
+            style={{ height: resolvedLayerViewportHeight }}
           >
             {audioTrackNodes}
           </div>
@@ -5843,8 +5762,8 @@ export default function FrameToolbar(props) {
       );
     }
 
-    const inputClassName = 'h-8 w-20 rounded-md border border-slate-500/40 bg-transparent px-2 text-xs';
-    const labelClassName = 'flex flex-col gap-1 text-[10px] uppercase tracking-wide text-slate-400';
+    const inputClassName = 'app-field h-8 w-20 rounded-md border px-2 text-xs';
+    const labelClassName = 'status-muted flex flex-col gap-1 text-[10px] uppercase tracking-wide';
 
     return (
       <div className="flex flex-wrap items-end gap-2 px-2 py-2 text-xs">
@@ -5911,7 +5830,7 @@ export default function FrameToolbar(props) {
           <select
             value={selectedGlobalVideoTrack.shape_overlay || 'circle'}
             onChange={(event) => updateSelectedGlobalVideoShape(event.target.value)}
-            className="h-8 rounded-md border border-slate-500/40 bg-transparent px-2 text-xs"
+            className="app-field h-8 rounded-md border px-2 text-xs"
           >
             <option value="circle">Circle</option>
             <option value="oval">Oval</option>
@@ -5923,7 +5842,7 @@ export default function FrameToolbar(props) {
           type="button"
           onClick={() => onUpdateAllGlobalVideos()}
           disabled={!globalVideoDirtyCount || typeof updateGlobalVideos !== 'function'}
-          className="inline-flex h-8 items-center rounded-md border border-cyan-500/50 px-3 text-xs font-semibold text-cyan-200 disabled:opacity-50"
+          className="inline-flex h-8 items-center rounded-md border border-cyan-500/50 px-3 text-xs font-semibold status-success disabled:opacity-50"
         >
           Save
         </button>
@@ -5931,7 +5850,7 @@ export default function FrameToolbar(props) {
           type="button"
           onClick={removeSelectedGlobalVideoTrack}
           disabled={typeof updateGlobalVideos !== 'function'}
-          className="inline-flex h-8 items-center rounded-md border border-red-500/50 px-3 text-xs font-semibold text-red-300 disabled:opacity-50"
+          className="inline-flex h-8 items-center rounded-md border border-red-500/50 px-3 text-xs font-semibold status-error disabled:opacity-50"
         >
           Remove
         </button>
@@ -5989,13 +5908,13 @@ export default function FrameToolbar(props) {
       : 'inline-flex h-8 items-center gap-1 rounded-md border border-slate-500/40 px-3 text-xs font-semibold text-slate-200 disabled:opacity-50';
     const addHintButtonClassName = colorMode === 'light'
       ? 'inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-700 disabled:opacity-50'
-      : 'inline-flex h-8 items-center gap-1 rounded-md border border-cyan-500/50 px-3 text-xs font-semibold text-cyan-200 disabled:opacity-50';
+      : 'inline-flex h-8 items-center gap-1 rounded-md border border-cyan-500/50 px-3 text-xs font-semibold status-success disabled:opacity-50';
     const saveHintButtonClassName = colorMode === 'light'
       ? 'inline-flex h-8 items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 disabled:opacity-50'
       : 'inline-flex h-8 items-center rounded-md border border-emerald-500/50 px-3 text-xs font-semibold text-emerald-200 disabled:opacity-50';
     const dangerHintButtonClassName = colorMode === 'light'
       ? 'inline-flex h-8 items-center rounded-md border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 disabled:opacity-50'
-      : 'inline-flex h-8 items-center rounded-md border border-red-500/50 px-3 text-xs font-semibold text-red-300 disabled:opacity-50';
+      : 'inline-flex h-8 items-center rounded-md border border-red-500/50 px-3 text-xs font-semibold status-error disabled:opacity-50';
     const addHintPanelClassName = colorMode === 'light'
       ? 'flex min-w-[260px] flex-1 items-end gap-2 rounded-md border border-slate-200 bg-white/70 px-2 py-2'
       : 'flex min-w-[260px] flex-1 items-end gap-2 rounded-md border border-slate-500/30 px-2 py-2';
@@ -6311,15 +6230,18 @@ export default function FrameToolbar(props) {
 
 
 
-            if (typeof item.startFrame === 'undefined' || typeof item.endFrame === 'undefined') {
-              item.startFrame = layer.durationOffset * DISPLAY_FRAMES_PER_SECOND;
-              item.endFrame = (layer.durationOffset + layer.duration) * DISPLAY_FRAMES_PER_SECOND;
-            }
-            const itemStartFrame = Math.round(Number(item.startFrame) || 0);
-            const itemEndFrame = Math.max(
-              itemStartFrame + 1,
-              Math.round(Number(item.endFrame) || itemStartFrame + 1),
-            );
+            const sourceRate = Number(item.config?.frameRate || item.config?.framesPerSecond) || sessionFramesPerSecond;
+            const parentStart = Math.round((Number(layer.durationOffset) || 0) * DISPLAY_FRAMES_PER_SECOND);
+            const hasConfig = Number.isFinite(Number(item.config?.frameOffset)) && Number(item.config?.frameDuration) > 0;
+            const itemStartFrame = hasConfig
+              ? parentStart + Math.round(Number(item.config.frameOffset) / sourceRate * DISPLAY_FRAMES_PER_SECOND)
+              : Number.isFinite(Number(item.startTime)) ? secondsToDisplayFrames(item.startTime)
+                : Number.isFinite(Number(item.startFrame)) ? Math.round(Number(item.startFrame) / sourceRate * DISPLAY_FRAMES_PER_SECOND) : parentStart;
+            const itemEndFrame = Math.max(itemStartFrame + 1, hasConfig
+              ? parentStart + Math.round((Number(item.config.frameOffset) + Number(item.config.frameDuration)) / sourceRate * DISPLAY_FRAMES_PER_SECOND)
+              : Number.isFinite(Number(item.endTime)) ? secondsToDisplayFrames(item.endTime)
+                : Number.isFinite(Number(item.endFrame)) ? Math.round(Number(item.endFrame) / sourceRate * DISPLAY_FRAMES_PER_SECOND)
+                  : secondsToDisplayFrames(Number(layer.durationOffset) + Number(layer.duration)));
 
             if (itemEndFrame < visibleStartFrame || itemStartFrame > visibleEndFrame) {
               return false;
@@ -6432,8 +6354,8 @@ export default function FrameToolbar(props) {
       updatedItem.config = {
         ...updatedItem.config,
         frameRate: sessionFramesPerSecond,
-        frameOffset: Math.max(0, newStartFrame - Math.round(selectedTextLayer.durationOffset * sessionFramesPerSecond)),
-        frameDuration: Math.max(1, newEndFrame - newStartFrame),
+        frameOffset: Math.max(0, displayFramesToActualFrames(newStartFrame) - Math.round(selectedTextLayer.durationOffset * sessionFramesPerSecond)),
+        frameDuration: Math.max(1, displayFramesToActualFrames(newEndFrame) - displayFramesToActualFrames(newStartFrame)),
       };
       selectedTextLayerActiveItemList[selectedTextItemIndexInActiveItemList] = updatedItem;
       selectedTextLayer.imageSession.activeItemList = selectedTextLayerActiveItemList;
@@ -6444,23 +6366,14 @@ export default function FrameToolbar(props) {
 
   }
 
-  const handleSaveChanges = () => {
-
-
-    // Apply pending changes to backend/store
-    if (pendingLayerUpdates && pendingLayerUpdates.length > 0) {
-      // For simplicity, assume we only need to update one layer at a time
-      // If multiple changes are accumulated, handle them accordingly
-      // If pendingLayerUpdates is a full array of layers (all updated), call updateSessionLayer for each updated layer:
-      pendingLayerUpdates.forEach((lyr) => {
-
-
-        updateSessionLayer(lyr);
-      });
-      setPendingLayerUpdates([]); // Clear pending changes after save
+  const handleSaveChanges = async () => {
+    const pending = pendingLayerUpdates;
+    if (!pending?.length) return;
+    const results = await Promise.all(pending.map(layer => updateSessionLayer(layer)));
+    if (results.every(result => result !== null && result !== false)) {
+      setPendingLayerUpdates(current => current === pending ? [] : current);
     }
   };
-
 
 
 
@@ -6489,17 +6402,18 @@ export default function FrameToolbar(props) {
   );
   const timeRulerWidthPx = isExpandedToolbarView ? 54 : 34;
   const timelineRailStyle = {
+    '--timeline-axis-height': `${resolvedLayerViewportHeight}px`,
     '--time-ruler-width': `${timeRulerWidthPx}px`,
     '--time-ruler-padding-x': isExpandedToolbarView ? '2px' : '1px',
     '--time-ruler-gap': isExpandedToolbarView ? '4px' : '2px',
     '--time-ruler-mark-width': isExpandedToolbarView ? '8px' : '5px',
     '--time-ruler-font-size': isExpandedToolbarView ? '10px' : '9px',
   };
-  const collapsedToolbarWidth = 'min(10vw, 128px)';
+  const collapsedToolbarWidth = 'var(--studio-left-width)';
   const frameToolbarInsetStyle = {
     left: '16px',
-    top: '56px',
-    bottom: '0px',
+    top: 'calc(var(--app-nav-height) + var(--workspace-inset))',
+    bottom: 'var(--workspace-inset)',
   };
 
   const measureAudioTrackRailOverflow = useCallback(() => {
@@ -6585,7 +6499,7 @@ export default function FrameToolbar(props) {
 
   let containerWdidth = 'z-1 opacity-100';
   if (isExpandedToolbarView) {
-    frameToolbarInsetStyle.top = '0px';
+    frameToolbarInsetStyle.top = 'calc(var(--app-nav-height) + var(--workspace-inset))';
     frameToolbarInsetStyle.width = shouldUseExpandedAudioTrackToolbarWidth
       ? EXPANDED_AUDIO_TRACK_TOOLBAR_WIDTH
       : 'clamp(420px, 44vw, 720px)';
@@ -6609,41 +6523,41 @@ export default function FrameToolbar(props) {
     }
     if (currentLayerActionSuperView === 'VIDEO') {
       trackViewDisplay = (
-        <div className='text-track-container'>
+        <div className='text-track-container'><div className='timeline-lane-content' style={{ height: resolvedLayerViewportHeight }}>
           {showAddedVideoTracks()}
-        </div>
+        </div></div>
       );
       selectedTrackViewDisplay = showSelectedVideoTrack();
     }
     if (currentLayerActionSuperView === 'GLOBAL_VIDEO') {
       trackViewDisplay = (
-        <div className='text-track-container'>
+        <div className='text-track-container'><div className='timeline-lane-content' style={{ height: resolvedLayerViewportHeight }}>
           {showAddedGlobalVideoTracks()}
-        </div>
+        </div></div>
       );
       selectedTrackViewDisplay = showSelectedGlobalVideoTrack();
     }
     if (currentLayerActionSuperView === 'IMAGE') {
       trackViewDisplay = (
-        <div className='text-track-container'>
+        <div className='text-track-container'><div className='timeline-lane-content' style={{ height: resolvedLayerViewportHeight }}>
           {showAddedVisualTracks()}
-        </div>
+        </div></div>
       );
       selectedTrackViewDisplay = showSelectedVisualTrack();
     }
     if (currentLayerActionSuperView === 'TEXT') {
       trackViewDisplay = (
-        <div className='text-track-container'>
+        <div className='text-track-container'><div className='timeline-lane-content' style={{ height: resolvedLayerViewportHeight }}>
           {showAddedTextTracks()}
-        </div>
+        </div></div>
       );
       selectedTrackViewDisplay = showSelectedTextTrack();
     }
     if (currentLayerActionSuperView === 'HINTS') {
       trackViewDisplay = (
-        <div className='text-track-container'>
+        <div className='text-track-container'><div className='timeline-lane-content' style={{ height: resolvedLayerViewportHeight }}>
           {showAddedHintTracks()}
-        </div>
+        </div></div>
       );
       selectedTrackViewDisplay = showSelectedHintTrack();
     }
@@ -6989,8 +6903,8 @@ export default function FrameToolbar(props) {
         ? 'Pending changes'
         : 'Ready';
   const settingsTrackViewDisplay = (
-    <div className='text-track-container'>
-      <div className='flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-y-auto px-3 py-3'>
+    <div className='text-track-container overflow-x-hidden'>
+      <div className='workspace-scroll flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-y-auto px-3 py-3'>
         <div className='grid min-w-0 grid-cols-2 gap-3 xl:grid-cols-4'>
           <div className={settingsSummaryCardClassName}>
             <div className={settingsStatLabelClassName}>Scene</div>
@@ -7220,6 +7134,7 @@ export default function FrameToolbar(props) {
             <button
               type="button"
               className={sceneButtonClassName}
+              aria-label="Previous scene"
               onClick={canGoPrev ? handlePrevClick : undefined}
               disabled={!canGoPrev}
             >
@@ -7228,6 +7143,7 @@ export default function FrameToolbar(props) {
             <button
               type="button"
               className={sceneButtonClassName}
+              aria-label="Next scene"
               onClick={canGoNext ? handleNextClick : undefined}
               disabled={!canGoNext}
             >
@@ -7400,20 +7316,20 @@ export default function FrameToolbar(props) {
   return (
     <div
       className={`${colorMode === 'dark' ? 'shadow-lg' : ''} m-auto fixed ${containerWdidth} ${textColor} ${panelShellSurface}
-       text-left toolbar-container overflow-visible`}
+       app-panel text-left toolbar-container overflow-visible`}
       aria-disabled={isRenderPending}
       style={frameToolbarInsetStyle}
     >
       <div className='grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]'>
-        <div className={`relative z-[240] w-full shrink-0 overflow-visible pb-1 ${bgColor} ${colorMode === 'dark' ? 'border-r-2 border-stone-600' : 'border-r border-slate-200'}`}>
+        <div className={`app-panel-header app-panel-header-scroll relative z-[240] w-full shrink-0 pb-1 ${bgColor} ${colorMode === 'dark' ? 'border-r-2 border-stone-600' : 'border-r border-slate-200'}`}>
           {isExpandedToolbarView ? (
             <div className='flex min-w-0 flex-col gap-1 px-1.5 pt-1 pb-1'>
-              <div className='flex min-w-0 items-center gap-1 overflow-hidden pb-[1px]'>
-                <div className='min-w-0 shrink-0'>
+              <div className='flex min-w-0 flex-wrap items-center gap-1 pb-[1px]'>
+                <div className='min-w-0 w-full'>
                   {layerActionCurrentView}
                 </div>
 
-                <div className='min-w-[148px] flex-[1_1_180px] overflow-visible'>
+                <div className='min-w-0 flex-[1_1_148px] overflow-visible'>
                   {toolbarHeaderControls}
                 </div>
 
@@ -7447,7 +7363,7 @@ export default function FrameToolbar(props) {
         </div>
 
         <div
-          className={`relative z-0 min-h-0 h-full w-full overflow-hidden flex flex-row pl-1 ${panelBodySurface}`}
+          className={`app-panel-body relative z-0 min-h-0 h-full w-full overflow-hidden flex flex-row pl-1 pb-4 ${panelBodySurface}`}
           style={timelineRailStyle}
         >
           {isGridVisible && hasUsableFrameRange && (
@@ -7574,6 +7490,7 @@ export default function FrameToolbar(props) {
                   totalDuration={totalDuration}
                   visibleStartTime={viewRangeStart / DISPLAY_FRAMES_PER_SECOND}
                   visibleEndTime={viewRangeEnd / DISPLAY_FRAMES_PER_SECOND}
+                  viewportGeometry={displayedLayerViewportGeometry}
                 />
               </div>
             </div>

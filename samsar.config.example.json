@@ -74,7 +74,7 @@
     },
     "openrouter": {
       "enabled": false,
-      "gemini31ProModel": "google/gemini-3.1-pro-preview"
+      "gemini4ArgonModel": "google/gemini-4-argon"
     },
     "gmicloud": {
       "enabled": false,

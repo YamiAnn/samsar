@@ -28,6 +28,7 @@ export default function OneshotEditorContainer() {
   const routeResolutionStartedRef = useRef(false);
   const shouldWaitForProjectAuth = shouldDeferVidgenieProjectLoad({
     sessionId: id,
+    hasAuthenticatedUser: Boolean(user?._id),
     userInitiated,
     userFetching,
   });
@@ -152,7 +153,7 @@ export default function OneshotEditorContainer() {
   return (
     <div className={`${outerShell} ${subtleGradient} min-h-screen`}>
       <OverflowContainer>
-        <div className="vidgenie-page-shell mx-auto w-full max-w-6xl px-2 py-4 pt-[58px] sm:px-4 sm:py-6 sm:pt-6 md:py-10">
+        <div className="vidgenie-page-shell workspace-page mx-auto w-full max-w-6xl px-2 pb-6 pt-[calc(var(--app-nav-height)+var(--workspace-inset))] sm:px-4">
           <Suspense fallback={<VidgenieSkeletonLoader />}>
             <OneshotEditor />
           </Suspense>

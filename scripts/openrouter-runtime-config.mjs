@@ -1,4 +1,4 @@
-export const DEFAULT_OPENROUTER_GEMINI_31_PRO_MODEL = 'google/gemini-3.1-pro-preview';
+export const DEFAULT_OPENROUTER_GEMINI_4_ARGON_MODEL = 'google/gemini-4-argon';
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -12,15 +12,17 @@ export function resolveOpenRouterRuntimeConfig({ providerConfig = {}, providerSe
     return {
       enabled: false,
       apiKey: '',
-      gemini31ProModel: '',
+      gemini4ArgonModel: '',
     };
   }
+
+  const gemini4ArgonModel = normalizeString(providerConfig.gemini4ArgonModel) ||
+    DEFAULT_OPENROUTER_GEMINI_4_ARGON_MODEL;
 
   return {
     enabled: true,
     apiKey: configuredApiKey,
-    gemini31ProModel:
-      normalizeString(providerConfig.gemini31ProModel) || DEFAULT_OPENROUTER_GEMINI_31_PRO_MODEL,
+    gemini4ArgonModel,
   };
 }
 

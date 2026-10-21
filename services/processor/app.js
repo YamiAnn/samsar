@@ -52,10 +52,18 @@ import automationRouter from './src/routes/automation.js';
 import apiIndexRouter from './src/routes/api/index.js';
 import { installStructuredLogger } from './src/utils/StructuredLogger.js';
 import { withRequestContext } from './src/models/api/RequestAuthContext.js';
+import { resolveRequestActorFromAuthHeaders } from './src/models/external/User.js';
+import { canAccessPrivateAsset } from './src/models/PrivateAssetOwnership.js';
+import { installPrivateAssetAccess } from './src/utils/PrivateAssetAccess.js';
+import { privateAssetResponseMiddleware } from './src/utils/PrivateAssetResponse.js';
 import { requireAdminUser } from './src/middleware/requireAdminUser.js';
 import { isContainerRuntime } from './src/utils/EnvironmentUtils.js';
 
-import { ensureSupportedFontSamples } from './src/utils/SupportedFontSamples.js';
+import {
+  ensureSupportedFontSamples,
+  isSupportedFontSamplePath,
+  resolveSupportedFontSamplesDirectory,
+} from './src/utils/SupportedFontSamples.js';
 
 // admin routes
 import adminCouponRouter from './src/routes/admin/coupon.js';
@@ -203,6 +211,7 @@ const corsOptions = {
 // Apply CORS middleware to all requests
 app.use(cors(corsOptions));
 app.use(withRequestContext);
+app.use(privateAssetResponseMiddleware({ resolveActor: resolveRequestActorFromAuthHeaders }));
 
 app.use((req, res, next) => {
   const requestPath = req.originalUrl || req.url || '';
@@ -335,8 +344,21 @@ if (process.env.SAMSAR_ASSETS_V2_ROOT) {
   assetsV2Path = '/assets_v2';
 }
 
-app.use('/assets_v2', express.static(assetsV2Path, { setHeaders: setCustomHeaders }));
-app.use(express.static(assetsPath, { setHeaders: setCustomHeaders }));
+app.use('/supported_fonts', (req, res, next) => {
+  if (!['GET', 'HEAD'].includes(req.method) || !isSupportedFontSamplePath(req.path)) {
+    return res.status(404).end();
+  }
+  return next();
+}, express.static(resolveSupportedFontSamplesDirectory(), { index: false, dotfiles: 'deny', fallthrough: false }));
+
+installPrivateAssetAccess({
+  app,
+  assetsPath,
+  assetsV2Path,
+  setCustomHeaders,
+  resolveActor: resolveRequestActorFromAuthHeaders,
+  canAccessAsset: canAccessPrivateAsset,
+});
 
 
 app.use('/internal/audio', internalAudioRouter);

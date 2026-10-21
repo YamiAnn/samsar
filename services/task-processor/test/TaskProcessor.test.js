@@ -295,6 +295,48 @@ test('task processor remains one shot outside Docker and recurs every three hour
   );
 });
 
+test('worker honors shared seven-day retention and reports missing media mounts', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-task-cleanup-'));
+  const root = path.join(tempRoot, 'assets_v2');
+  const settings = {
+    SAMSAR_ASSETS_V2_ROOT: root,
+    CLEANUP_MIN_AGE_HOURS: '168',
+    INTERMEDIATE_MEDIA_CLEANUP_HOURS: '',
+    TASK_PROCESSOR_CRON_LOG_PATH: path.join(tempRoot, 'cronTabs.log'),
+  };
+  const previous = Object.fromEntries(Object.keys(settings).map((name) => [name, process.env[name]]));
+  Object.assign(process.env, settings);
+  t.after(async () => {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  });
+
+  await assert.rejects(cleanupOldLocalAssetsV2Media(), /root does not exist/);
+  const oldFile = path.join(root, 'ai_video/temp/old.png');
+  const recentFile = path.join(root, 'ai_video/temp/recent.png');
+  await fs.mkdir(path.dirname(oldFile), { recursive: true });
+  for (const [file, hours] of [[oldFile, 169], [recentFile, 167]]) {
+    await fs.writeFile(file, 'media');
+    const mtime = new Date(Date.now() - hours * 3600000);
+    await fs.utimes(file, mtime, mtime);
+  }
+  const counters = await cleanupOldLocalAssetsV2Media();
+  assert.equal(counters.deletedFiles, 1);
+  await assert.rejects(fs.stat(oldFile), { code: 'ENOENT' });
+  await fs.stat(recentFile);
+});
+
+test('file cleanup errors propagate to the scheduler for failure reporting and retry', async () => {
+  await assert.rejects(__testOnly__.runFileCleanupTasksIfEnabled(
+    true,
+    async () => { throw new Error('missing media mount'); },
+    async () => assert.fail('stale session cleanup must not run after mount failure'),
+  ), /missing media mount/);
+});
+
 test('recurring task processor retries a failed run and remains scheduled', async () => {
   const calls = [];
   const delays = [];

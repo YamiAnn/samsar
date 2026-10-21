@@ -2093,7 +2093,5 @@ if wait_for_setup_wizard "$LOCAL_SETUP_WIZARD_URL"; then
   print_setup_wizard_urls
   open_setup_wizard_browser "$LOCAL_SETUP_WIZARD_AUTH_URL"
 else
-  REACHABLE_HOST_PUBLIC_IPS=""
-  print_setup_wizard_urls
-  echo "Open ${LOCAL_SETUP_WIZARD_AUTH_URL} after the container finishes starting."
+  die "Setup wizard did not become ready at ${LOCAL_SETUP_WIZARD_URL}. Inspect it with: docker logs ${CONTAINER_NAME}"
 fi

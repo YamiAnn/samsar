@@ -198,6 +198,36 @@ test('lookahead video loading waits for the active video but skips still-only sc
   assert.equal(isStudioVideoSourceReady('scene-1.mp4', ''), false);
 });
 
+test('private video credentials survive normalization for every video layer type', () => {
+  for (const [type, flag, field] of [
+    ['ai_video', 'hasAiVideoLayer', 'aiVideoRemoteLink'],
+    ['lip_sync', 'hasLipSyncVideoLayer', 'lipSyncRemoteLink'],
+    ['sound_effect', 'hasSoundEffectVideoLayer', 'soundEffectRemoteLink'],
+    ['user_video', 'hasUserVideoLayer', 'userVideoRemoteLink'],
+  ]) {
+    const path = '/assets_v2/users/session-123/video.mp4';
+    const credential = '?asset_token=v1.scoped%2Bsignature&variant=preview#t=2';
+    assert.deepEqual(resolveStudioLayerVideo({
+      [flag]: true,
+      [field]: `https://static.samsar.one${path}${credential}`,
+    }, {}, options), {
+      type,
+      url: `https://api.samsar.one${path}${credential}`,
+    });
+  }
+});
+
+test('private user resource videos use the processor while public CDN resources keep their host', () => {
+  const path = '/assets_v2/user_resources/owner/video.mp4?asset_token=v1.private';
+  assert.deepEqual(resolveStudioLayerVideo({
+    hasUserVideoLayer: true,
+    userVideoRemoteLink: `https://static.samsar.one${path}`,
+  }, {}, options), {
+    type: 'user_video',
+    url: `https://api.samsar.one${path}`,
+  });
+});
+
 test('ready video composition suppresses only the base image', () => {
   const currentSource = 'scene-1.mp4';
   const readySource = 'scene-1.mp4';

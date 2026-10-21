@@ -1,9 +1,12 @@
+import { resolveStudioLayerVideo } from './util/studioVideoLayers.mjs';
+import { getRenderableImageUrl } from '../../utils/image.jsx';
 import { StudioFrameRateContext, resolveStudioFramesPerSecond } from './StudioFrameRateContext.jsx';
 import { useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import CommonContainer from '../common/CommonContainer.tsx';
 import FrameToolbar from './toolbars/frame_toolbar/index.jsx';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
+import { deduplicatedGet } from '../../utils/deduplicatedGet.mjs';
 import { CURRENT_EDITOR_VIEW, FRAME_TOOLBAR_VIEW } from '../../constants/Types.ts';
 import { getHeaders } from '../../utils/web.jsx';
 import VideoEditorContainer from './VideoEditorContainer.jsx';
@@ -13,7 +16,9 @@ import { useAlertDialog } from '../../contexts/AlertDialogContext.jsx';
 import { debounce } from './util/debounce.jsx';
 import AuthContainer, { AUTH_DIALOG_OPTIONS } from '../auth/AuthContainer.jsx';
 import AssistantHome from '../assistant/AssistantHome.jsx';
-import { getImagePreloaderWorker } from './workers/imagePreloaderWorkerSingleton'; // Import the worker singleton
+import { StudioMediaContext } from './StudioMediaContext.jsx';
+import { createStudioImagePool } from './util/studioImagePool.mjs';
+import { getStudioMediaIdentity, mergeStudioMediaCredentials } from './util/studioMediaIdentity.mjs';
 import { useUser } from '../../contexts/UserContext.jsx';
 import { FaCheck } from 'react-icons/fa';
 import { useLocalization } from '../../contexts/LocalizationContext.jsx';
@@ -776,6 +781,12 @@ export default function VideoHome() {
   const [isLayerGenerationPending, setIsLayerGenerationPending] = useState(false);
   const [audioFileTrack, setAudioFileTrack] = useState(null);
   const [isRecordSpeechRecording, setIsRecordSpeechRecording] = useState(false);
+  const [visualReadiness, setVisualReadiness] = useState({});
+  const onStudioVideoReadyChange = useCallback((layerId, source, ready) => {
+    const identity = getStudioMediaIdentity(source);
+    setVisualReadiness(previous => previous.layerId === layerId && previous.identity === identity && previous.ready === ready
+      ? previous : { layerId, identity, ready });
+  }, []);
   const [currentEditorView, setCurrentEditorView] = useState(CURRENT_EDITOR_VIEW.VIEW);
   const [downloadVideoDisplay, setDownloadVideoDisplay] = useState(false);
   const [renderedVideoPath, setRenderedVideoPath] = useState(null);
@@ -840,7 +851,6 @@ export default function VideoHome() {
   const latestActiveItemListSaveRequestRef = useRef(0);
   const debouncedUpdateSessionLayerActiveItemListRef = useRef(null);
   const assistantFrameCaptureRef = useRef(null);
-  const scenePreloadRequestRef = useRef(0);
   const showLoginDialogRef = useRef(null);
 
   const { id: routeSessionId, shareToken, editableShareToken } = useParams();
@@ -1607,13 +1617,13 @@ export default function VideoHome() {
     const headers = getHeaders();
 
     const sessionDetailsRequest = isReadOnlyShareView
-      ? axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`)
+      ? axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`, headers || undefined)
       : isEditableShareView
         ? axios.get(
           `${PROCESSOR_API_URL}/video_sessions/editable_share/${encodeURIComponent(editableShareToken)}`,
           headers || undefined
         )
-        : axios.get(
+        : deduplicatedGet(axios,
           `${PROCESSOR_API_URL}/video_sessions/session_details?id=${encodeURIComponent(routeSessionId)}&cacheBust=${Date.now()}`,
           headers
         );
@@ -1799,35 +1809,61 @@ export default function VideoHome() {
     videoSessionDetails?.has_subtitles,
   ]);
 
-  // Warm only the active scene and a small lookahead window. Preloading every
-  // scene at once competes with the initial canvas media and makes long,
-  // already-rendered sessions substantially slower to open.
+  const mediaRefreshAttemptsRef = useRef(new Set());
+  const mediaRefreshPendingRef = useRef(null);
+  const refreshStudioMedia = useCallback(async (failedUrl) => {
+    if (!failedUrl || mediaRefreshAttemptsRef.current.has(failedUrl)) return;
+    if (mediaRefreshAttemptsRef.current.size >= 32) mediaRefreshAttemptsRef.current.delete(mediaRefreshAttemptsRef.current.values().next().value);
+    mediaRefreshAttemptsRef.current.add(failedUrl);
+    if (mediaRefreshPendingRef.current) return mediaRefreshPendingRef.current;
+    const requestSessionId = id;
+    const headers = getHeaders();
+    const refreshUrl = isReadOnlyShareView ? `${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`
+      : isEditableShareView ? `${PROCESSOR_API_URL}/video_sessions/editable_share/${encodeURIComponent(editableShareToken)}`
+        : `${PROCESSOR_API_URL}/video_sessions/session_details`;
+    const request = axios.get(refreshUrl, { ...(headers || {}), params: { id: requestSessionId } })
+      .then(({ data }) => {
+        if (sessionIdRef.current === requestSessionId) applyStudioSessionSnapshot(mergeStudioMediaCredentials(videoSessionDetailsRef.current, data));
+      }).catch(() => {}).finally(() => {
+        if (mediaRefreshPendingRef.current === request) mediaRefreshPendingRef.current = null;
+      });
+    mediaRefreshPendingRef.current = request;
+    return request;
+  }, [id, shareToken, editableShareToken, isReadOnlyShareView, isEditableShareView]);
+  const studioMediaPool = useMemo(() => createStudioImagePool({ onError: refreshStudioMedia }), [id, user?._id, refreshStudioMedia]);
+  useEffect(() => () => studioMediaPool.dispose(), [studioMediaPool]);
   useEffect(() => {
-    if (!Array.isArray(layers) || layers.length === 0) {
-      return undefined;
-    }
-
-    const currentLayerId = getSessionLayerId(currentLayer);
-    const currentLayerIndex = Math.max(
-      0,
-      layers.findIndex((layer) => getSessionLayerId(layer) === currentLayerId)
-    );
-    const preloadLayers = layers.slice(
-      currentLayerIndex,
-      currentLayerIndex + SCENE_PRELOAD_LOOKAHEAD + 1
-    );
-    const imagePreloaderWorker = getImagePreloaderWorker();
-    const requestId = ++scenePreloadRequestRef.current;
-    imagePreloaderWorker.postMessage({
-      type: 'PRELOAD_LAYERS',
-      requestId,
-      layers: preloadLayers,
+    mediaRefreshAttemptsRef.current.clear();
+    mediaRefreshPendingRef.current = null;
+  }, [id]);
+  const lookaheadImageUrls = useMemo(() => {
+    const currentIndex = Math.max(0, layers.findIndex(layer => getSessionLayerId(layer) === getSessionLayerId(currentLayer)));
+    return layers.slice(currentIndex, currentIndex + SCENE_PRELOAD_LOOKAHEAD + 1).flatMap(layer => {
+      const images = (layer.imageSession?.activeItemList || []).filter(item => item.type === 'image' && !item.isHidden);
+      return images.length ? images.map(item => getRenderableImageUrl(item, PROCESSOR_API_URL)) : [getRenderableImageUrl(
+        layer.imageSession?.activeGeneratedImage || layer.imageSession?.activeSelectedImage, PROCESSOR_API_URL)];
+    }).filter(Boolean);
+  }, [layers, currentLayer?._id]);
+  const lookaheadImageSignature = lookaheadImageUrls.map(getStudioMediaIdentity).join('\n');
+  useEffect(() => { void studioMediaPool.preload(lookaheadImageUrls); }, [studioMediaPool, lookaheadImageSignature]);
+  const activeImageUrls = useMemo(() => (currentLayer?.imageSession?.activeItemList || [])
+    .filter(item => item.type === 'image' && !item.isHidden).map(item => getRenderableImageUrl(item, PROCESSOR_API_URL)), [currentLayer]);
+  const activeImageSignature = `${id}:${getSessionLayerId(currentLayer)}:${activeImageUrls.map(getStudioMediaIdentity).join('|')}`;
+  const activeImageCredentialSignature = activeImageUrls.join('|');
+  const [imageReadiness, setImageReadiness] = useState(null);
+  useEffect(() => {
+    let active = true;
+    Promise.all(activeImageUrls.map(url => studioMediaPool.load(url))).then(images => {
+      if (active && images.every(Boolean)) setImageReadiness({ pool: studioMediaPool, signature: activeImageSignature });
     });
-
-    return () => {
-      imagePreloaderWorker.postMessage({ type: 'CANCEL_PRELOAD', requestId });
-    };
-  }, [currentLayer, layers]);
+    return () => { active = false; };
+  }, [studioMediaPool, activeImageSignature, activeImageCredentialSignature]);
+  const previewVideo = resolveStudioLayerVideo(currentLayer, videoSessionDetails || {}, {
+    processorApiUrl: PROCESSOR_API_URL, staticCdnUrl: import.meta.env.VITE_STATIC_CDN_URL,
+  });
+  const isVisualReady = (!activeImageUrls.length || (imageReadiness?.pool === studioMediaPool && imageReadiness?.signature === activeImageSignature))
+    && (!previewVideo.url || (visualReadiness.layerId === getSessionLayerId(currentLayer)
+      && visualReadiness.identity === getStudioMediaIdentity(previewVideo.url) && visualReadiness.ready));
 
   const toggleHideItemInLayer = (itemId) => {
     const updatedActiveItemList = activeItemList.map(item => {
@@ -1859,49 +1895,42 @@ export default function VideoHome() {
   }, [layers, currentLayer]);
 
 
-  const updateSessionLayersOrder = (newLayersOrder, updatedLayerId) => {
-    if (isSharedSessionView && !requestEditableSharedSession()) {
-      return;
-    }
+  const applyStudioSessionSnapshot = (session, preferredLayerId = getSessionLayerId(currentLayerRef.current)) => {
+    if (!session || !Array.isArray(session.layers)) return;
+    const nextLayers = session.layers;
+    const nextIndex = Math.max(0, nextLayers.findIndex(layer => getSessionLayerId(layer) === preferredLayerId));
+    videoSessionDetailsRef.current = session;
+    layersRef.current = nextLayers;
+    currentLayerRef.current = nextLayers[nextIndex] || null;
+    setVideoSessionDetails(session);
+    setLayers(nextLayers);
+    setAudioLayers(session.audioLayers || []);
+    setTotalDuration(resolveTimelineDuration(nextLayers, session));
+    setCurrentLayer(currentLayerRef.current);
+    setSelectedLayerIndex(nextLayers.length ? nextIndex : -1);
+    setIsLayerGenerationPending(hasPendingFrameOrLayerGeneration(session));
+  };
 
+  const updateSessionLayersOrder = async (newLayersOrder, updatedLayerId) => {
+    if (isSharedSessionView && !requestEditableSharedSession()) return;
     const headers = getHeaders();
-    if (!headers) {
-      showLoginDialog();
-      return;
-    }
-
+    if (!headers) { showLoginDialog(); return; }
+    const requestSessionId = id;
     setCanvasProcessLoading(true);
-
-
-    const newLayerIds = newLayersOrder.map(layer => layer._id);
-
-    const reqPayload = {
-      sessionId: id,
-      layers: newLayerIds,
-    };
-
-    axios.post(`${PROCESSOR_API_URL}/video_sessions/update_layers_order`, reqPayload, headers)
-      .then((response) => {
-        // Handle successful update
-        const videoSessionData = response.data;
-        const updatedLayers = videoSessionData.layers;
-
-        const updatedLayerIndex = updatedLayers.findIndex(layer => layer._id === updatedLayerId);
-
-
-        // Use updateCurrentLayerAndLayerList to update layers and selected layer
-        updateCurrentLayerAndLayerList(updatedLayers, updatedLayerIndex);
-
-        setCanvasProcessLoading(false);
-
-        setIsCanvasDirty(true); // If needed
-      })
-      .catch(() => {
-        // Handle error
-
-
-        setCanvasProcessLoading(false);
-      });
+    try {
+      const { data } = await axios.post(`${PROCESSOR_API_URL}/video_sessions/update_layers_order`, {
+        sessionId: requestSessionId, layers: newLayersOrder.map(layer => layer._id),
+      }, headers);
+      if (sessionIdRef.current !== requestSessionId) return;
+      applyStudioSessionSnapshot(data, updatedLayerId);
+      setIsCanvasDirty(true);
+      return data;
+    } catch (error) {
+      if (sessionIdRef.current === requestSessionId) toast.error(error?.response?.data?.error || 'Unable to reorder scenes.');
+      return null;
+    } finally {
+      if (sessionIdRef.current === requestSessionId) setCanvasProcessLoading(false);
+    }
   };
 
   const pollForLayersUpdate = () => {
@@ -1942,49 +1971,9 @@ export default function VideoHome() {
           const newLayers = refreshedSession.layers;
           const isGenerationPending = hasPendingFrameOrLayerGeneration(frameResponse);
           const previousLayers = layersRef.current;
-          let layersUpdated = newLayers.length !== previousLayers.length;
-
-          if (!layersUpdated) {
-            for (let i = 0; i < newLayers.length; i++) {
-              const prevLayer = previousLayers[i];
-              const nextLayer = newLayers[i];
-              if (!prevLayer || !nextLayer) {
-                layersUpdated = true;
-                break;
-              }
-
-              const didImageStatusChange =
-                prevLayer?.imageSession?.generationStatus !== nextLayer?.imageSession?.generationStatus;
-              const didFrameStatusChange =
-                prevLayer?.frameGenerationPending !== nextLayer?.frameGenerationPending
-                || prevLayer?.aiVideoFrameGenerationPending !== nextLayer?.aiVideoFrameGenerationPending;
-              const didVideoTaskChange =
-                prevLayer?.aiVideoGenerationPending !== nextLayer?.aiVideoGenerationPending
-                || prevLayer?.lipSyncGenerationPending !== nextLayer?.lipSyncGenerationPending
-                || prevLayer?.soundEffectGenerationPending !== nextLayer?.soundEffectGenerationPending
-                || prevLayer?.userVideoGenerationPending !== nextLayer?.userVideoGenerationPending
-                || prevLayer?.videoEditPending !== nextLayer?.videoEditPending
-                || prevLayer?.videoEditStatus !== nextLayer?.videoEditStatus
-                || prevLayer?.videoEditError !== nextLayer?.videoEditError
-                || prevLayer?.videoEditTaskId !== nextLayer?.videoEditTaskId
-                || prevLayer?.videoEditTaskMessage !== nextLayer?.videoEditTaskMessage
-                || JSON.stringify(prevLayer?.videoEditPendingOperations || [])
-                  !== JSON.stringify(nextLayer?.videoEditPendingOperations || [])
-                || prevLayer?.userVideoGenerationStatus !== nextLayer?.userVideoGenerationStatus
-                || prevLayer?.userVideoLayer !== nextLayer?.userVideoLayer
-                || prevLayer?.userVideoGenerationError !== nextLayer?.userVideoGenerationError
-                || prevLayer?.userVideoUploadTaskId !== nextLayer?.userVideoUploadTaskId
-                || prevLayer?.userVideoUploadTask?.status !== nextLayer?.userVideoUploadTask?.status
-                || prevLayer?.userVideoUploadTask?.uploadedBytes !== nextLayer?.userVideoUploadTask?.uploadedBytes
-                || prevLayer?.userVideoUploadTask?.uploadedChunks !== nextLayer?.userVideoUploadTask?.uploadedChunks
-                || prevLayer?.userVideoUploadTask?.message !== nextLayer?.userVideoUploadTask?.message;
-
-              if (didImageStatusChange || didFrameStatusChange || didVideoTaskChange) {
-                layersUpdated = true;
-                break;
-              }
-            }
-          }
+          const layersUpdated = JSON.stringify(newLayers) !== JSON.stringify(previousLayers)
+            || JSON.stringify(frameResponse.audioLayers || []) !== JSON.stringify(videoSessionDetailsRef.current?.audioLayers || [])
+            || frameResponse.totalDuration !== videoSessionDetailsRef.current?.totalDuration;
 
           if (layersUpdated) {
             videoSessionDetailsRef.current = frameResponse;
@@ -2061,7 +2050,7 @@ export default function VideoHome() {
         isStatusRequestInFlight = true;
 
         try {
-          const dataRes = await axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`);
+          const dataRes = await axios.get(`${PROCESSOR_API_URL}/video_sessions/share/${encodeURIComponent(shareToken)}`, getHeaders() || undefined);
           const sessionData = normalizeGuestSessionForStudio(dataRes.data);
           if (!sessionData) {
             stopRenderPollAfterFailureLimit(
@@ -3426,77 +3415,46 @@ export default function VideoHome() {
 
 
 
-  const copyCurrentLayerBelow = () => {
+  const copyCurrentLayerBelow = async () => {
     const headers = getHeaders();
-    if (!headers) {
-      showLoginDialog();
-      return;
-    }
-
-    const newLayer = { ...currentLayer, _id: undefined };
-
-    const currentIndex = layers.findIndex((layer) => layer._id === currentLayer._id);
-    const newLayerIndex = currentIndex + 1;
-
-    const payload = {
-      sessionId: id,
-      newLayer,
-      index: newLayerIndex,
-    };
-
-    axios.post(`${PROCESSOR_API_URL}/video_sessions/copy_layer`, payload, headers).then((dataRes) => {
-      const resData = dataRes.data;
-      const videoSessionDetails = resData.videoSession;
-      const newLayers = videoSessionDetails.layers;
-
-      setLayers(newLayers);
-      setSelectedLayerIndex(newLayerIndex);
-      setCurrentLayer(newLayers[newLayerIndex]);
+    if (!headers) { showLoginDialog(); return; }
+    const requestSessionId = id;
+    const currentIndex = layersRef.current.findIndex(layer => getSessionLayerId(layer) === getSessionLayerId(currentLayerRef.current));
+    try {
+      const { data } = await axios.post(`${PROCESSOR_API_URL}/video_sessions/copy_layer`, {
+        sessionId: requestSessionId, newLayer: { ...currentLayerRef.current, _id: undefined }, index: currentIndex + 1,
+      }, headers);
+      if (sessionIdRef.current !== requestSessionId) return;
+      const session = data.videoSession;
+      applyStudioSessionSnapshot(session, getSessionLayerId(session?.layers?.[currentIndex + 1]));
       setIsCanvasDirty(true);
-    });
+      return session;
+    } catch (error) {
+      if (sessionIdRef.current === requestSessionId) toast.error(error?.response?.data?.error || 'Unable to copy scene.');
+      return null;
+    }
   };
 
-  const updateSessionLayer = (newLayer, clipPayload) => {
-    setIsUpdateLayerPending(true);
+  const updateSessionLayer = async (newLayer, clipPayload) => {
     const headers = getHeaders();
-    if (!headers) {
-      showLoginDialog();
-      return;
-    }
-
-    const reqPayload = {
-      sessionId: id,
-      layer: newLayer,
-      clipData: clipPayload
-    };
-
-    axios.post(`${PROCESSOR_API_URL}/video_sessions/update_layer`, reqPayload, headers).then((response) => {
-      const resData = response.data;
-      const { session, layer, audioLayers: updatedAudioLayers } = resData;
-
-
-      const layers = session.layers;
-      const authoritativeAudioLayers = (updatedAudioLayers || session.audioLayers || [])
-        .filter((audioLayer) => audioLayer && audioLayer.isEnabled)
-        .map((audioLayer) => ({
-          isSelected: false,
-          isDirty: false,
-          ...audioLayer,
-        }));
-
-      const newLayerIndex = layers.findIndex(l => l._id.toString() === layer._id.toString());
-
-
-
-      setVideoSessionDetails(session);
-      setAudioLayers(authoritativeAudioLayers);
-      updateCurrentLayerAndLayerList(layers, newLayerIndex);
-
-      setIsUpdateLayerPending(false);
-
+    if (!headers) { showLoginDialog(); return null; }
+    const requestSessionId = id;
+    setIsUpdateLayerPending(true);
+    try {
+      const { data } = await axios.post(`${PROCESSOR_API_URL}/video_sessions/update_layer`, {
+        sessionId: requestSessionId, layer: newLayer, clipData: clipPayload,
+      }, headers);
+      if (sessionIdRef.current !== requestSessionId) return null;
+      applyStudioSessionSnapshot(data.session, getSessionLayerId(data.layer) || getSessionLayerId(newLayer));
       setIsCanvasDirty(true);
-    });
-  } // Adjust the delay as needed
+      return data;
+    } catch (error) {
+      if (sessionIdRef.current === requestSessionId) toast.error(error?.response?.data?.error || 'Unable to save scene changes.');
+      return null;
+    } finally {
+      if (sessionIdRef.current === requestSessionId) setIsUpdateLayerPending(false);
+    }
+  };
 
   const removeSessionLayer = (layerIndex) => {
     if (!Array.isArray(layers) || !layers[layerIndex]) {
@@ -3848,10 +3806,7 @@ export default function VideoHome() {
 
   const updateCurrentActiveLayer = (imageItem) => {
 
-    // stripe any query params from the image src
-    const src = imageItem.src.split('?')[0];
-    const imageItemNew = { ...imageItem, src: src };
-    const newActiveItemList = activeItemList.concat(imageItemNew);
+    const newActiveItemList = activeItemList.concat(imageItem);
     debouncedUpdateSessionLayerActiveItemListRef.current?.(newActiveItemList);
   }
 
@@ -4360,10 +4315,9 @@ export default function VideoHome() {
   );
   const isInteractiveVideo = isInteractiveVideoSession(videoSessionDetails);
   const isPublishedVideoSession = isVideoSessionPublished(videoSessionDetails);
-  const collapsedFrameToolbarWidth = 'min(10vw, 128px)';
-  const collapsedRightPanelWidth = 'clamp(148px, 11vw, 168px)';
+  const collapsedFrameToolbarWidth = 'var(--studio-left-width)';
+  const collapsedRightPanelWidth = 'var(--studio-right-width)';
   const studioInsetPx = 16;
-  const studioTopInsetPx = 56;
   const reservedLeftRailWidth = `calc(${collapsedFrameToolbarWidth} + ${studioInsetPx * 2}px)`;
   const reservedRightRailWidth = `calc(${collapsedRightPanelWidth} + ${studioInsetPx}px)`;
   const editorContainerDisplay = (
@@ -4413,6 +4367,8 @@ export default function VideoHome() {
         isUpdateLayerPending={isUpdateLayerPending}
         isVideoPreviewPlaying={isVideoPreviewPlaying}
         isPreviewPlaybackActive={isPreviewPlaybackActive}
+        onVideoError={refreshStudioMedia}
+        onVideoReadyChange={onStudioVideoReadyChange}
         applyAudioDucking={applyAudioDucking}
         audioLayers={audioLayers}
         setIsVideoPreviewPlaying={setIsVideoPreviewPlaying}
@@ -4452,6 +4408,7 @@ export default function VideoHome() {
     : 'bg-slate-900 text-white hover:bg-slate-800';
 
   return (
+    <StudioMediaContext.Provider value={studioMediaPool}>
     <StudioFrameRateContext.Provider value={studioFramesPerSecond}>
     <CommonContainer
       isVideoPreviewPlaying={isVideoPreviewPlaying}
@@ -4482,6 +4439,8 @@ export default function VideoHome() {
       <PreviewPlaybackController
         applyAudioDucking={applyAudioDucking}
         audioLayers={previewAudioLayers}
+        isVisualReady={isVisualReady}
+        onMediaError={refreshStudioMedia}
         currentLayerSeek={currentLayerSeek}
         framesPerSecond={videoSessionDetails?.framesPerSecond ?? 24}
         isVideoPreviewPlaying={isVideoPreviewPlaying}
@@ -4493,7 +4452,7 @@ export default function VideoHome() {
       />
       <div
         className='relative box-border h-[100dvh] overflow-hidden px-4 pb-4'
-        style={{ paddingTop: `${studioTopInsetPx}px` }}
+        style={{ paddingTop: 'calc(var(--app-nav-height) + var(--workspace-inset))' }}
       >
         <div className='grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden'>
           <div className='flex min-h-0 gap-4 overflow-hidden'>
@@ -4674,5 +4633,6 @@ export default function VideoHome() {
       </div>
     </CommonContainer>
     </StudioFrameRateContext.Provider>
+    </StudioMediaContext.Provider>
   );
 }

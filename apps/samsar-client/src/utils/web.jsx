@@ -16,15 +16,20 @@ const getCurrentAuthCookiePolicy = () =>
 
 const getAuthCookie = () => {
   if (typeof document === 'undefined') return null;
-  const cookies = document.cookie ? document.cookie.split(';') : [];
-  const prefix = `${getCurrentAuthCookiePolicy().cookieName}=`;
+  try {
+    const cookieValue = document.cookie;
+    const cookies = cookieValue ? cookieValue.split(';') : [];
+    const prefix = `${getCurrentAuthCookiePolicy().cookieName}=`;
 
-  for (const cookie of cookies) {
-    const trimmed = cookie.trim();
-    if (trimmed.startsWith(prefix)) {
-      const value = trimmed.slice(prefix.length);
-      return value ? decodeURIComponent(value) : null;
+    for (const cookie of cookies) {
+      const trimmed = cookie.trim();
+      if (trimmed.startsWith(prefix)) {
+        const value = trimmed.slice(prefix.length);
+        return value ? decodeURIComponent(value) : null;
+      }
     }
+  } catch {
+    // Malformed or inaccessible cookies must not interrupt authentication.
   }
 
   return null;
@@ -44,7 +49,11 @@ const setAuthCookie = (token) => {
 const expireAuthCookie = (cookieName, domain) => {
   if (typeof document === 'undefined') return;
   const domainAttr = domain ? ` Domain=${domain};` : '';
-  document.cookie = `${cookieName}=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/;${domainAttr}`;
+  try {
+    document.cookie = `${cookieName}=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/;${domainAttr}`;
+  } catch {
+    // Browser cookie restrictions must not prevent clearing local credentials.
+  }
 };
 
 function clearAuthCookies() {
@@ -74,14 +83,28 @@ export function hasAcceptedCookies() {
 
 // helpers/auth.jsx
 
+function ensureAuthCookie(token) {
+  // Existing logins may predate private media authentication. Restore their
+  // cookie without logging in again or creating a second profile request.
+  try {
+    if (hasAcceptedCookies() && getAuthCookie() !== token) setAuthCookie(token);
+  } catch {
+    // Blocked cookies must not interrupt header-authenticated API requests.
+  }
+}
+
 export function getAuthToken() {
-  if (inMemoryAuthToken) return inMemoryAuthToken;
+  if (inMemoryAuthToken) {
+    ensureAuthCookie(inMemoryAuthToken);
+    return inMemoryAuthToken;
+  }
   if (typeof window === 'undefined') return null;
 
   try {
     const legacyToken = localStorage.getItem(AUTH_TOKEN_KEY);
     if (legacyToken) {
       inMemoryAuthToken = legacyToken;
+      ensureAuthCookie(legacyToken);
       return legacyToken;
     }
   } catch  {
@@ -92,6 +115,7 @@ export function getAuthToken() {
     const sessionToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
     if (sessionToken) {
       inMemoryAuthToken = sessionToken;
+      ensureAuthCookie(sessionToken);
       try {
         localStorage.setItem(AUTH_TOKEN_KEY, sessionToken);
       } catch  {
@@ -145,9 +169,7 @@ export function persistAuthToken(token) {
   }
 
   inMemoryAuthToken = token;
-  if (hasAcceptedCookies()) {
-    setAuthCookie(token);
-  }
+  ensureAuthCookie(token);
 }
 
 export function clearAuthData() {

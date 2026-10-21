@@ -1,6 +1,7 @@
 // src/components/util/RangeOverlaySlider.js
 import { useCallback, useEffect, useState, useRef } from 'react';
 import ReactSlider from 'react-slider';
+import { useStudioFrameRate } from '../../StudioFrameRateContext.jsx';
 
 function areSliderValuesEqual(left, right) {
   if (left === right) {
@@ -29,8 +30,8 @@ export default function RangeOverlaySlider({
 
   // Define constants for minimum duration
   const MIN_LAYER_DURATION = 0.1; // Minimum layer duration in seconds
-  const FPS = 30; // Frames per second
-  const MIN_DISTANCE_IN_FRAMES = MIN_LAYER_DURATION * FPS; // Minimum distance between thumbs in frames
+  const fps = useStudioFrameRate();
+  const MIN_DISTANCE_IN_FRAMES = Math.max(1, Math.ceil(MIN_LAYER_DURATION * fps));
 
   const handleSliderChange = (values) => {
     // Update internal slider values

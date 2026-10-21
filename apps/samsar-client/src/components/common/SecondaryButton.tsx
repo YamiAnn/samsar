@@ -22,7 +22,7 @@ export default function SecondaryButton(props) {
 
   const bgColor = colorMode === 'dark' ? `border border-[#667188] text-[#b6bfd0] from-[#181b24] to-[#20232e]
    hover:border-[#ff4655]/55 hover:from-[#20232e] hover:to-[#292d3a] hover:text-[#f4f6fb]` :
-    `text-neutral-100  from-blue-500 to-blue-600  hover:bg-blue-60 hover:text-neutral-300`;
+    `text-neutral-100  from-blue-500 to-blue-600  hover:from-blue-600 hover:text-neutral-300`;
   const interactionClasses =
     colorMode === 'dark'
       ? 'transition-all duration-200 ease-out hover:-translate-y-[1px] hover:shadow-[0_10px_24px_rgba(255,70,85,0.16)] active:translate-y-0'
@@ -38,9 +38,9 @@ export default function SecondaryButton(props) {
     px-2.5 py-1
     ${buttonShadow}
     ${interactionClasses}
-    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe0a3]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0d12]
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe0a3]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--panel-background)]
     cursor-pointer text-sm
-    disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-neutral-100 ${additionalClasses}`}
+    disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--panel-raised)] disabled:text-[var(--panel-muted)] ${additionalClasses}`}
       disabled={isBtnDisabled}>
       {children}
       {pendingSpinner}

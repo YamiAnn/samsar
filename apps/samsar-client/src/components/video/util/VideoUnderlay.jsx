@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
+import { getStudioMediaIdentity } from './studioMediaIdentity.mjs';
 import { canPreloadNextStudioVideo } from './studioVideoLayers.mjs';
 
-const VIDEO_SYNC_SEEK_TOLERANCE_SECONDS = 0.2;
+
 const VIDEO_END_EPSILON_SECONDS = 0.05;
 
 function normalizeVideoSrc(value) {
@@ -31,13 +33,18 @@ export default function VideoUnderlay(props) {
     nextAiVideoLayer,
     isVideoPreviewPlaying = false,
     onVideoReadyChange,
+    onVideoError,
   } = props;
 
+  const fps = useStudioFrameRate();
+  const videoSyncTolerance = 1 / fps;
   const primaryVideoRef = useRef(null);
   const secondaryVideoRef = useRef(null);
   const videoRefs = [primaryVideoRef, secondaryVideoRef];
-  const currentVideoSrc = normalizeVideoSrc(aiVideoLayer);
-  const nextVideoSrc = normalizeVideoSrc(nextAiVideoLayer);
+  const currentVideoUrl = normalizeVideoSrc(aiVideoLayer);
+  const nextVideoUrl = normalizeVideoSrc(nextAiVideoLayer);
+  const currentVideoSrc = getStudioMediaIdentity(currentVideoUrl);
+  const nextVideoSrc = getStudioMediaIdentity(nextVideoUrl);
 
   const [activeSlotIndex, setActiveSlotIndex] = useState(0);
   const [slotSources, setSlotSources] = useState(['', '']);
@@ -86,8 +93,13 @@ export default function VideoUnderlay(props) {
       return;
     }
 
-    const existingSlotIndex = slotSources.findIndex((source) => source === currentVideoSrc);
+    const existingSlotIndex = slotSources.findIndex((source) => getStudioMediaIdentity(source) === currentVideoSrc);
     if (existingSlotIndex !== -1) {
+      const existingVideo = videoRefs[existingSlotIndex].current;
+      if (slotSources[existingSlotIndex] !== currentVideoUrl && existingVideo?.error) {
+        setSlotSources(previous => previous.map((source, index) => index === existingSlotIndex ? currentVideoUrl : source));
+        setReadyVideoSrc('');
+      }
       if (existingSlotIndex !== activeSlotIndex) {
         const promotedVideo = videoRefs[existingSlotIndex].current;
         setActiveSlotIndex(existingSlotIndex);
@@ -100,40 +112,40 @@ export default function VideoUnderlay(props) {
     const targetSlotIndex = getInactiveSlotIndex(activeSlotIndex);
     setSlotSources((previousSources) => {
       const nextSources = [...previousSources];
-      nextSources[targetSlotIndex] = currentVideoSrc;
+      nextSources[targetSlotIndex] = currentVideoUrl;
       return nextSources;
     });
     setActiveSlotIndex(targetSlotIndex);
     setReadyVideoSrc('');
     setVideoLayout(getDefaultVideoLayout(aiVideoLayerType));
-  }, [activeSlotIndex, aiVideoLayerType, currentVideoSrc, nextVideoSrc, slotSources]);
+  }, [activeSlotIndex, aiVideoLayerType, currentVideoSrc, nextVideoSrc, slotSources, currentVideoUrl]);
 
   useEffect(() => {
     if (
       !canPreloadNextStudioVideo(currentVideoSrc, readyVideoSrc)
       || !nextVideoSrc
       || nextVideoSrc === currentVideoSrc
-      || slotSources.includes(nextVideoSrc)
+      || slotSources.some(source => getStudioMediaIdentity(source) === nextVideoSrc)
     ) {
       return;
     }
 
     setSlotSources((previousSources) => {
-      const currentSlotIndex = previousSources.findIndex((source) => source === currentVideoSrc);
+      const currentSlotIndex = previousSources.findIndex((source) => getStudioMediaIdentity(source) === currentVideoSrc);
       const targetSlotIndex = currentSlotIndex === 0
         ? 1
         : currentSlotIndex === 1
           ? 0
           : getInactiveSlotIndex(activeSlotIndex);
       const nextSources = [...previousSources];
-      nextSources[targetSlotIndex] = nextVideoSrc;
+      nextSources[targetSlotIndex] = nextVideoUrl;
       return nextSources;
     });
-  }, [activeSlotIndex, currentVideoSrc, nextVideoSrc, readyVideoSrc, slotSources]);
+  }, [activeSlotIndex, currentVideoSrc, nextVideoSrc, nextVideoUrl, readyVideoSrc, slotSources]);
 
   useEffect(() => {
     const activeVideo = videoRefs[activeSlotIndex].current;
-    const activeSlotSource = slotSources[activeSlotIndex];
+    const activeSlotSource = getStudioMediaIdentity(slotSources[activeSlotIndex]);
     if (!activeVideo || !currentVideoSrc || activeSlotSource !== currentVideoSrc) {
       return undefined;
     }
@@ -156,6 +168,10 @@ export default function VideoUnderlay(props) {
 
     const handleError = () => {
       if (!isCancelled) {
+        onVideoError?.(currentVideoUrl);
+        if (slotSources[activeSlotIndex] !== currentVideoUrl) {
+          setSlotSources(previous => previous.map((source, index) => index === activeSlotIndex ? currentVideoUrl : source));
+        }
         setReadyVideoSrc((readySource) => (
           readySource === currentVideoSrc ? '' : readySource
         ));
@@ -180,11 +196,11 @@ export default function VideoUnderlay(props) {
       activeVideo.removeEventListener('canplaythrough', markReady);
       activeVideo.removeEventListener('error', handleError);
     };
-  }, [activeSlotIndex, aiVideoLayerType, canvasDimensions, currentVideoSrc, slotSources]);
+  }, [activeSlotIndex, aiVideoLayerType, canvasDimensions, currentVideoSrc, currentVideoUrl, onVideoError, slotSources]);
 
   useEffect(() => {
-    onVideoReadyChange?.(currentVideoSrc, isVideoReady);
-  }, [currentVideoSrc, isVideoReady, onVideoReadyChange]);
+    onVideoReadyChange?.(currentVideoUrl, isVideoReady);
+  }, [currentVideoUrl, isVideoReady, onVideoReadyChange]);
 
   useEffect(() => {
     videoRefs.forEach((videoRef, slotIndex) => {
@@ -198,7 +214,7 @@ export default function VideoUnderlay(props) {
 
   useEffect(() => {
     const activeVideo = videoRefs[activeSlotIndex].current;
-    if (!activeVideo || slotSources[activeSlotIndex] !== currentVideoSrc || Number.isNaN(Number(currentLayerSeek))) {
+    if (!activeVideo || getStudioMediaIdentity(slotSources[activeSlotIndex]) !== currentVideoSrc || Number.isNaN(Number(currentLayerSeek))) {
       return undefined;
     }
 
@@ -223,7 +239,7 @@ export default function VideoUnderlay(props) {
       }
 
       const shouldCorrectDrift =
-        Math.abs(activeVideo.currentTime - nextSeekTime) > VIDEO_SYNC_SEEK_TOLERANCE_SECONDS
+        Math.abs(activeVideo.currentTime - nextSeekTime) > videoSyncTolerance
         || (activeVideo.ended && (!hasKnownDuration || nextSeekTime < maxSeekTime));
 
       if (shouldCorrectDrift) {
@@ -264,6 +280,7 @@ export default function VideoUnderlay(props) {
     isVideoPreviewPlaying,
     isVideoReady,
     slotSources,
+    videoSyncTolerance,
   ]);
 
   return (
@@ -289,12 +306,12 @@ export default function VideoUnderlay(props) {
         {[0, 1].map((slotIndex) => {
           const isActiveSlot = slotIndex === activeSlotIndex;
           const source = slotSources[slotIndex];
-          const shouldShowSlot = Boolean(currentVideoSrc) && isActiveSlot && source === currentVideoSrc;
+          const shouldShowSlot = Boolean(currentVideoSrc) && isActiveSlot && getStudioMediaIdentity(source) === currentVideoSrc;
           const shouldLoadSlot = shouldShowSlot || (
             readyVideoSrc === currentVideoSrc
             && !isActiveSlot
             && Boolean(nextVideoSrc)
-            && source === nextVideoSrc
+            && getStudioMediaIdentity(source) === nextVideoSrc
           );
           return (
             <video

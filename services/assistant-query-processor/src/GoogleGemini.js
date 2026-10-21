@@ -1,6 +1,6 @@
 import { getGoogleAccessToken, getGoogleCloudConfig } from './GoogleADC.js';
 import {
-  DEFAULT_GEMINI_31_PRO_VERTEX_MODEL,
+  DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL,
   DEFAULT_INFERENCE_MODEL,
   getProviderModelForInferenceModel,
 } from './InferenceModels.js';
@@ -10,13 +10,17 @@ import { readMountedProviderMediaBufferIfAvailable } from './ProviderMediaUrl.js
 const DEFAULT_GEMINI_LOCATION = 'global';
 const DEFAULT_IMAGE_MIME_TYPE = 'image/png';
 const MAX_INLINE_IMAGE_BYTES = 7 * 1024 * 1024;
-const DEFAULT_GEMINI_3_THINKING_LEVEL = 'MEDIUM';
-const GEMINI_3_THINKING_LEVELS = new Set(['LOW', 'MEDIUM', 'HIGH']);
-const MIN_GEMINI_3_MAX_OUTPUT_TOKENS = 64;
+const DEFAULT_GEMINI_THINKING_LEVEL = 'MEDIUM';
+const GEMINI_THINKING_LEVELS = new Set(['LOW', 'MEDIUM', 'HIGH']);
+const MIN_GEMINI_MAX_OUTPUT_TOKENS = 64;
 const DEFAULT_GEMINI_TIMEOUT_MS = 10 * 60 * 1000;
 
 function normalizeString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function isGeminiArgonProviderModel(value) {
+  return /^gemini-4-argon(?:[.-]|$)/i.test(normalizeString(value));
 }
 
 function getGeminiTimeoutMs(options = {}) {
@@ -43,7 +47,7 @@ function resolveGeminiModel(model) {
   const providerModel = normalizeString(getProviderModelForInferenceModel(model));
   return providerModel && providerModel !== DEFAULT_INFERENCE_MODEL
     ? providerModel
-    : DEFAULT_GEMINI_31_PRO_VERTEX_MODEL;
+    : DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL;
 }
 
 function buildVertexGenerateContentUrl({ projectId, location, model }) {
@@ -279,7 +283,7 @@ function extractGeminiOutputText(response) {
 
 function normalizeGeminiThinkingLevel(value) {
   const normalized = normalizeString(value).toUpperCase().replace(/-/g, '_');
-  if (GEMINI_3_THINKING_LEVELS.has(normalized)) return normalized;
+  if (GEMINI_THINKING_LEVELS.has(normalized)) return normalized;
   if (normalized === 'MINIMAL' || normalized === 'NONE') return 'LOW';
   return '';
 }
@@ -292,7 +296,7 @@ function resolveGeminiThinkingLevel(options = {}) {
     normalizeGeminiThinkingLevel(options.reasoningEffort) ||
     normalizeGeminiThinkingLevel(options.reasoning?.effort) ||
     normalizeGeminiThinkingLevel(process.env.GOOGLE_GEMINI_THINKING_LEVEL) ||
-    DEFAULT_GEMINI_3_THINKING_LEVEL
+    DEFAULT_GEMINI_THINKING_LEVEL
   );
 }
 
@@ -307,9 +311,10 @@ function getMaxOutputTokens(options = {}) {
 
 function buildGenerationConfig(options = {}, model = '') {
   const generationConfig = {};
-  const isGemini3Model = normalizeString(model).startsWith('gemini-3');
+  const isArgonModel = isGeminiArgonProviderModel(model);
+  const supportsThinkingLevel = isArgonModel || normalizeString(model).startsWith('gemini-3');
 
-  if (options.temperature !== undefined) {
+  if (!isArgonModel && options.temperature !== undefined) {
     const temperature = Number(options.temperature);
     if (Number.isFinite(temperature)) {
       generationConfig.temperature = temperature;
@@ -317,7 +322,7 @@ function buildGenerationConfig(options = {}, model = '') {
   }
 
   const topPValue = options.top_p ?? options.topP;
-  if (topPValue !== undefined) {
+  if (!isArgonModel && topPValue !== undefined) {
     const topP = Number(topPValue);
     if (Number.isFinite(topP)) {
       generationConfig.topP = topP;
@@ -327,12 +332,17 @@ function buildGenerationConfig(options = {}, model = '') {
   const maxTokens = Number(getMaxOutputTokens(options));
   if (Number.isFinite(maxTokens) && maxTokens > 0) {
     const normalizedMaxTokens = Math.floor(maxTokens);
-    generationConfig.maxOutputTokens = isGemini3Model
-      ? Math.max(normalizedMaxTokens, MIN_GEMINI_3_MAX_OUTPUT_TOKENS)
+    generationConfig.maxOutputTokens = supportsThinkingLevel
+      ? Math.max(normalizedMaxTokens, MIN_GEMINI_MAX_OUTPUT_TOKENS)
       : normalizedMaxTokens;
   }
 
-  if (isGemini3Model) {
+  if (isArgonModel && generationConfig.maxOutputTokens) {
+    // Non-streaming REST calls cannot continue beyond Argon's single-request cap.
+    generationConfig.maxOutputTokens = Math.min(generationConfig.maxOutputTokens, 32768);
+  }
+
+  if (supportsThinkingLevel) {
     generationConfig.thinkingConfig = {
       thinkingLevel: resolveGeminiThinkingLevel(options),
     };
@@ -439,6 +449,9 @@ export async function sendAssistantGeminiCompletionRequest(
         signal,
         readLocalMediaBuffer: dependencyOverrides.readLocalMediaBuffer,
       });
+      if (isGeminiArgonProviderModel(model)) {
+        while (contents.at(-1)?.role === 'model') contents.pop();
+      }
       if (!contents.length) {
         const error = new Error('Google Gemini inference requires at least one user message.');
         error.retryable = false;

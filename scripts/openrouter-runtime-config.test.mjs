@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { buildDockerAvailableModelsFromEnabledProviders } from '../apps/setup-wizard/src/constants/dockerModelAvailability.js';
 import {
-  DEFAULT_OPENROUTER_GEMINI_31_PRO_MODEL,
+  DEFAULT_OPENROUTER_GEMINI_4_ARGON_MODEL,
   applyEffectiveOpenRouterProviderConfig,
   resolveOpenRouterRuntimeConfig,
 } from './openrouter-runtime-config.mjs';
@@ -14,7 +14,7 @@ test('disabled OpenRouter does not expose a stored credential or model mapping',
       providerConfig: { enabled: false },
       providerSecrets: { apiKey: 'stored-key' },
     }),
-    { enabled: false, apiKey: '', gemini31ProModel: '' },
+    { enabled: false, apiKey: '', gemini4ArgonModel: '' },
   );
 });
 
@@ -44,7 +44,7 @@ test('enabled OpenRouter reads the provider secret and renders the current Gemin
     {
       enabled: true,
       apiKey: 'stored-key',
-      gemini31ProModel: DEFAULT_OPENROUTER_GEMINI_31_PRO_MODEL,
+      gemini4ArgonModel: DEFAULT_OPENROUTER_GEMINI_4_ARGON_MODEL,
     },
   );
 });
@@ -55,13 +55,13 @@ test('legacy config key and explicit Gemini mapping remain supported', () => {
       providerConfig: {
         enabled: true,
         apiKey: 'legacy-config-key',
-        gemini31ProModel: 'google/custom-gemini-model',
+        gemini4ArgonModel: 'google/custom-gemini-model',
       },
     }),
     {
       enabled: true,
       apiKey: 'legacy-config-key',
-      gemini31ProModel: 'google/custom-gemini-model',
+      gemini4ArgonModel: 'google/custom-gemini-model',
     },
   );
 });
@@ -75,6 +75,13 @@ test('provider secret takes precedence over the legacy config key', () => {
   assert.equal(result.apiKey, 'provider-secret-key');
 });
 
+test('Gemini 4 uses its configured provider model', () => {
+  assert.equal(resolveOpenRouterRuntimeConfig({
+    providerConfig: { enabled: true, gemini4ArgonModel: 'google/custom-gemini' },
+    providerSecrets: { apiKey: 'stored-key' },
+  }).gemini4ArgonModel, 'google/custom-gemini');
+});
+
 test('effective enabled provider exposes the routed inference models', () => {
   const result = applyEffectiveOpenRouterProviderConfig(
     { openrouter: { enabled: true } },
@@ -86,7 +93,7 @@ test('effective enabled provider exposes the routed inference models', () => {
   const available = buildDockerAvailableModelsFromEnabledProviders(enabledProviders);
 
   assert.deepEqual(
-    available.models.filter((model) => ['gpt-6.1-sol', 'gemini-3.1-pro', 'QWEN3.8'].includes(model)),
-    ['QWEN3.8', 'gemini-3.1-pro', 'gpt-6.1-sol'],
+    available.models.filter((model) => ['gpt-6.1-sol', 'gemini-4-argon', 'QWEN3.8'].includes(model)),
+    ['QWEN3.8', 'gemini-4-argon', 'gpt-6.1-sol'],
   );
 });

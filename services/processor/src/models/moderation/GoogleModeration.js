@@ -1,7 +1,8 @@
 import fetch from 'node-fetch';
 
 import {
-  DEFAULT_GEMINI_31_PRO_VERTEX_MODEL,
+  DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL,
+  isGeminiArgonProviderModel,
   normalizeGeminiProviderModel,
 } from '../../consts/InferenceModels.js';
 import {
@@ -14,7 +15,7 @@ import {
   getGoogleCloudConfig,
 } from '../../inference/GoogleADC.js';
 
-const DEFAULT_GEMINI_MODERATION_MODEL = DEFAULT_GEMINI_31_PRO_VERTEX_MODEL;
+const DEFAULT_GEMINI_MODERATION_MODEL = DEFAULT_GEMINI_4_ARGON_VERTEX_MODEL;
 const DEFAULT_GEMINI_MODERATION_LOCATION = 'global';
 const DEFAULT_GEMINI_MODERATION_TIMEOUT_MS = 30000;
 const DEFAULT_GEMINI_MODERATION_MAX_OUTPUT_TOKENS = 2048;
@@ -88,7 +89,7 @@ function getGoogleModerationModel(options = {}) {
     normalizeGeminiModerationModel(process.env.GOOGLE_GEMINI_MODERATION_MODEL) ||
     normalizeGeminiModerationModel(process.env.GOOGLE_MODERATION_VERTEX_MODEL) ||
     normalizeGeminiModerationModel(process.env.GOOGLE_MODERATION_MODEL) ||
-    normalizeGeminiModerationModel(process.env.GOOGLE_GEMINI_31_PRO_MODEL) ||
+    normalizeGeminiModerationModel(process.env.GOOGLE_GEMINI_4_ARGON_MODEL) ||
     normalizeGeminiModerationModel(process.env.GOOGLE_GEMINI_PRO_MODEL) ||
     DEFAULT_GEMINI_MODERATION_MODEL
   );
@@ -234,7 +235,8 @@ function buildSafetySettings() {
   }));
 }
 
-function buildModerationRequestBody(requestData, options = {}) {
+export function buildModerationRequestBody(requestData, options = {}) {
+  const isArgonModel = isGeminiArgonProviderModel(getGoogleModerationModel(options));
   return {
     systemInstruction: {
       parts: [{ text: GEMINI_MODERATION_SYSTEM_PROMPT }],
@@ -250,9 +252,12 @@ function buildModerationRequestBody(requestData, options = {}) {
       },
     ],
     generationConfig: {
-      temperature: 0,
-      topP: 1,
-      maxOutputTokens: getGoogleModerationMaxOutputTokens(options),
+      ...(isArgonModel
+        ? { thinkingConfig: { thinkingLevel: 'LOW' } }
+        : { temperature: 0, topP: 1 }),
+      maxOutputTokens: isArgonModel
+        ? Math.min(getGoogleModerationMaxOutputTokens(options), 32768)
+        : getGoogleModerationMaxOutputTokens(options),
       responseMimeType: 'application/json',
       responseSchema: GEMINI_MODERATION_RESPONSE_SCHEMA,
     },

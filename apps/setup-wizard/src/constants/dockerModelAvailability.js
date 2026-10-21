@@ -151,7 +151,7 @@ const ALIBABA_QWEN_IMAGE_ENDPOINT_TYPES = new Set([
 export const DOCKER_MODEL_PROVIDER_PRIORITY_BY_MODEL = Object.freeze({
   'gpt-6.1-sol': OPENAI_INFERENCE_GMI_OR_SAMSAR,
   'claude-opus-5.5': CLAUDE_INFERENCE_PROVIDERS,
-  'gemini-3.1-pro': GOOGLE_INFERENCE_GMI_OR_SAMSAR,
+  'gemini-4-argon': GOOGLE_INFERENCE_GMI_OR_SAMSAR,
   KIMIK3: KIMI_OR_SAMSAR,
   'QWEN3.8': ALIBABA_GMI_OR_SAMSAR,
   QWENIMAGE3PRO: [DOCKER_PROVIDER.ALIBABA_CLOUD],
@@ -204,7 +204,7 @@ const LEGACY_MODEL_PROVIDER_PRIORITY_WITHOUT_GMI = Object.freeze({
     DOCKER_PROVIDER.OPENROUTER,
     DOCKER_PROVIDER.SAMSAR,
   ]),
-  'gemini-3.1-pro': Object.freeze([
+  'gemini-4-argon': Object.freeze([
     DOCKER_PROVIDER.GOOGLE_CLOUD,
     DOCKER_PROVIDER.OPENROUTER,
     DOCKER_PROVIDER.SAMSAR,
@@ -214,7 +214,7 @@ const LEGACY_MODEL_PROVIDER_PRIORITY_WITHOUT_GMI = Object.freeze({
 export const DOCKER_MODEL_ACTIONS_BY_MODEL = Object.freeze({
   'gpt-6.1-sol': ['chat', 'assistant', 'moderation', 'recommendations', 'search'],
   'claude-opus-5.5': ['chat', 'assistant'],
-  'gemini-3.1-pro': ['chat', 'assistant', 'moderation'],
+  'gemini-4-argon': ['chat', 'assistant', 'moderation'],
   KIMIK3: ['chat', 'assistant'],
   'QWEN3.8': ['chat', 'assistant'],
   QWENIMAGE3PRO: ['image'],
@@ -263,7 +263,7 @@ export const DOCKER_MODEL_ACTIONS_BY_MODEL = Object.freeze({
 export const DOCKER_MODEL_DISPLAY_NAME_BY_MODEL = Object.freeze({
   'gpt-6.1-sol': 'GPT 6.1 Sol High',
   'claude-opus-5.5': 'Claude Opus 5.5',
-  'gemini-3.1-pro': 'Gemini 3.1 Pro',
+  'gemini-4-argon': 'Gemini 4 Argon',
   KIMIK3: 'Kimi K3',
   'QWEN3.8': 'Qwen 3.8 Max',
   QWENIMAGE3PRO: 'Qwen Image 3.0 Pro',
@@ -326,7 +326,7 @@ export const EXPRESS_PIPELINE_REQUIREMENTS = Object.freeze([
   Object.freeze({
     key: 'inference',
     label: 'Inference',
-    modelKeys: Object.freeze(['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-3.1-pro', 'KIMIK3', 'QWEN3.8']),
+    modelKeys: Object.freeze(['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-4-argon', 'KIMIK3', 'QWEN3.8']),
   }),
   Object.freeze({
     key: 'imageGeneration',
@@ -453,6 +453,7 @@ export function orderDockerProviderKeys(providerKeys = []) {
 export function getCanonicalDockerModelKey(modelKey) {
   const normalizedModelKey = normalizeDockerModelKey(modelKey);
   const compactModelKey = normalizedModelKey.replace(/[^A-Z0-9]/g, '');
+  if (['GEMINI4', 'GEMINI4ARGON', 'GOOGLEGEMINI4', 'GOOGLEGEMINI4ARGON'].includes(compactModelKey)) return 'gemini-4-argon';
   if (['GPT61SOL', 'GPT6ASTRA', 'GPT56SOL'].includes(compactModelKey)) return 'gpt-6.1-sol';
   if (NORMALIZED_KIMI_K3_MODEL_ALIASES.has(compactModelKey)) {
     return 'KIMIK3';
@@ -515,7 +516,7 @@ function hasGmiCloudModelRoute(modelMappings, modelKey) {
     typeof routes[modality].modelId === 'string' &&
     routes[modality].modelId.trim(),
   );
-  if (['gpt-6.1-sol', 'gemini-3.1-pro', 'QWEN3.8'].includes(modelKey)) {
+  if (['gpt-6.1-sol', 'gemini-4-argon', 'QWEN3.8'].includes(modelKey)) {
     return routeAvailable('text') && routeAvailable('vision');
   }
   return Object.values(routes).some((route) => (

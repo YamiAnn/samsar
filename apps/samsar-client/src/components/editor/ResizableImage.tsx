@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { Image, Transformer, Group, Text } from 'react-konva';
-import { useImage } from 'react-konva-utils';
+import { useStudioImage } from '../video/util/useStudioImage.jsx';
 import { getStageDimensions} from '../../constants/Image.jsx';
 import { getRenderableImageUrl } from '../../utils/image.jsx';
 
@@ -47,7 +47,7 @@ export default function ResizableImage({
 
   imageSrc = getRenderableImageUrl(image, IMAGE_BASE);
 
-  const [img, status] = useImage(imageSrc, 'anonymous');
+  const [img, status] = useStudioImage(imageSrc);
   const [transformEndCalled, setTransformEndCalled] = useState(false);
   const shapeRef = useRef();
   const trRef = useRef();

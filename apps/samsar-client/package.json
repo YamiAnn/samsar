@@ -38,11 +38,15 @@
     "test:unit": "vitest run --config vitest.config.mjs",
     "test:watch": "vitest --config vitest.config.mjs",
     "test:browser": "vitest run --config vitest.browser.config.mjs",
-    "test:browser:watch": "vitest --config vitest.browser.config.mjs --browser.headless=false",
-    "test:ci": "npm test && npm run test:browser",
+    "test:browser:watch": "vitest --config vitest.browser.config.mjs --browser.headless=true",
+    "test:ci": "node scripts/test-all.mjs",
     "test:sync": "npm run test:ci",
-    "test:browser:install": "playwright install chromium",
-    "test:frame-drift": "node --test src/components/video/util/frameDrift.test.mjs && vitest run --config vitest.config.mjs test/unit/StudioFrameRate.test.jsx"
+    "test:coverage": "node scripts/test-coverage.mjs",
+    "test:coverage:check": "node scripts/test-coverage.mjs --check",
+    "test:browser:install": "playwright install --only-shell chromium",
+    "test:frame-drift": "node --test src/components/video/util/frameDrift.test.mjs && vitest run --config vitest.config.mjs test/unit/StudioFrameRate.test.jsx",
+    "test:studio-f2p": "node scripts/test-studio-f2p.mjs",
+    "test:studio-f2p:unit": "node scripts/test-studio-f2p.mjs --unit"
   },
   "browserslist": {
     "production": [

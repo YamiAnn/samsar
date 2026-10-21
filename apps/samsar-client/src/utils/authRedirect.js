@@ -37,7 +37,9 @@ export function sanitizeAuthRedirect(value) {
 
   const trimmed = value.trim();
   if (!trimmed || !trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
+  // Browsers normalize backslashes and strip control characters when parsing
+  // URLs, so these can turn a local-looking path into a remote redirect.
+  if (/[\\\u0000-\u001f\u007f]/.test(trimmed)) return null;
 
   return trimmed;
 }

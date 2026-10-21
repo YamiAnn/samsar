@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 
 import { SUPPORTED_SUBTITLE_FONTS_BY_LANGUAGE } from '../consts/SubtitleFonts.js';
@@ -58,7 +57,7 @@ const THEMES = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const FALLBACK_OUTPUT_DIR = path.join(PROJECT_ROOT, 'assets', 'supported_fonts');
+const DEFAULT_OUTPUT_DIR = path.join(PROJECT_ROOT, 'public_assets', 'supported_fonts');
 
 const slugifyFontName = (fontName) =>
   fontName
@@ -107,23 +106,57 @@ const computeFingerprint = () => {
   return hash.digest('hex');
 };
 
-const resolveOutputDir = () => {
-  const override = process.env.FONT_SAMPLE_OUTPUT_DIR;
-  if (override) {
-    return path.resolve(override);
-  }
-
-  const assetsRoot = '/assets';
-  try {
-    if (fs.existsSync(assetsRoot)) {
-      fs.accessSync(assetsRoot, fs.constants.W_OK);
-      return path.join(assetsRoot, 'supported_fonts');
+function resolveExistingPath(value) {
+  let candidate = path.resolve(value);
+  const missingParts = [];
+  while (true) {
+    try {
+      return path.join(fs.realpathSync(candidate), ...missingParts.reverse());
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      missingParts.push(path.basename(candidate));
+      candidate = parent;
     }
-  } catch (_) {
   }
+}
 
-  return FALLBACK_OUTPUT_DIR;
-};
+function pathContains(parent, child) {
+  const relative = path.relative(parent, child);
+  return !relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+/** Generated public font previews must never share a private media root. */
+export function resolveSupportedFontSamplesDirectory(env = process.env) {
+  const override = typeof env.FONT_SAMPLE_OUTPUT_DIR === 'string' ? env.FONT_SAMPLE_OUTPUT_DIR.trim() : '';
+  const outputDir = path.resolve(override || DEFAULT_OUTPUT_DIR);
+  const privateRoots = [
+    path.join(PROJECT_ROOT, 'assets'), path.join(PROJECT_ROOT, 'assets_v2'),
+    path.resolve('assets'), path.resolve('assets_v2'), '/assets', '/assets_v2',
+    env.SAMSAR_ASSETS_ROOT, env.SAMSAR_ASSETS_V2_ROOT,
+  ].filter(value => typeof value === 'string' && value.trim()).map(value => path.resolve(value));
+  const resolvedOutputDir = resolveExistingPath(outputDir);
+  for (const root of privateRoots) {
+    const resolvedRoot = resolveExistingPath(root);
+    if (pathContains(root, outputDir) || pathContains(outputDir, root)
+      || pathContains(resolvedRoot, resolvedOutputDir) || pathContains(resolvedOutputDir, resolvedRoot)) {
+      throw new Error('FONT_SAMPLE_OUTPUT_DIR must be separate from private assets and assets_v2 directories.');
+    }
+  }
+  return outputDir;
+}
+
+const SUPPORTED_FONT_SAMPLE_PATHS = new Set(
+  Object.entries(SUPPORTED_SUBTITLE_FONTS_BY_LANGUAGE).flatMap(([languageCode, fonts]) =>
+    fonts.flatMap(fontName => ['', 'light/', 'dark/'].map(theme =>
+      `${theme}${languageCode}/${slugifyFontName(fontName)}.png`))),
+);
+
+/** Only generated theme/language/font PNGs are public, never arbitrary files. */
+export function isSupportedFontSamplePath(value) {
+  return typeof value === 'string' && SUPPORTED_FONT_SAMPLE_PATHS.has(value.replace(/^\//, ''));
+}
 
 const pickSampleFontSize = (sampleText) => {
   const length = sampleText.length;
@@ -239,6 +272,7 @@ const writeManifest = async (outputDir, fingerprint) => {
 };
 
 const generateSamples = async (outputDir) => {
+  const { default: sharp } = await import('sharp');
   const sampleEntries = Object.entries(SUPPORTED_SUBTITLE_FONTS_BY_LANGUAGE).sort(([a], [b]) =>
     a.localeCompare(b)
   );
@@ -270,7 +304,7 @@ export async function ensureSupportedFontSamples() {
     return { skipped: true, reason: 'disabled' };
   }
 
-  const outputDir = resolveOutputDir();
+  const outputDir = resolveSupportedFontSamplesDirectory();
   await fs.promises.mkdir(outputDir, { recursive: true });
 
   const lockPath = path.join(outputDir, LOCK_FILENAME);

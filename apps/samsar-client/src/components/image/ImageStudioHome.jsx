@@ -66,6 +66,9 @@ function firstStringValue(values = []) {
 }
 
 function clampImageStudioCanvasZoom(value) {
+  if (value == null || value === '') {
+    return 1;
+  }
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     return 1;
@@ -1295,16 +1298,16 @@ export default function ImageStudioHome() {
 
   const submitGenerateRequest = async (payload) => {
     if (!currentLayer) return;
+    const headers = getHeaders();
+    if (!headers) {
+      showLoginDialog();
+      return;
+    }
     setIsGenerationPending(true);
     setGenerationError(null);
     if (generationPollIntervalRef.current) {
       clearTimeout(generationPollIntervalRef.current);
       generationPollIntervalRef.current = null;
-    }
-    const headers = getHeaders();
-    if (!headers) {
-      showLoginDialog();
-      return;
     }
     const requestPayload = {
       ...payload,
@@ -1694,6 +1697,7 @@ export default function ImageStudioHome() {
     if (!currentLayer) return;
     const headers = getHeaders();
     if (!headers) {
+      setIsGenerationPending(false);
       showLoginDialog();
       return;
     }
@@ -1708,8 +1712,7 @@ export default function ImageStudioHome() {
       const layerData = pollStatus.layer;
       const generationImages = pollStatus.generationImages;
       const generatedImageUrlName = layerData.imageSession.activeGeneratedImage;
-      const timestamp = Date.now();
-      const generatedURL = `/generations/${generatedImageUrlName}?${timestamp}`;
+      const generatedURL = getRenderableImageUrl(generatedImageUrlName, PROCESSOR_API_URL, { legacyGenerationFilename: true });
       const placement =
         (await resolveCanvasImagePlacement(generatedURL).catch(() => null)) || {
           url: generatedURL,

@@ -269,7 +269,7 @@ export default function UserAccount() {
       if (!userInitiated || userFetching) {
         return (
           <OverflowContainer>
-            <div className="pt-[50px] min-h-screen" />
+            <div className="pt-[var(--app-nav-height)] min-h-[100dvh]" />
           </OverflowContainer>
         );
       }
@@ -463,7 +463,7 @@ export default function UserAccount() {
   return (
     <OverflowContainer>
       <ToastContainer />
-      <div className={`pt-[50px] min-h-screen flex flex-col ${bgColor} ${textColor}`}>
+      <div className={`pt-[var(--app-nav-height)] min-h-[100dvh] flex flex-col ${bgColor} ${textColor}`}>
         {sidebarOpen && (
           <div className="fixed inset-0 z-40 flex" aria-modal="true" role="dialog">
             <div className="fixed inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
@@ -513,7 +513,7 @@ export default function UserAccount() {
               </h2>
             </div>
 
-            <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
+            <div className="workspace-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
               {displayPanel === "account" && (
                 <div className="flex min-h-full min-w-0 flex-col">
                   <div className="max-w-5xl w-full mx-auto space-y-4 sm:space-y-6">

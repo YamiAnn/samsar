@@ -35,7 +35,7 @@ mounted read-only and has this shape:
 
 The gateway-side allowlist currently understands these Samsar contracts:
 
-- inference/vision: `gpt-6.1-sol`, `gemini-3.1-pro`, `QWEN3.8`;
+- inference/vision: `gpt-6.1-sol`, `gemini-4-argon`, `QWEN3.8`;
 - image generation: `GPTIMAGE2`, `SEEDREAM`, `NANOBANANA2`,
   `NANOBANANAPRO`;
 - image editing: `GPTIMAGE2EDIT`, `NANOBANANA2EDIT`,
@@ -142,6 +142,14 @@ first/last-frame, Kling maps them to image/image-tail, and HappyHorse maps its
 single input to first-frame. Hailuo's optional source maps to first-frame-image,
 and the exact legacy Kling routes map one source to image without changing the
 external Samsar request shape.
+
+GMICloud video submit failures with the explicit `1004: token is unusable`
+response receive `503` and `gmicloud_token_unusable`. The AI-video worker may
+retry that rejection with bounded backoff; observed GMICloud requests with
+this error are recorded as failed. It never retries other ambiguous `5xx`
+submissions. A healthy API key verification or model-list response does not
+rule out this intermittent
+provider-side video failure.
 
 Seedance 2.0 and 2.5 are intentionally unavailable as text-to-video. The standalone
 Docker container advertises its GMICloud adapter only when the validated

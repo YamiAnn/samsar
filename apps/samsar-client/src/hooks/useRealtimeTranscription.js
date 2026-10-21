@@ -161,8 +161,12 @@ function useRealtimeTranscription({
   const remoteAudioRef = useRef(null);
   const transcriptBufferRef = useRef('');
   const mountedRef = useRef(true);
+  const sessionRevisionRef = useRef(0);
+  const initializingRef = useRef(false);
 
   const cleanupSession = useCallback(() => {
+    sessionRevisionRef.current += 1;
+    initializingRef.current = false;
     try {
       if (dataChannelRef.current) {
         dataChannelRef.current.onclose = null;
@@ -202,9 +206,12 @@ function useRealtimeTranscription({
     transcriptBufferRef.current = '';
   }, []);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    cleanupSession();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cleanupSession();
+    };
   }, [cleanupSession]);
 
   const stopTranscription = useCallback(() => {
@@ -219,7 +226,7 @@ function useRealtimeTranscription({
   }, [cleanupSession, onSessionEnded]);
 
   const handleRealtimeMessage = useCallback((rawEvent) => {
-    if (!rawEvent?.data) return;
+    if (!mountedRef.current || !rawEvent?.data) return;
     let payload;
     try {
       payload = JSON.parse(rawEvent.data);
@@ -361,6 +368,7 @@ function useRealtimeTranscription({
   }, [preferredModel, transcriptEndpoint, transcriptHeaders]);
 
   const startTranscription = useCallback(async () => {
+    if (!mountedRef.current) return;
     if (!isSupported) {
       const message =
         'This device does not support microphone capture in the browser.';
@@ -369,21 +377,31 @@ function useRealtimeTranscription({
       return;
     }
 
-    if (isRecording || isInitializing) {
+    if (isRecording || isInitializing || initializingRef.current) {
       return;
     }
 
     setError(null);
     setIsInitializing(true);
+    initializingRef.current = true;
+    const revision = ++sessionRevisionRef.current;
+    const isCurrentSession = () => mountedRef.current && sessionRevisionRef.current === revision;
 
     try {
       const stream = await window.navigator.mediaDevices.getUserMedia({
         audio: true,
       });
+      if (!isCurrentSession()) {
+        stream.getTracks().forEach((track) => {
+          try { track.stop(); } catch { /* noop */ }
+        });
+        return;
+      }
       microphoneStreamRef.current = stream;
 
       const { token, realtimeModel, targetUrl, metadata } =
         await requestEphemeralToken();
+      if (!isCurrentSession()) return;
 
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
@@ -421,7 +439,9 @@ function useRealtimeTranscription({
         offerToReceiveAudio: true,
         offerToReceiveVideo: false,
       });
+      if (!isCurrentSession()) return;
       await peerConnection.setLocalDescription(offer);
+      if (!isCurrentSession()) return;
 
       const baseHeaders = {
         Authorization: `Bearer ${token}`,
@@ -434,6 +454,7 @@ function useRealtimeTranscription({
         body: offer.sdp,
         headers: baseHeaders,
       });
+      if (!isCurrentSession()) return;
 
       if (!response.ok) {
         throw new Error(
@@ -445,9 +466,12 @@ function useRealtimeTranscription({
         type: 'answer',
         sdp: await response.text(),
       };
+      if (!isCurrentSession()) return;
       await peerConnection.setRemoteDescription(answer);
+      if (!isCurrentSession()) return;
 
       transcriptBufferRef.current = '';
+      initializingRef.current = false;
 
       if (mountedRef.current) {
         setIsRecording(true);
@@ -460,6 +484,7 @@ function useRealtimeTranscription({
       });
 
       dataChannel.addEventListener('open', () => {
+        if (!isCurrentSession()) return;
         const disableResponses = {
           type: 'session.update',
           session: {
@@ -489,6 +514,7 @@ function useRealtimeTranscription({
         }
       });
     } catch (err) {
+      if (!isCurrentSession()) return;
       const message =
         err?.message ||
         'Unable to start realtime transcription session.';

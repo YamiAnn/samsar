@@ -5,7 +5,7 @@ x-service-env: &service-env
   # root.env and inherited by every backend inference consumer.
   env_file:
     - ../../runtime/secrets/root.env
-  environment:
+  environment: &service-environment
     CURRENT_ENV: standalone
     SAMSAR_DEPLOYMENT_EDITION: standalone
     SAMSAR_RUNTIME: docker
@@ -157,6 +157,9 @@ services:
     <<: *service-env
     profiles: ["workers"]
     restart: unless-stopped
+    environment:
+      <<: *service-environment
+      CLEANUP_MIN_AGE_HOURS: "${CLEANUP_MIN_AGE_HOURS:-168}"
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -171,10 +174,11 @@ services:
       context: ../../services/docker-cleanup
     environment:
       SAMSAR_ASSETS_V2_ROOT: /assets_v2
-      CLEANUP_MIN_AGE_HOURS: "${CLEANUP_MIN_AGE_HOURS:-24}"
+      CLEANUP_MIN_AGE_HOURS: "${CLEANUP_MIN_AGE_HOURS:-168}"
       CLEANUP_CRON_SCHEDULE: "${CLEANUP_CRON_SCHEDULE:-17 */3 * * *}"
       CLEANUP_ON_START: "${CLEANUP_ON_START:-true}"
       CLEANUP_DRY_RUN: "${CLEANUP_DRY_RUN:-false}"
+      CLEANUP_TARGETS: "${CLEANUP_TARGETS:-}"
     volumes:
       - media-assets-v2:/assets_v2
 
@@ -203,7 +207,9 @@ services:
       mongo-auth-bootstrap:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+      # Internal clients use mongo:27017. Let Docker allocate the optional
+      # host port so a local mongod or another stack cannot block setup.
+      - "127.0.0.1:${MONGO_PORT:-0}:27017"
     healthcheck:
       test:
         - CMD-SHELL
@@ -235,8 +241,6 @@ services:
       context: ./media-gateway
     volumes:
       - ./media-gateway.conf:/etc/nginx/conf.d/default.conf:ro
-      - media-assets:/usr/share/nginx/html/assets:ro
-      - media-assets-v2:/usr/share/nginx/html/assets_v2:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/__samsar_media_health | grep -qx samsar-media-gateway"]
       interval: 10s

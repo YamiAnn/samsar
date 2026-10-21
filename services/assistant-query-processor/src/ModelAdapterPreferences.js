@@ -6,7 +6,9 @@ const DEFAULT_MODEL_ADAPTER_PREFERENCES_PATH =
   '/persistent/config/model-adapter-preferences.json';
 
 const MODEL_KEY_BY_TOKEN = Object.freeze({
-  GEMINI31PRO: 'gemini-3.1-pro',
+  GEMINI4: 'gemini-4-argon',
+  GEMINI4ARGON: 'gemini-4-argon',
+  GOOGLEGEMINI4ARGON: 'gemini-4-argon',
   GPT56SOL: 'gpt-6.1-sol',
   GPT61SOL: 'gpt-6.1-sol',
   GPT6ASTRA: 'gpt-6.1-sol',

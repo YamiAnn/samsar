@@ -2,8 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 import { __testOnly__ } from './VideoSession.js';
+
+function createAssetsV2Fixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'samsar-media-delivery-'));
+  const previousRoot = process.env.SAMSAR_ASSETS_V2_ROOT;
+  process.env.SAMSAR_ASSETS_V2_ROOT = root;
+  t.after(() => {
+    if (previousRoot === undefined) delete process.env.SAMSAR_ASSETS_V2_ROOT;
+    else process.env.SAMSAR_ASSETS_V2_ROOT = previousRoot;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  return root;
+}
 
 const staleFinalVideoUrl = 'https://static.samsar.one/assets_v2/video/output/session_123/final.mp4?Expires=1&Signature=old&Key-Pair-Id=old';
 const staleThumbnailUrl = 'https://static.samsar.one/assets_v2/generations/session_123/thumb.png?Expires=1&Signature=old&Key-Pair-Id=old';
@@ -51,22 +64,15 @@ test('response hydration source selection is local-first only for Docker-local d
 });
 
 test('Docker guest media reads mounted assets with byte-range support', async (t) => {
+  const assetsRoot = createAssetsV2Fixture(t);
   const tempRoot = path.join(
-    process.cwd(),
-    'assets_v2',
+    assetsRoot,
     `guest_media_${process.pid}_${Date.now()}`,
   );
   const assetKey = `assets_v2/${path.basename(tempRoot)}/session_123/video.mp4`;
   const absolutePath = path.join(tempRoot, 'session_123', 'video.mp4');
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, Buffer.from('0123456789'));
-  const previousRoot = process.env.SAMSAR_ASSETS_V2_ROOT;
-  process.env.SAMSAR_ASSETS_V2_ROOT = path.join(process.cwd(), 'assets_v2');
-  t.after(() => {
-    if (previousRoot === undefined) delete process.env.SAMSAR_ASSETS_V2_ROOT;
-    else process.env.SAMSAR_ASSETS_V2_ROOT = previousRoot;
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-  });
 
   const media = await __testOnly__.buildLocalGuestMediaObject(assetKey, 'bytes=2-5');
   assert.equal(media.statusCode, 206);
@@ -159,6 +165,7 @@ test('studio media hydration preserves unrelated external URLs', () => {
 });
 
 test('studio media hydration serves locally finalized user videos from assets_v2', (t) => {
+  const assetsRoot = createAssetsV2Fixture(t);
   const envKeys = [
     'CURRENT_ENV',
     'SAMSAR_MEDIA_DELIVERY_MODE',
@@ -186,13 +193,9 @@ test('studio media hydration serves locally finalized user videos from assets_v2
     'layer_123',
     'user_video_test.mp4',
   );
-  const absolutePath = path.resolve(relativePath);
+  const absolutePath = path.join(assetsRoot, relativePath.slice('assets_v2/'.length));
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, 'test-video');
-  t.after(() => fs.rmSync(path.join(process.cwd(), 'assets_v2', 'ai_video', 'generations', path.basename(path.dirname(path.dirname(absolutePath)))), {
-    recursive: true,
-    force: true,
-  }));
 
   const staleSignedUrl = `https://static.samsar.one/${relativePath.replaceAll(path.sep, '/')}?Expires=1&Signature=old&Key-Pair-Id=old`;
   const hydrated = __testOnly__.hydrateStudioSessionMediaForResponse({
@@ -224,9 +227,10 @@ test('external-S3 studio hydration keeps mounted final videos on signed CloudFro
     'STATIC_CDN_URL',
   ];
   const envSnapshot = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const assetsRoot = createAssetsV2Fixture(t);
   process.env.CURRENT_ENV = 'docker';
   process.env.SAMSAR_MEDIA_DELIVERY_MODE = 's3-cloudfront';
-  process.env.SAMSAR_ASSETS_V2_ROOT = path.join(process.cwd(), 'assets_v2');
+  process.env.SAMSAR_ASSETS_V2_ROOT = assetsRoot;
   process.env.SAMSAR_EXTERNAL_MEDIA_PUBLISH_ENABLED = 'true';
   process.env.MEDIA_BUCKET_NAME = 'samsar-resources';
   process.env.STATIC_CDN_URL = 'https://static.samsar.one';
@@ -244,10 +248,9 @@ test('external-S3 studio hydration keeps mounted final videos on signed CloudFro
     `media_delivery_${process.pid}_${Date.now()}`,
     'final.mp4',
   );
-  const absolutePath = path.resolve(relativePath);
+  const absolutePath = path.join(assetsRoot, relativePath.slice('assets_v2/'.length));
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, 'test-video');
-  t.after(() => fs.rmSync(path.dirname(absolutePath), { recursive: true, force: true }));
 
   const hydrated = __testOnly__.hydrateStudioSessionMediaForResponse({
     videoLink: relativePath.replaceAll(path.sep, '/'),

@@ -10,8 +10,11 @@ yarn test:browser:install
 yarn test:ci
 ```
 
-On Linux CI, install browser system dependencies with
-`yarn playwright install --with-deps chromium`.
+All browser suites use Playwright's Chromium headless shell, including watch mode
+and instrumented coverage. `test:browser:install` uses `--only-shell`; it does not
+install full Chromium or Google Chrome, and tests do not fall back to a desktop
+browser. On Linux CI, install the shell and its system dependencies with
+`npm run test:browser:install -- --with-deps`.
 
 ## Commands
 
@@ -22,7 +25,7 @@ On Linux CI, install browser system dependencies with
 | `yarn test:unit` | React hook/context and error-boundary tests in jsdom |
 | `yarn test:watch` | Unit tests in watch mode |
 | `yarn test:browser` | Headless Chromium component tests through Vitest/Playwright |
-| `yarn test:browser:watch` | Browser tests interactively with a visible browser |
+| `yarn test:browser:watch` | Headless Chromium tests in watch mode |
 | `yarn test:ci` | Node, unit, and browser suites; fails on any failing suite |
 | `yarn test:sync` | The same complete gate for sync callers |
 

@@ -17,7 +17,9 @@ export default defineConfig({
     browser: {
       enabled: true,
       headless: true,
-      provider: playwright(),
+      // Use the shell installed by test:browser:install in every browser suite,
+      // including coverage and watch mode. Never fall back to desktop Chrome.
+      provider: playwright({ launchOptions: { channel: 'chromium-headless-shell' } }),
       instances: [{ browser: 'chromium' }],
     },
   },

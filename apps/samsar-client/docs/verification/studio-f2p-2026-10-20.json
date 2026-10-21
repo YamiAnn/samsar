@@ -1,0 +1,715 @@
+{
+  "date": "2026-10-20",
+  "scope": [
+    "samsar_client",
+    "samsar_processor"
+  ],
+  "baseline": "Pre-task working-tree source snapshots; existing uncommitted changes retained. Identical finalized F2P tests replayed against isolated original source copies.",
+  "f2p": {
+    "total": 43,
+    "before": {
+      "failed": 43,
+      "passed": 0
+    },
+    "after": {
+      "failed": 0,
+      "passed": 43
+    },
+    "tests": [
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: 16 FPS video corrects drift of two project frames",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1 to be close to 1.125, received difference is 0.125, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: 24 FPS video corrects drift of two project frames",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1 to be close to 1.0833333333333333, received difference is 0.08333333333333326, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: 30 FPS video corrects drift of two project frames",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1 to be close to 1.0666666666666667, received difference is 0.06666666666666665, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: equivalent audio metadata refresh retains the loaded audio element",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected [ EventTarget{ \u2026(9), \u2026(1) }, \u2026(1) ] to have a length of 1 but got 2"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: rotating a credential preserves an already decoded video slot",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected <video preload=\"auto\" \u2026(4)></video> to be <video preload=\"none\" \u2026(4)></video> // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: failed private video asks its session owner to refresh media credentials",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected \"vi.fn()\" to be called once, but got 0 times"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMediaF2P.test.jsx",
+        "name": "F2P: buffering visuals hold the project clock and resume without a wall-clock jump",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected \"vi.fn()\" to not be called with arguments: [ true ]"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMenuF2P.test.jsx",
+        "name": "F2P: the scene menu escapes deeply nested scrolling panel headers",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected <div data-scroll-panel=\"true\" \u2026(1)>\u2026(1)</div> to be null"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioMenuF2P.test.jsx",
+        "name": "F2P: shared action menus escape deeply nested scrolling panel headers",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected <div data-scroll-panel=\"true\" \u2026(1)>\u2026(1)</div> to be null"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioSessionF2P.test.jsx",
+        "name": "F2P: reorder adopts the processor audio placements and complete session snapshot",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected [] to match object [ { _id: 'speech', \u2026(5) } ]"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioSessionF2P.test.jsx",
+        "name": "F2P: copy adopts the processor duration and connected audio",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 4 to be 6 // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioSessionF2P.test.jsx",
+        "name": "F2P: rejected layer save clears pending state and reports the error",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected true to be false // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioSessionF2P.test.jsx",
+        "name": "F2P: failed active images hold playback until refreshed credentials decode successfully",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected undefined to be false // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 16 FPS ruler agrees with scene geometry",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 20 to be close to 22.37037037037037, received difference is 2.3703703703703702, but expected 0.000005"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 16 FPS audio body movement preserves time duration across scene scales",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1.152671755725191 to be close to 1, received difference is 0.1526717557251911, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 16 FPS bottom strip retains explicit timeline gaps",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 300 to be close to 200, received difference is 100, but expected 5e-7"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 16 FPS item visibility excludes the end boundary",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected true to be false // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 24 FPS ruler agrees with scene geometry",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 20 to be close to 22.37037037037037, received difference is 2.3703703703703702, but expected 0.000005"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 24 FPS audio body movement preserves time duration across scene scales",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1.152671755725191 to be close to 1, received difference is 0.1526717557251911, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 24 FPS bottom strip retains explicit timeline gaps",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 300 to be close to 200, received difference is 100, but expected 5e-7"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 24 FPS item visibility excludes the end boundary",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected true to be false // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 30 FPS ruler agrees with scene geometry",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 20 to be close to 22.37037037037037, received difference is 2.3703703703703702, but expected 0.000005"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 30 FPS audio body movement preserves time duration across scene scales",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 1.152671755725191 to be close to 1, received difference is 0.1526717557251911, but expected 5e-9"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 30 FPS bottom strip retains explicit timeline gaps",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 300 to be close to 200, received difference is 100, but expected 5e-7"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: 30 FPS item visibility excludes the end boundary",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected true to be false // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioTimelineF2P.test.jsx",
+        "name": "F2P: trim minimum uses the bound 16 FPS project clock",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "Error: expect(element).toHaveAttribute(\"data-min-distance\", \"2\") // element.getAttribute(\"data-min-distance\") === \"2\""
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: text timing fields are editable and save native frame offsets",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected \"vi.fn()\" to be called at least once"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: adding an effect respects the entered time range",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected { id: 'animation_1', \u2026(4) } to match object { startFrame: 24, endFrame: 48, \u2026(2) }"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: applying a 1.25x edit sends that exact multiplier",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 2 to be 1.25 // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: applying a 1.5x edit sends that exact multiplier",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 2 to be 1.5 // Object.is equality"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: selected legacy text uses its configured clock in a 24 FPS session",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "Error: expect(element).toHaveValue(1.00)"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: Settings scene navigation selects the adjacent scene",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "Error: expect(element).toBeEnabled()"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioToolbarF2P.test.jsx",
+        "name": "F2P: the vertical timeline reserves space for explicit scene gaps",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected 0 to be greater than 250"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioWaveformF2P.test.jsx",
+        "name": "F2P: volume-point clicks use the same segmented clock as the scene rail",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected \"vi.fn()\" to be called with arguments: [ 1 ]"
+      },
+      {
+        "suite": "client/unit",
+        "file": "test/unit/StudioWaveformF2P.test.jsx",
+        "name": "F2P: a refreshed audio credential reuses the decoded waveform buffer",
+        "before": "failed",
+        "after": "passed",
+        "original_failure": "AssertionError: expected \"vi.fn()\" to be called 1 times, but got 2 times"
+      },
+      {
+        "suite": "client/node",
+        "file": "src/components/oneshot_editor/previewReadiness.f2p.test.mjs",
+        "name": "F2P: VidGenie image error never marks the visual ready",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "client/node",
+        "file": "src/components/oneshot_editor/previewReadiness.f2p.test.mjs",
+        "name": "F2P: VidGenie image timeout never marks the visual ready",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 24000/1001 source has one nearest-boundary 16 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 24000/1001 source has one nearest-boundary 24 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 24000/1001 source has one nearest-boundary 30 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 30000/1001 source has one nearest-boundary 16 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 30000/1001 source has one nearest-boundary 24 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      },
+      {
+        "suite": "processor/ffmpeg",
+        "file": "src/models/video/SourceFrameRate.f2p.test.js",
+        "name": "F2P: 30000/1001 source has one nearest-boundary 30 FPS frame budget",
+        "before": "failed",
+        "after": "passed"
+      }
+    ]
+  },
+  "full_checks": {
+    "client_unit": {
+      "passed": 1241,
+      "failed": 0
+    },
+    "client_node": {
+      "passed": 201,
+      "failed": 0
+    },
+    "processor_frame_drift": {
+      "passed": 24,
+      "failed": 0
+    },
+    "client_production_build": "passed",
+    "git_diff_check": "passed"
+  },
+  "targeted_client_command": {
+    "command": "npm run test:studio-f2p:unit",
+    "passed": 45,
+    "breakdown": {
+      "f2p_unit": 35,
+      "f2p_node": 2,
+      "p2p_media_pool": 8
+    }
+  },
+  "browser": {
+    "defined_cases": 10,
+    "executed": 0,
+    "status": "blocked",
+    "reason": "Vitest browser server cannot listen on ::1:63315 (EPERM); local browser launch also restricted. No browser geometry or theme result is counted as passed."
+  },
+  "limits": [
+    "Session reconciliation tests mock HTTP and leaf UI boundaries; no deployed gateway integration run.",
+    "Browser pixel geometry, nested scroll interaction and cross-view visual/theme QA still require a browser-enabled environment.",
+    "No deployment, Docker rebuild or worker-service edits. Worker extraction defaults retain their legacy contract."
+  ],
+  "source_hashes": [
+    {
+      "project": "samsar_client",
+      "file": "src/components/account/SettingsPanelContent.jsx",
+      "before_sha256": "2ab1d1a814184a6778dd6681c6bf6ef1b00e82296852bafd95142893a3fa167b",
+      "after_sha256": "b9f8c8aeba4d908fcb4b5faec862b4fe5f18e51695f587c97fd103d3a4790994"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/account/UserAccount.tsx",
+      "before_sha256": "67ff819ecb7dd4ec86036850e0179d445f43098f9da7718441e720c6d7b11a54",
+      "after_sha256": "da9aa07c2cf14e6b6221f5dfbfda11460247603d541f438a3e5f6573f88071a0"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/audio/AudioStudioHome.jsx",
+      "before_sha256": "278c836a456d4599dd1f113d9b4a807fc233fc7d2c888ccfeb9a99b113d1f881",
+      "after_sha256": "c03e0c07588e9fe0029fe70cec0fcce233ad064e656c8d46e2776d5d2e6c78cd"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/common/CommonContainer.tsx",
+      "before_sha256": "85fd6f2c9bf22381cd6d1e58666688c0efc814b2d68568035a599b4043eac62a",
+      "after_sha256": "0773394fb7d42c810659e52fe8028a17a1df6cd5e8017cb4aa950e53bda65d97"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/common/CommonDropdownButton.tsx",
+      "before_sha256": "32e10c4afde0450961e16a97abe9fa979b133330e4d6f6910c72c3ec64379958",
+      "after_sha256": "62385348a5232c81156746cd5186446fa6bd19333c2f998bc3258a7be118278e"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/common/FloatingPanel.jsx",
+      "before_sha256": null,
+      "after_sha256": "89bdb61d77b13d495edb8d1be07a71c8fa935e94c53bbab9e236ce06dc3092f5"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/common/OverflowContainer.tsx",
+      "before_sha256": "5a3ed8eadc16e6c835ae6c46233324eaae6aca7c540c2fce62cf1d456d0a2a77",
+      "after_sha256": "5a580d48322466337d17841c459af33f825030c9f4fbedd18c1b3755dfec6e92"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/common/SecondaryButton.tsx",
+      "before_sha256": "fd70b6c21cbf1e9eec008e5743cfe28f7c59d0223791b6005a2aec9a4fa95a12",
+      "after_sha256": "5172a9511c3fc605c01b5900a70f22bd7ca484919187328a621a1fd999f2683f"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/editor/ResizableImage.tsx",
+      "before_sha256": "ce18edc4771c46d661bc5062ebf29ad4bca9c9a8bec19d4b0fe5beb277d6ff8e",
+      "after_sha256": "cf3b8be6fab984fcb69fd66bd9edc90e5dccb0ffd56956fe7ce1b6347c3d8628"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/oneshot_editor/OneshotEditorContainer.jsx",
+      "before_sha256": "76d112d2f9a5186ed0238be44e4f8c748d4cb7e064b25c880d34562e6ebab14d",
+      "after_sha256": "7c43da84ea684e4a2850cbdb4f8acb5f34b8883b25aa0eff46e58612afb7d23c"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/oneshot_editor/ProgressIndicator.jsx",
+      "before_sha256": "fa6353e7715072e6bbb20baaeda6ff7e7b07b88d407ce6f78e7f6b6fe17aa3d8",
+      "after_sha256": "94f32ba071a603fba15a48bf992cfb66fe79f1b995da8dcf2f937b71a7291872"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/oneshot_editor/previewReadiness.f2p.test.mjs",
+      "before_sha256": null,
+      "after_sha256": "9be3a732a1e9ea375a559492d4641c9089449b447768b609408d771f2699387a"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/PreviewPlaybackController.jsx",
+      "before_sha256": "14beeb634f5cc8546804174380ab32d92255b5b72be358888163bc66f95b9aef",
+      "after_sha256": "b0fa9b8af4243463cede56e79383ce87cab98c5d41442fc7e839edc41d6dcad4"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/StudioMediaContext.jsx",
+      "before_sha256": null,
+      "after_sha256": "534a10e2bdc1977b783973c826ba2575d7b6ac5c7f4fa974785699deff9fd1a9"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/VideoEditorContainer.jsx",
+      "before_sha256": "a95d865195b856e8f8629da3f2224e2bd5deb4f5cffdfea28fc81bc17803de5e",
+      "after_sha256": "00c82bef1172b8bdce52123cf5693046b3d4d0899c15691b47460f8b46795a74"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/VideoHome.jsx",
+      "before_sha256": "21778727d6d965b4c35a81a16a6d73b5628110f75e674d26c7289a468f103f9e",
+      "after_sha256": "1b9d1f3cc3b860b8016a2adede714742cec6747a4da1257a7db101786d140bf5"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/editor/CanvasUtils.jsx",
+      "before_sha256": "edd6ea2ae26b6d10720dbcea818eed21e90c6685a215bdd53aac4f26a205caf3",
+      "after_sha256": "8af3943d253b1699573f0fd1b18be03accb1f2bd4534b16a1c9ca09c920ad439"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/editor/VideoCanvas.jsx",
+      "before_sha256": "e5245663310565bd09ac1b4212ad50b736c6cef4a6df805b98fadbe7e85aef3f",
+      "after_sha256": "12de09cb489a34fc4755a4d2f115fc697f293b9d34d7cab670c62891dc9a0899"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/editor/VideoCanvasContainer.jsx",
+      "before_sha256": "c69b2e62c113fe515db8a6294e3e5cd2146719ba61ad992f59088083e07cd568",
+      "after_sha256": "e12c42e659c5c5dcbc67dd8311cab4cb54140e63558acfe211509a780ed374c1"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/VideoEditorToolbar.jsx",
+      "before_sha256": "aaafe4d0872f89b57f6a95ba3d1aff054730fbe6eab8b0938ec21039bf1c4105",
+      "after_sha256": "de0b9c8c25b172ed24f3878a283339d6505613aa0c3fd0a8231b655f5126214f"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/editorToolbar.css",
+      "before_sha256": "87e96d7e3e56457bbe6737ca72c8a311e1c60a2ca06cd45ac6e317a52e2c9572",
+      "after_sha256": "ebe39463c55e59c70ad71176ce9d97f06e09a38d7c5188e3a6a199d5609f70b7"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/FrameToolbarHorizontal.jsx",
+      "before_sha256": "0e66860e15158b9c91851d013a0a91ebb734b0c6957bc01cd894da132e518734",
+      "after_sha256": "c43465e406c24298b6a510395310d1f59085cf08f99100172fa59459baf53cd6"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/RangeOverlaySlider.jsx",
+      "before_sha256": "a62435163cb68e2a23bfaebd488c635ed461958417cfc34c12640f26ce8d4877",
+      "after_sha256": "1832bc3a4741221ac14c37140cdfc88283312c87a21c4c3500fa1b46056dfe33"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/baseToolbar.css",
+      "before_sha256": "94fd01fa3e6df56593b70b2e81d2d2800686213f0264dfc2881b9ed164e79805",
+      "after_sha256": "d4cf114a2ec6bea6743f1060ad8360201a7c87ac4d4f1f9e565b10868da4c273"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/index.jsx",
+      "before_sha256": "baad0cf5722d834276d5970504131ed5cfc63567b9825ce93592f9ee48fe5473",
+      "after_sha256": "7ac10d71965b5ac6e20ceb07bfa5a6707a0828b315ce612f0106f92549e1a896"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/text_toolbar/SelectedTextToolbarDisplay.jsx",
+      "before_sha256": "3282c53268ff9453b6fd05c06abf3857f62fb134e27ec57b47f27d8ce8d10497",
+      "after_sha256": "1d22a493fb0cf397c89445069f0cbc61a620f1ac5972d4aac36828d534132101"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/toolbar.css",
+      "before_sha256": "c2ba44bb355aa89b30a649c5eaf05536a6458e9983c69d31ca33ba528f7821ec",
+      "after_sha256": "743aea8fc748a969daf5837940a7d653d367ccb17757519d5c883fcb650a1311"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/toolbars/frame_toolbar/visual_toolbar/SelectedVisualTrackDisplay.jsx",
+      "before_sha256": "41070a078e4b2e4a9b08552d3d317e326ee626899c9a429454938d5980fbe3da",
+      "after_sha256": "e524e97ad4a9f732632a705197d5f4fb18eb5fc2ececee07c26580bc00290a0a"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/AudioTrackSlider.jsx",
+      "before_sha256": "80ba764cfd976e52006463d58f339c8240138852449d9462349e3ad140a15b02",
+      "after_sha256": "6ece43ad04aa60684877757c4a7af9606a87a5ce4a2979ff83d2acd54238d570"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/AudioTrackWaveformOverlay.jsx",
+      "before_sha256": "c7acda321f20ce6ab1fa80842b73c5d240e0ba8a6fccc1a909baacb7c9f6d185",
+      "after_sha256": "576386f0e66a0ac969012211ffc97610b9fc29cc5d8f6544356291ebc257da58"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/DropdownButton.jsx",
+      "before_sha256": "7e4086e4e0d44ac8cc6fc210003d459653ecbda5a4d64ace577eed86ca331c6f",
+      "after_sha256": "58bbd6891dd21f86970342cfca4a708033e319406f06fe0bb6ca3bbf53e52df6"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/TimeRuler.jsx",
+      "before_sha256": "6972393653c0e8c9301fb48952c2ef417b22122b96f7e00c4116898cf2a01803",
+      "after_sha256": "778bfc1286ded99b0b9d1dd2aba9f3aa3e4a2b6084dac6e957a9ca5c86ac8afb"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/VideoUnderlay.jsx",
+      "before_sha256": "0501f0a18c4e80cff53dc76d8d2d217bd3fa4e13621d8d5176c64abc21345a36",
+      "after_sha256": "353c5cee3e085c9d68ea345dea5f5dc966a487c60df506703a837484364dff7c"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/studioImagePool.mjs",
+      "before_sha256": null,
+      "after_sha256": "a27154b8e7496b70ae1bf255f223685c34c7235389d2c0444e00241e9829d53a"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/studioImagePool.test.mjs",
+      "before_sha256": null,
+      "after_sha256": "c8e1079bf54a23a77296d708c65c825dcaeca83217d97ff4c4a0d45e10d22cda"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/studioMediaIdentity.mjs",
+      "before_sha256": null,
+      "after_sha256": "6ff8a1e0c6bea49979c1a4e57d79b4d6eb31939960b5c3ba9aecc9f85f86d7c0"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/timelineViewport.mjs",
+      "before_sha256": null,
+      "after_sha256": "e2536244cc10619e317b75d83c5383ecd1f27b217f5432ffc9d7a90970212c4b"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/useStudioImage.jsx",
+      "before_sha256": null,
+      "after_sha256": "ac146704faef2898a73f9669a047bc7815e37c61b1082dea6abc168ec0d42e57"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/components/video/util/viewportGeometry.js",
+      "before_sha256": "1938aa7583b308ca9b8a8bab8899ecfd4a6c6269dc6e3981abf14bf315add6a4",
+      "after_sha256": "ecf899783323c936f346fb88ffd3f812476159c9204bff315e9f22f825e39ace"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/index.css",
+      "before_sha256": "011e04d39aa5bd936a2d6c2c98f9ae576b8a470298f8ced7b81987fc94c0a693",
+      "after_sha256": "a0c9fb94d34cc7530f003f3c090db2c8489d32fdefb1a645f9ce6e10b616a25f"
+    },
+    {
+      "project": "samsar_client",
+      "file": "src/utils/sessionTimelineText.js",
+      "before_sha256": "2aad0743ad1aefb51da14baf59a593c20c6697cce0db37ca98acc3765111ccc1",
+      "after_sha256": "8116c8f732601d4005c734eb64922f4edc978dba694db28e5ea45ede23206117"
+    },
+    {
+      "project": "samsar_processor",
+      "file": "src/models/video/SourceFrameRate.f2p.test.js",
+      "before_sha256": null,
+      "after_sha256": "fd072a5e097e80074a48b3b0b458d3a5195a9688b500d7c11bb30aca44a34e38"
+    },
+    {
+      "project": "samsar_processor",
+      "file": "src/models/video/VideoProcessor.js",
+      "before_sha256": "feaab803799d51a8b21245b21760e14a43c2e4bdf918f08fc7303426a62af30e",
+      "after_sha256": "7a6d3a0ec1065b1884df40a943719feca810116a9eb4d064f3cd099c85321d7c"
+    },
+    {
+      "project": "samsar_processor",
+      "file": "src/utils/FrameClock.js",
+      "before_sha256": "f54e4824a6c1296508fbe87ef7a902363d55822579bead993c8335845becfab4",
+      "after_sha256": "a6321cc8541d132f5c5251a2cf6d0d5b66397cf59ba1bd1e0fec4f77253d3075"
+    },
+    {
+      "project": "samsar_processor",
+      "file": "src/utils/FrameClock.test.js",
+      "before_sha256": "0e8fa580dfe4983ab53595ad1af225854645f278a116b28d5ee349d17040bb6e",
+      "after_sha256": "661dcfac834236b3c371dba8d42ac5cd2ee705be717728bd21b064e7593f2b01"
+    }
+  ],
+  "test_definition_hashes": [
+    {
+      "project": "samsar_client",
+      "file": "src/components/oneshot_editor/previewReadiness.f2p.test.mjs",
+      "sha256": "9be3a732a1e9ea375a559492d4641c9089449b447768b609408d771f2699387a",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioMediaF2P.test.jsx",
+      "sha256": "f10f90e5ba6328d728c8c44aa7b27d93a53c718c15dfaab8c0198a8ae91216f9",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioMenuF2P.test.jsx",
+      "sha256": "cb98bb3ae0a34b3296680ee8c25b05b941cfe200bf371c94a0b3a993af4588bd",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioSessionF2P.test.jsx",
+      "sha256": "91381728a2104ce99a3514cb38f6e39d808901c811ef3feebf868bd8d4974c4c",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioTimelineF2P.test.jsx",
+      "sha256": "736c17654a85a529badb3ccab31226fe64368492c99295b85844c10235c93dca",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioToolbarF2P.test.jsx",
+      "sha256": "d400ac8a26e68bc46351bc5ed4e8fcce681fa32f6750a81533462565873cb091",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_client",
+      "file": "test/unit/StudioWaveformF2P.test.jsx",
+      "sha256": "c7127ebfa9e49c3469fac0258de871a716ca83c289088fe1ec9bdf8e5dfe59ef",
+      "identical_in_red_and_green": true
+    },
+    {
+      "project": "samsar_processor",
+      "file": "src/models/video/SourceFrameRate.f2p.test.js",
+      "sha256": "fd072a5e097e80074a48b3b0b458d3a5195a9688b500d7c11bb30aca44a34e38",
+      "identical_in_red_and_green": true
+    }
+  ]
+}

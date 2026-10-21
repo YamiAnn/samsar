@@ -345,7 +345,7 @@ The client also includes supporting surfaces:
 
 The client-side model inventory lives primarily in `src/constants/Types.ts` and `src/constants/ModelPrices.jsx`.
 
-In Docker deployments, the processor-provided availability response filters the inference selectors. One configured `OPENROUTER_API_KEY` exposes `gpt-6.1-sol`, `gemini-3.1-pro`, and `QWEN3.8` for chat, assistant, and their corresponding vision-input workflows. Provider priority is the model's direct native credential, then OpenRouter, then the Samsar deployed fallback; the client preserves the selected provider provenance when deciding whether a saved model remains authorized. In hosted production, the client exposes Qwen as `QWEN3.8` with the label `Qwen 3.8 Max`. When `SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED=true` and an Alibaba credential is configured, both text and vision inference use native Alibaba Cloud Qwen 3.8 Max; otherwise they use the OpenRouter model `qwen/qwen3.8-max`.
+In Docker deployments, the processor-provided availability response filters the inference selectors. One configured `OPENROUTER_API_KEY` exposes `gpt-6.1-sol`, `gemini-4-argon`, and `QWEN3.8` for chat, assistant, and their corresponding vision-input workflows. Provider priority is the model's direct native credential, then OpenRouter, then the Samsar deployed fallback; the client preserves the selected provider provenance when deciding whether a saved model remains authorized. In hosted production, the client exposes Qwen as `QWEN3.8` with the label `Qwen 3.8 Max`. When `SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED=true` and an Alibaba credential is configured, both text and vision inference use native Alibaba Cloud Qwen 3.8 Max; otherwise they use the OpenRouter model `qwen/qwen3.8-max`.
 
 ### Image Generation
 
@@ -540,7 +540,9 @@ Contributions and pull requests are welcome. If you are new to the codebase, sta
 
 ## Regression tests
 
-The client has existing Node regression tests, Vitest React tests, and Chromium
-component tests. Run `yarn test:browser:install` once, then `yarn test:ci`.
+The client has existing Node regression tests, Vitest React tests, and headless
+Chromium component tests. Run `yarn test:browser:install` once, then `yarn test:ci`.
+The installer downloads only the Chromium headless shell. Browser watch mode,
+coverage, and CI use that shell without installing or launching desktop Chrome.
 See [Testing](docs/TESTING.md) for local commands, scope, and the source-owned
 GitHub Actions template for Samsar monorepo and sync integration.

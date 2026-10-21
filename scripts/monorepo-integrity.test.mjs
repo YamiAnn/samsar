@@ -210,7 +210,11 @@ test('critical local infrastructure services require generated credentials', asy
     renderer,
     /readCredentialEnvironment\(applicationEnvPath,[\s\S]*?'INTERNAL_SECRET'/,
   );
-  assert.match(compose, /127\.0\.0\.1:\$\{MONGO_PORT:-27017\}:27017/);
+  assert.match(
+    compose,
+    /127\.0\.0\.1:\$\{MONGO_PORT:-0\}:27017/,
+    'MongoDB must use an automatically assigned loopback port by default so an existing host MongoDB cannot block setup',
+  );
   assert.match(compose, /runtime\/secrets\/minio\.env/);
   assert.match(compose, /127\.0\.0\.1:\$\{MINIO_API_PORT:-9000\}:9000/);
   assert.match(compose, /GF_AUTH_ANONYMOUS_ENABLED: "false"/);
@@ -350,10 +354,11 @@ test('standalone includes the native Vast.ai FLUX.2 provisioning utility', async
 });
 
 test('intermediate cleanup workers run every few hours with a reuse grace period', async () => {
-  const [compose, taskProcessorSource, taskSchedulerSource] = await Promise.all([
+  const [compose, taskProcessorSource, taskSchedulerSource, cleanupConfig] = await Promise.all([
     readText('deploy/compose/docker-compose.yml'),
     readText('services/task-processor/src/TaskProcessor.js'),
     readText('services/task-processor/src/TaskScheduler.js'),
+    readText('services/task-processor/src/CleanupConfig.js'),
   ]);
   const taskProcessorBlock = compose
     .split(/\n  docker-cleanup:\n/, 1)[0]
@@ -366,7 +371,8 @@ test('intermediate cleanup workers run every few hours with a reuse grace period
   assert.match(taskProcessorBlock, /restart:\s*unless-stopped/);
   assert.doesNotMatch(taskProcessorBlock, /TASK_PROCESSOR_(?:ENABLE|INTERVAL|RETRY)_/);
   assert.match(taskSchedulerSource, /DEFAULT_DOCKER_INTERVAL_HOURS\s*=\s*3/);
-  assert.match(taskProcessorSource, /DEFAULT_STALE_SESSION_FRAME_CLEANUP_HOURS\s*=\s*4/);
+  assert.match(cleanupConfig, /DEFAULT_CLEANUP_MIN_AGE_HOURS\s*=\s*168/);
+  assert.match(taskProcessorBlock, /CLEANUP_MIN_AGE_HOURS:[^\n]*:-168/);
   assert.match(
     taskProcessorSource,
     /'TASK_PROCESSOR_ENABLE_FILE_CLEANUP',\s*env,\s*dockerMarkerPresent,\s*true/s,
@@ -374,6 +380,7 @@ test('intermediate cleanup workers run every few hours with a reuse grace period
 
   assert.ok(cleanupBlock);
   assert.match(cleanupBlock, /restart:\s*unless-stopped/);
-  assert.match(cleanupBlock, /CLEANUP_MIN_AGE_HOURS:[^\n]*:-24/);
+  assert.match(cleanupBlock, /CLEANUP_MIN_AGE_HOURS:[^\n]*:-168/);
+  assert.match(cleanupBlock, /CLEANUP_TARGETS:[^\n]*CLEANUP_TARGETS:-/);
   assert.match(cleanupBlock, /CLEANUP_CRON_SCHEDULE:[^\n]*17 \*\/3 \* \* \*/);
 });

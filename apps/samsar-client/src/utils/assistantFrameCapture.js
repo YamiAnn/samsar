@@ -12,25 +12,25 @@ function getStageFromRef(stageRef) {
 }
 
 function hideStageNodes(stage, selectors = []) {
-  const visibilityEntries = [];
+  const visibilityEntries = new Map();
+  const hideNode = (node) => {
+    if (!visibilityEntries.has(node)) {
+      visibilityEntries.set(node, node.visible());
+      node.visible(false);
+    }
+  };
 
   selectors.forEach((selector) => {
-    stage.find(selector).forEach((node) => {
-      visibilityEntries.push([node, node.visible()]);
-      node.visible(false);
-    });
+    stage.find(selector).forEach(hideNode);
   });
 
   stage.find((node) => {
     const nodeId = typeof node?.id === 'function' ? node.id() : '';
     return typeof nodeId === 'string' && nodeId.startsWith('bbox_rect_');
-  }).forEach((node) => {
-    visibilityEntries.push([node, node.visible()]);
-    node.visible(false);
-  });
+  }).forEach(hideNode);
 
   return () => {
-    visibilityEntries.forEach(([node, isVisible]) => {
+    visibilityEntries.forEach((isVisible, node) => {
       node.visible(isVisible);
     });
     stage.draw();

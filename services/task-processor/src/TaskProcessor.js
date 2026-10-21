@@ -9,11 +9,10 @@ import PendingUserMusicGeneration from './schema/PendingUserMusicGeneration.js';
 import GeneratedMusic from './schema/GeneratedMusic.js';
 
 import { getDBConnectionString } from './DBString.js';
+import { getCleanupMinAgeHours, getProcessorAssetsRoot, isContainerRuntime } from './CleanupConfig.js';
 
 
-const DEFAULT_STALE_SESSION_FRAME_CLEANUP_HOURS = 4;
 const DEFAULT_STALE_SESSION_FRAME_CLEANUP_BATCH_SIZE = 64;
-const DEFAULT_INTERMEDIATE_MEDIA_CLEANUP_HOURS = 4;
 
 const MEDIA_FILE_EXTENSIONS = new Set([
   '.aac',
@@ -42,6 +41,7 @@ const MEDIA_FILE_EXTENSIONS = new Set([
 
 // Utility function to append info to cron log
 function logInfo(message) {
+  console.log(`[task-processor] ${message}`);
   const timestamp = new Date().toISOString();
   const logPath = process.env.TASK_PROCESSOR_CRON_LOG_PATH ||
     path.join(os.homedir(), 'cronTabs.log');
@@ -50,6 +50,7 @@ function logInfo(message) {
 
 // Utility function to append error to cron error log
 function logError(message) {
+  console.error(`[task-processor] ${message}`);
   const timestamp = new Date().toISOString();
   const errorPath = process.env.TASK_PROCESSOR_CRON_ERROR_PATH ||
     path.join(os.homedir(), 'cronTabs.error');
@@ -82,16 +83,9 @@ function isTaskProcessorFeatureEnabled(
     return String(configuredValue).trim().toLowerCase() === 'true';
   }
 
-  const samsarRuntime = String(env.SAMSAR_RUNTIME || '').trim().toLowerCase();
-  const currentEnv = String(env.CURRENT_ENV || '').trim().toLowerCase();
-  const isDockerRuntime =
-    dockerMarkerPresent ||
-    samsarRuntime === 'docker' ||
-    currentEnv === 'docker';
-
   // Preserve legacy behavior for non-Docker cron execution. Safe maintenance
   // can opt in by default in Docker, while generation mutations remain off.
-  return isDockerRuntime ? dockerDefault : true;
+  return isContainerRuntime(env, dockerMarkerPresent) ? dockerDefault : true;
 }
 
 export function isTaskProcessorGenerationSideEffectsEnabled(
@@ -115,18 +109,6 @@ export function isTaskProcessorFileCleanupEnabled(
     dockerMarkerPresent,
     true,
   );
-}
-
-function getProcessorAssetsRoot(folderName) {
-  if (folderName === 'assets_v2' && process.env.SAMSAR_ASSETS_V2_ROOT) {
-    return process.env.SAMSAR_ASSETS_V2_ROOT;
-  }
-
-  if (folderName === 'assets' && process.env.SAMSAR_ASSETS_ROOT) {
-    return process.env.SAMSAR_ASSETS_ROOT;
-  }
-
-  return path.join(process.cwd(), '..', 'samsar_processor', folderName);
 }
 
 function removeDirectoryIfExists(folderPath) {
@@ -248,9 +230,8 @@ async function markSessionFramesForRegeneration(
 export async function deleteFramesForStaleSessions() {
   await getDBConnectionString();
 
-  const staleSessionFrameCleanupHours = readPositiveIntegerEnv(
+  const staleSessionFrameCleanupHours = getCleanupMinAgeHours(
     'STALE_SESSION_FRAME_CLEANUP_HOURS',
-    DEFAULT_STALE_SESSION_FRAME_CLEANUP_HOURS,
   );
   const staleSessionFrameCleanupBatchSize = readPositiveIntegerEnv(
     'STALE_SESSION_FRAME_CLEANUP_BATCH_SIZE',
@@ -329,13 +310,11 @@ export async function cleanupOldLocalAssetsV2Media() {
   }
 
   if (!fs.existsSync(assetsV2Root)) {
-    logInfo(`assets_v2 cleanup skipped; root does not exist: ${assetsV2Root}`);
-    return { deletedFiles: 0, deletedBytes: 0 };
+    throw new Error(`assets_v2 cleanup root does not exist: ${assetsV2Root}`);
   }
 
-  const cleanupHours = readPositiveIntegerEnv(
+  const cleanupHours = getCleanupMinAgeHours(
     'INTERMEDIATE_MEDIA_CLEANUP_HOURS',
-    DEFAULT_INTERMEDIATE_MEDIA_CLEANUP_HOURS,
   );
   const cutoffTimeMs = Date.now() - cleanupHours * 60 * 60 * 1000;
   const counters = { deletedFiles: 0, deletedBytes: 0 };

@@ -553,28 +553,17 @@ export async function getAccessibleMediaUrlForProvider(reference, options = {}) 
 
   const signedUrl = buildSecureMediaDeliveryUrl(mediaKeyReference);
   if (signedUrl) {
-    if (isDocker) {
-      return signedUrl;
+    if (!isHttpUrl(signedUrl) || !isProbablyPublicUrl(signedUrl)) {
+      throw buildInvalidProviderMediaReferenceError(normalized);
     }
-    if (options.prime !== false) {
-      try {
-        await primeCDNCache(signedUrl, { requireSuccess: options.requirePrimeSuccess !== false });
-      } catch (error) {
-        if (isHttpUrl(normalized)) {
-          console.error('[MediaReferenceUtils] Falling back to original media URL after CDN prime failure', {
-            url: withoutQuery(normalized),
-            signedUrl: withoutQuery(signedUrl),
-            error: error?.message || error,
-          });
-          return normalized;
-        }
-        throw error;
-      }
-    }
+    // A public-looking original URL may still require private credentials.
+    // Do not forward it after the signed delivery URL fails its probe.
+    await primeCDNCache(signedUrl, { requireSuccess: true });
     return signedUrl;
   }
 
-  return normalized;
+  if (isHttpUrl(normalized) && isProbablyPublicUrl(normalized)) return normalized;
+  throw buildInvalidProviderMediaReferenceError(normalized);
 }
 
 export async function getAccessibleMediaUrlsForProvider(references = [], options = {}) {

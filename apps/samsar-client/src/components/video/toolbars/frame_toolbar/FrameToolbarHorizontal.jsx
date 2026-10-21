@@ -5,6 +5,8 @@ import ReactSlider from "react-slider";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { useColorMode } from "../../../../contexts/ColorMode.jsx";
 
+import { getLayerDisplayFrameRanges } from '../../util/studioPreviewTimeline.mjs';
+
 const SCENE_TILE_GAP = 0;
 
 export default function FrameToolbarHorizontal({
@@ -148,30 +150,10 @@ export default function FrameToolbarHorizontal({
     }
   };
 
-  const sceneDurationSum = useMemo(() => {
-    if (!layers?.length) return 0;
-    return layers.reduce((sum, layer) => {
-      return sum + Math.max(Number(layer?.duration) || 0, 0);
-    }, 0);
-  }, [layers]);
-
-  const trackWidth = useMemo(() => {
-    return Math.max(1, Math.floor(viewportWidth || 0));
-  }, [viewportWidth]);
-
-  const tileWidths = useMemo(() => {
-    if (!layers?.length) return [];
-    const totalGapWidth = Math.max(layers.length - 1, 0) * SCENE_TILE_GAP;
-    const availableSceneWidth = Math.max(1, trackWidth - totalGapWidth);
-
-    return layers.map((layer) => {
-      const duration = Math.max(Number(layer?.duration) || 0, 0);
-      const durationRatio = sceneDurationSum > 0
-        ? duration / sceneDurationSum
-        : 1 / layers.length;
-      return Math.max(0, availableSceneWidth * durationRatio);
-    });
-  }, [layers, sceneDurationSum, trackWidth]);
+  const trackWidth = Math.max(1, Math.floor(viewportWidth || 0));
+  const layerRanges = useMemo(() => getLayerDisplayFrameRanges(layers, fps), [layers, fps]);
+  const tileWidths = layerRanges.map(range => Math.max(0, range.endFrame - range.startFrame) / totalFrames * trackWidth);
+  const tileOffsets = layerRanges.map(range => range.startFrame / totalFrames * trackWidth);
 
 
 
@@ -181,7 +163,7 @@ export default function FrameToolbarHorizontal({
         colorMode === "dark"
           ? "bg-[#181b24] text-slate-100 border border-[#3a4050] shadow-[0_14px_36px_rgba(0,0,0,0.32)]"
           : "bg-white/90 text-slate-800 border border-slate-200 backdrop-blur-sm"
-      } w-full overflow-hidden`}
+      } app-panel w-full overflow-hidden`}
       aria-disabled={isRenderPending}
     >
       <div>
@@ -313,6 +295,9 @@ export default function FrameToolbarHorizontal({
                                         : "border-slate-200 bg-slate-100 hover:border-slate-300"
                                   } cursor-pointer flex items-center justify-center select-none overflow-hidden box-border`}
                                   style={{
+                                    position: 'absolute',
+                                    left: tileOffsets[i],
+                                    height: '100%',
                                     width: widthPx,
                                     flex: `0 0 ${widthPx}px`,
                                     minWidth: 0,
@@ -348,6 +333,8 @@ export default function FrameToolbarHorizontal({
                         layers={layers}
                         tileWidths={tileWidths}
                         gap={SCENE_TILE_GAP}
+                        totalFrames={totalFrames}
+                        trackWidth={trackWidth}
                       />
                     </div>
                   </div>
@@ -361,35 +348,12 @@ export default function FrameToolbarHorizontal({
   );
 }
 
-function Playhead({ fps, currentFrame, layers, tileWidths, gap }) {
-  const safeLayers = layers || [];
-  const seconds = currentFrame / fps;
-  let cursor = 0;
-  let accumulated = 0;
-  const totalTrackWidth = tileWidths.reduce((sum, width, index) => {
-    return sum + width + (index < safeLayers.length - 1 ? gap : 0);
-  }, 0);
-
-  for (let i = 0; i < safeLayers.length; i++) {
-    const duration = Math.max(safeLayers[i]?.duration || 0, 0.001);
-    const nextAccumulated = accumulated + duration;
-    const width = tileWidths[i] ?? 0;
-
-    if (seconds >= nextAccumulated) {
-      cursor += width + (i < safeLayers.length - 1 ? gap : 0);
-      accumulated = nextAccumulated;
-      continue;
-    }
-
-    const ratio = duration > 0 ? (seconds - accumulated) / duration : 0;
-    cursor += width * Math.max(0, Math.min(1, ratio));
-    break;
-  }
-
+function Playhead({ currentFrame, totalFrames, trackWidth }) {
+  const cursor = Math.max(0, Math.min(totalFrames, Number(currentFrame) || 0)) / totalFrames * trackWidth;
   return (
     <div
       className="absolute top-0 h-full w-px bg-emerald-400 pointer-events-none shadow-[0_0_0_1px_rgba(16,185,129,0.35)]"
-      style={{ transform: `translateX(${Math.min(cursor, Math.max(0, totalTrackWidth - 1))}px)` }}
+      style={{ transform: `translateX(${Math.min(cursor, Math.max(0, trackWidth - 1))}px)` }}
     />
   );
 }

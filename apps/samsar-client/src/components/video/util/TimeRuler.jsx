@@ -1,5 +1,6 @@
 import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { frameToViewportValue } from './viewportGeometry.js';
 
 const DEFAULT_TICK_COUNT = 8;
 const MIN_TICK_COUNT = 2;
@@ -96,6 +97,7 @@ const TimeRuler = ({
   totalDuration = 0,
   visibleStartTime = 0,
   visibleEndTime,
+  viewportGeometry = null,
 }) => {
   const rulerRef = useRef(null);
   const [rulerHeight, setRulerHeight] = useState(0);
@@ -160,9 +162,13 @@ const TimeRuler = ({
   return (
     <div className="time-ruler" ref={rulerRef}>
       {ticks.map((tick) => {
+        const hasGeometry = viewportGeometry?.segments?.length > 0;
+        const position = hasGeometry
+          ? frameToViewportValue(tick * framesPerSecond, viewportGeometry) / Math.max(1, viewportGeometry.totalPixels)
+          : (tick - startTime) / visibleDuration;
         const offset = Math.min(
           100,
-          Math.max(0, ((tick - startTime) / visibleDuration) * 100),
+          Math.max(0, position * 100),
         );
         const transform =
           offset <= 0

@@ -1,48 +1,49 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useColorMode } from '../../../contexts/ColorMode.jsx';
 
 const POINT_HIT_RADIUS = 12;
-const AUDIO_BUFFER_CACHE = new Map();
+import { StudioMediaContext } from '../StudioMediaContext.jsx';
+import { useStudioFrameRate } from '../StudioFrameRateContext.jsx';
+import { getStudioMediaIdentity } from './studioMediaIdentity.mjs';
+import { createTrackViewportMapping } from './viewportGeometry.js';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(Number(value) || 0, min), max);
 }
 
-async function loadDecodedAudioBuffer(audioUrl) {
-  if (!audioUrl) {
-    return null;
+async function loadDecodedAudioBuffer(audioUrl, cache) {
+  if (!audioUrl) return null;
+  const key = getStudioMediaIdentity(audioUrl);
+  const previous = cache.get(key);
+  if (previous) {
+    cache.delete(key); cache.set(key, previous);
+    return previous.promise;
   }
-
-  const cachedValue = AUDIO_BUFFER_CACHE.get(audioUrl);
-  if (cachedValue) {
-    return cachedValue;
-  }
-
-  const bufferPromise = (async () => {
+  const entry = { bytes: 0 };
+  entry.promise = (async () => {
     let audioContext;
-
     try {
-      const { data } = await axios.get(audioUrl, {
-        responseType: 'arraybuffer',
-      });
+      const { data } = await axios.get(audioUrl, { responseType: 'arraybuffer' });
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      return await audioContext.decodeAudioData(data.slice(0));
-    } finally {
-      if (audioContext && typeof audioContext.close === 'function') {
-        audioContext.close().catch(() => {});
+      const buffer = await audioContext.decodeAudioData(data.slice(0));
+      entry.bytes = buffer.length * buffer.numberOfChannels * 4;
+      let bytes = [...cache.values()].reduce((sum, value) => sum + value.bytes, 0);
+      for (const [oldKey, oldEntry] of cache) {
+        if (cache.size <= 16 && bytes <= 64 * 1024 * 1024) break;
+        if (!oldEntry.bytes) continue;
+        cache.delete(oldKey); bytes -= oldEntry.bytes;
       }
+      return buffer;
+    } catch (error) {
+      if (cache.get(key) === entry) cache.delete(key);
+      throw error;
+    } finally {
+      audioContext?.close?.().catch(() => {});
     }
   })();
-
-  AUDIO_BUFFER_CACHE.set(audioUrl, bufferPromise);
-
-  try {
-    return await bufferPromise;
-  } catch (error) {
-    AUDIO_BUFFER_CACHE.delete(audioUrl);
-    throw error;
-  }
+  cache.set(key, entry);
+  return entry.promise;
 }
 
 function getWindowMetrics(channelData, startIndex, endIndex) {
@@ -107,7 +108,7 @@ function getSpectrogramColor(intensity, colorMode) {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-function getPointMetrics(points, width, height, visibleLayerStartSeconds, visibleLayerDurationSeconds, volumeScaleMax) {
+function getPointMetrics(points, width, height, visibleLayerStartSeconds, visibleLayerDurationSeconds, volumeScaleMax, timeToProgress) {
   const safeDuration = Math.max(visibleLayerDurationSeconds, 0.0001);
   const drawableWidth = Math.max(6, width - 4);
   const safeVolumeScaleMax = Math.max(volumeScaleMax, 1);
@@ -122,7 +123,7 @@ function getPointMetrics(points, width, height, visibleLayerStartSeconds, visibl
     .map((point) => ({
       ...point,
       x: 2 + (clamp(Number(point.volume), 0, safeVolumeScaleMax) / safeVolumeScaleMax) * drawableWidth,
-      y: clamp(((Number(point.time) - visibleLayerStartSeconds) / safeDuration) * height, 0, height),
+      y: clamp((timeToProgress ? timeToProgress(Number(point.time)) : (Number(point.time) - visibleLayerStartSeconds) / safeDuration) * height, 0, height),
     }));
 }
 
@@ -133,6 +134,7 @@ function drawWaveform({
   audioBuffer,
   sourceWindowStartSeconds,
   sourceWindowDurationSeconds,
+  sourceTimeAtProgress,
   colorMode,
 }) {
   const channelData = audioBuffer.getChannelData(0);
@@ -150,8 +152,12 @@ function drawWaveform({
   const waveformRows = [];
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-    const windowStartIndex = startSample + Math.floor((rowIndex / rowCount) * sliceLength);
-    const windowEndIndex = Math.min(endSample, windowStartIndex + samplesPerRow);
+    const windowStartIndex = sourceTimeAtProgress
+      ? Math.floor(sourceTimeAtProgress(rowIndex / rowCount) * audioBuffer.sampleRate)
+      : startSample + Math.floor((rowIndex / rowCount) * sliceLength);
+    const windowEndIndex = Math.min(endSample, sourceTimeAtProgress
+      ? Math.max(windowStartIndex + 1, Math.ceil(sourceTimeAtProgress((rowIndex + 1) / rowCount) * audioBuffer.sampleRate))
+      : windowStartIndex + samplesPerRow);
     const { peak, rms } = getWindowMetrics(channelData, windowStartIndex, windowEndIndex);
     const normalizedWidth = clamp(Math.pow(Math.max(peak, rms * 1.85), 0.76) * maxHalfWidth, 2.5, maxHalfWidth);
     const energy = clamp((peak * 0.58) + (rms * 1.2), 0, 1);
@@ -239,6 +245,7 @@ function drawSpectrogram({
   audioBuffer,
   sourceWindowStartSeconds,
   sourceWindowDurationSeconds,
+  sourceTimeAtProgress,
   colorMode,
 }) {
   const channelData = audioBuffer.getChannelData(0);
@@ -255,7 +262,9 @@ function drawSpectrogram({
   const windowSize = 96;
 
   for (let sliceIndex = 0; sliceIndex < sliceCount; sliceIndex += 1) {
-    const centerIndex = startSample + Math.floor((sliceIndex / sliceCount) * sliceLength);
+    const centerIndex = sourceTimeAtProgress
+      ? Math.floor(sourceTimeAtProgress(sliceIndex / sliceCount) * audioBuffer.sampleRate)
+      : startSample + Math.floor((sliceIndex / sliceCount) * sliceLength);
     const spectrum = getSpectrogramWindow(channelData, centerIndex, windowSize, binCount);
     const maxValue = Math.max(...spectrum, 0.0001);
 
@@ -334,7 +343,16 @@ export default function AudioTrackWaveformOverlay({
   sourceWindowDurationSeconds = 0,
   volumeScaleMax = 100,
   isSelected = false,
+  viewportGeometry = null,
+  trackStartTimeSeconds = 0,
 }) {
+  const fps = useStudioFrameRate();
+  const pool = useContext(StudioMediaContext);
+  const localAudioBuffers = useRef(new Map());
+  const audioBufferCache = pool?.audioBuffers || localAudioBuffers.current;
+  const mapping = useMemo(() => createTrackViewportMapping(viewportGeometry, fps, trackStartTimeSeconds,
+    visibleLayerStartSeconds, visibleLayerDurationSeconds),
+  [viewportGeometry, fps, trackStartTimeSeconds, visibleLayerStartSeconds, visibleLayerDurationSeconds]);
   const canvasRef = useRef(null);
   const hostRef = useRef(null);
   const { colorMode } = useColorMode();
@@ -348,7 +366,7 @@ export default function AudioTrackWaveformOverlay({
 
     let isDisposed = false;
 
-    loadDecodedAudioBuffer(audioUrl)
+    loadDecodedAudioBuffer(audioUrl, audioBufferCache)
       .then((nextAudioBuffer) => {
         if (!isDisposed) {
           setAudioBuffer(nextAudioBuffer || null);
@@ -363,7 +381,7 @@ export default function AudioTrackWaveformOverlay({
     return () => {
       isDisposed = true;
     };
-  }, [audioUrl]);
+  }, [audioUrl, audioBufferCache]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -426,6 +444,7 @@ export default function AudioTrackWaveformOverlay({
             audioBuffer,
             sourceWindowStartSeconds,
             sourceWindowDurationSeconds,
+            sourceTimeAtProgress: progress => sourceWindowStartSeconds + mapping.progressToTime(progress) - visibleLayerStartSeconds,
             colorMode,
           });
         } else {
@@ -436,6 +455,7 @@ export default function AudioTrackWaveformOverlay({
             audioBuffer,
             sourceWindowStartSeconds,
             sourceWindowDurationSeconds,
+            sourceTimeAtProgress: progress => sourceWindowStartSeconds + mapping.progressToTime(progress) - visibleLayerStartSeconds,
             colorMode,
           });
         }
@@ -449,6 +469,7 @@ export default function AudioTrackWaveformOverlay({
           visibleLayerStartSeconds,
           visibleLayerDurationSeconds,
           volumeScaleMax,
+          mapping.timeToProgress,
         );
         drawAutomation(ctx, pointMetrics, selectedVolumePointId, colorMode);
       }
@@ -483,6 +504,7 @@ export default function AudioTrackWaveformOverlay({
     visualizationMode,
     volumeAutomationPoints,
     volumeScaleMax,
+    mapping,
   ]);
 
   const handleClick = (event) => {
@@ -502,6 +524,7 @@ export default function AudioTrackWaveformOverlay({
       visibleLayerStartSeconds,
       visibleLayerDurationSeconds,
       volumeScaleMax,
+      mapping.timeToProgress,
     );
 
     const existingPoint = pointMetrics.find((point) => {
@@ -515,11 +538,7 @@ export default function AudioTrackWaveformOverlay({
       return;
     }
 
-    const nextPointTime = visibleLayerStartSeconds + clamp(
-      (clickY / Math.max(rect.height, 1)) * visibleLayerDurationSeconds,
-      0,
-      visibleLayerDurationSeconds,
-    );
+    const nextPointTime = mapping.progressToTime(clickY / Math.max(rect.height, 1));
     onCreateVolumePoint?.(nextPointTime);
   };
 

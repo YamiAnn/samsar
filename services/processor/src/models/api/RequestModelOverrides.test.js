@@ -87,9 +87,9 @@ test('normalizes request inference model aliases', () => {
     'gpt-6.1-sol-xhigh',
   );
   assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gpt-5.6' }), 'gpt-6.1-sol');
-  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'Gemini 3.1 Pro' }), 'gemini-3.1-pro');
-  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'GEMINI3.1' }), 'gemini-3.1-pro');
-  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gemini-3-pro-preview' }), 'gemini-3.1-pro');
+  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'Gemini 4 Argon' }), 'gemini-4-argon');
+  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'GEMINI4' }), 'gemini-4-argon');
+  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gemini-4-argon' }), 'gemini-4-argon');
   assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'Qwen 3.8' }), 'QWEN3.8');
   assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'qwen3.8-max' }), 'QWEN3.8');
   assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'QWEN3.8' }), 'QWEN3.8');
@@ -135,7 +135,7 @@ test('resolves canonical GPT 6.1 Sol plus explicit effort and legacy suffixes', 
   );
   assert.throws(
     () => resolveEffectiveInferenceSettings({
-      inference_model: 'gemini-3.1-pro',
+      inference_model: 'gemini-4-argon',
       effort: 'xhigh',
     }),
     /effort is only supported when inference_model is gpt-6.1-sol/,
@@ -144,12 +144,12 @@ test('resolves canonical GPT 6.1 Sol plus explicit effort and legacy suffixes', 
 
 test('resolves effective inference model from request override or account setting', () => {
   assert.equal(
-    resolveEffectiveInferenceModel({ inference_model: 'GPT 6.1 Sol' }, 'gemini-3.1-pro'),
+    resolveEffectiveInferenceModel({ inference_model: 'GPT 6.1 Sol' }, 'gemini-4-argon'),
     'gpt-6.1-sol',
   );
   assert.equal(
-    resolveEffectiveInferenceModel({}, 'gemini-3.1-pro'),
-    'gemini-3.1-pro',
+    resolveEffectiveInferenceModel({}, 'gemini-4-argon'),
+    'gemini-4-argon',
   );
   assert.equal(resolveEffectiveInferenceModel({}, null), 'gpt-6.1-sol');
 });

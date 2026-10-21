@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   GENBLAZE_FINAL_UP_ARGS,
   hasValidatedGenBlazeRuntimeCatalog,
   splitGenBlazeComposeProfiles,
 } from '../apps/setup-wizard/genblazeCompose.mjs';
+import { runComposeWithContainerRecovery } from '../apps/setup-wizard/composeRecovery.mjs';
 
 export const ALL_RUNTIME_COMPOSE_PROFILES = Object.freeze([
   'core',
@@ -42,39 +43,63 @@ export function getRuntimeComposeProfiles(config = {}, { genBlazeCatalog } = {})
   return profiles;
 }
 
-function runDockerCompose(root, rootEnvPath, composeFile, profiles, args) {
+function executeDocker(command, args, root, { capture = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: root,
+      env: { ...process.env, COMPOSE_BAKE: 'false' },
+      stdio: ['inherit', capture ? 'pipe' : 'inherit', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => {
+      stderr = (stderr + chunk).slice(-64_000);
+      if (!capture) process.stderr.write(chunk);
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) return resolve(stdout);
+      const error = new Error(`docker ${args.join(' ')} failed with exit code ${code}: ${stderr.trim()}`);
+      error.exitCode = code || 1;
+      error.stderr = stderr;
+      reject(error);
+    });
+  });
+}
+
+async function runDockerCompose(root, rootEnvPath, composeFile, profiles, args) {
   const profileArgs = profiles.flatMap((profile) => ['--profile', profile]);
-  const result = spawnSync('docker', [
+  await runComposeWithContainerRecovery([
     'compose',
     '--env-file', rootEnvPath,
     '-f', composeFile,
     ...profileArgs,
     ...args,
   ], {
-    cwd: root,
-    env: { ...process.env, COMPOSE_BAKE: 'false' },
-    stdio: 'inherit',
+    rootDir: root,
+    runCommand: (command, commandArgs) => executeDocker(command, commandArgs, root),
+    captureCommand: (command, commandArgs) => executeDocker(command, commandArgs, root, { capture: true }),
+    onRecovery: (message) => console.log(`[deploy] ${message}`),
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status || 1);
 }
 
-function prepareLocalMongoAuthentication(root, rootEnvPath, composeFile, profiles) {
+async function prepareLocalMongoAuthentication(runCompose, profiles) {
   if (!profiles.includes('local-mongo')) return;
 
-  runDockerCompose(root, rootEnvPath, composeFile, ['local-mongo'], ['stop', 'mongo']);
-  runDockerCompose(root, rootEnvPath, composeFile, ['local-mongo'], [
+  await runCompose(['local-mongo'], ['stop', 'mongo']);
+  await runCompose(['local-mongo'], [
     'rm', '-s', '-f', 'mongo-auth-bootstrap',
   ]);
-  runDockerCompose(root, rootEnvPath, composeFile, ['local-mongo'], [
-    'up', '--no-deps', '--abort-on-container-exit',
+  await runCompose(['local-mongo'], [
+    'up', '--force-recreate', '--no-deps', '--abort-on-container-exit',
     '--exit-code-from', 'mongo-auth-bootstrap', 'mongo-auth-bootstrap',
   ]);
 }
 
-function synchronizeGrafanaAdminPassword(root, rootEnvPath, composeFile, profiles) {
+async function synchronizeGrafanaAdminPassword(runCompose, profiles) {
   if (!profiles.includes('logger')) return;
-  runDockerCompose(root, rootEnvPath, composeFile, ['logger'], [
+  await runCompose(['logger'], [
     'exec',
     '-T',
     'grafana',
@@ -84,10 +109,35 @@ function synchronizeGrafanaAdminPassword(root, rootEnvPath, composeFile, profile
   ]);
 }
 
-function main() {
+export async function startRuntimeServices(profiles, { restart = false, runCompose }) {
+  // Finish every image build before stopping or replacing running services.
+  if (restart) await runCompose(profiles, ['build']);
+
+  if (!profiles.includes('genblaze')) {
+    await runCompose(['genblaze'], ['rm', '-s', '-f', 'genblaze']);
+  }
+  await prepareLocalMongoAuthentication(runCompose, profiles);
+  const genBlazeComposePlan = splitGenBlazeComposeProfiles(profiles);
+  await runCompose(genBlazeComposePlan.primaryProfiles, restart
+    ? ['up', '-d', '--no-build', '--force-recreate', '--remove-orphans', '--wait', '--wait-timeout', '180']
+    : ['up', '-d', '--build', '--force-recreate', '--remove-orphans', '--wait', '--wait-timeout', '180']);
+  await synchronizeGrafanaAdminPassword(runCompose, profiles);
+  if (profiles.includes('reverse-proxy')) {
+    await runCompose(['core', 'reverse-proxy'], [
+      'up', '-d', '--no-deps', '--force-recreate', 'reverse-proxy',
+    ]);
+  }
+  if (genBlazeComposePlan.enabled) {
+    await runCompose(['genblaze'], restart
+      ? ['up', '-d', '--no-deps', '--no-build', '--force-recreate', '--wait', '--wait-timeout', '180', 'genblaze']
+      : [...GENBLAZE_FINAL_UP_ARGS, '--force-recreate']);
+  }
+}
+
+async function main() {
   const action = process.argv[2];
-  if (!['config', 'up', 'down'].includes(action)) {
-    throw new Error('Usage: node scripts/docker-compose-runtime.mjs <config|up|down>');
+  if (!['config', 'up', 'restart', 'down'].includes(action)) {
+    throw new Error('Usage: node scripts/docker-compose-runtime.mjs <config|up|restart|down>');
   }
 
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -127,37 +177,23 @@ function main() {
   if (action === 'config') {
     // Resolved Compose output expands env_file values, including credentials.
     // Validate silently so `npm run docker:config` cannot print secrets.
-    runDockerCompose(root, rootEnvPath, composeFile, profiles, ['config', '--quiet']);
+    await runDockerCompose(root, rootEnvPath, composeFile, profiles, ['config', '--quiet']);
     return;
   }
   if (action === 'down') {
-    runDockerCompose(root, rootEnvPath, composeFile, profiles, ['down', '--remove-orphans']);
+    await runDockerCompose(root, rootEnvPath, composeFile, profiles, ['down', '--remove-orphans']);
     return;
   }
 
-  if (!profiles.includes('genblaze')) {
-    runDockerCompose(root, rootEnvPath, composeFile, ['genblaze'], [
-      'rm', '-s', '-f', 'genblaze',
-    ]);
-  }
-  prepareLocalMongoAuthentication(root, rootEnvPath, composeFile, profiles);
-  const genBlazeComposePlan = splitGenBlazeComposeProfiles(profiles);
-  runDockerCompose(root, rootEnvPath, composeFile, genBlazeComposePlan.primaryProfiles, [
-    'up', '-d', '--build', '--wait', '--wait-timeout', '180',
-  ]);
-  synchronizeGrafanaAdminPassword(root, rootEnvPath, composeFile, profiles);
-  if (profiles.includes('reverse-proxy')) {
-    runDockerCompose(root, rootEnvPath, composeFile, ['core', 'reverse-proxy'], [
-      'up', '-d', '--no-deps', '--force-recreate', 'reverse-proxy',
-    ]);
-  }
-  if (genBlazeComposePlan.enabled) {
-    runDockerCompose(root, rootEnvPath, composeFile, ['genblaze'], [
-      ...GENBLAZE_FINAL_UP_ARGS,
-    ]);
-  }
+  await startRuntimeServices(profiles, {
+    restart: action === 'restart',
+    runCompose: (selectedProfiles, args) => runDockerCompose(root, rootEnvPath, composeFile, selectedProfiles, args),
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = error.exitCode || 1;
+  });
 }

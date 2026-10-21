@@ -21,7 +21,7 @@ export default function LoginButton(props) {
       : 'transition-all duration-200 ease-out hover:-translate-y-[1px] active:translate-y-0';
   const buttonShadow = colorMode === 'dark' ? 'shadow-[0_8px_18px_rgba(3,12,28,0.22)]' : '';
   return (
-    <button type={type} onClick={onClick} className={`m-auto inline-flex min-h-11 min-w-16 items-center justify-center gap-1.5 text-center sm:min-h-[38px]
+    <button type={type} onClick={onClick} disabled={isPending} aria-busy={isPending || undefined} className={`m-auto inline-flex min-h-11 min-w-16 items-center justify-center gap-1.5 text-center sm:min-h-[38px]
     rounded-lg
     ${bgColor}
     text-sm font-semibold

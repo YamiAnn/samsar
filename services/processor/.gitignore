@@ -4,6 +4,7 @@
 .env.test
 assets/
 assets_v2/
+public_assets/
 logs/
 tmp/
 node_modules/

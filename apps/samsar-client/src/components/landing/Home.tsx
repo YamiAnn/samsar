@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import { useMediaQuery } from 'react-responsive';
 import axios from "axios";
@@ -62,6 +62,14 @@ const STANDALONE_PUBLIC_AUTH_PATHS = new Set([
 
 function preloadVidgenieEditor() {
   return loadOneshotEditorContainer().then(({ preloadOneshotEditor }) => preloadOneshotEditor());
+}
+
+function getSanitizedRouteSearch(search) {
+  const params = new URLSearchParams(search);
+  params.delete('loginToken');
+  params.delete('authToken');
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 function getRouteLoadingFallback(pathname, isMobile) {
@@ -135,41 +143,54 @@ function SharedVideoDesktopOnlyMessage() {
   );
 }
 
+function VidgenieRouteRedirect() {
+  const { id } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={appendRouteSearch(id ? `/vidgenie/${id}` : '/vidgenie', getSanitizedRouteSearch(search))} replace />;
+}
+
 function MobileStudioSessionRedirect() {
   const { id } = useParams();
-  return <Navigate to={id ? `/vidgenie/${id}` : '/vidgenie'} replace />;
+  const { search } = useLocation();
+  return <Navigate to={appendRouteSearch(id ? `/vidgenie/${id}` : '/vidgenie', getSanitizedRouteSearch(search))} replace />;
 }
 
 function DefaultAuthenticatedRoute({ user, isMobile, search }) {
-  const [targetPath, setTargetPath] = useState(null);
-  const resolutionStartedRef = useRef(false);
+  const [destination, setDestination] = useState(null);
+  const resolutionRef = useRef(null);
+  const resolutionKey = JSON.stringify([user?._id, Boolean(user?.isExternalUser), isMobile, search]);
 
   useEffect(() => {
-    if (!user?._id || resolutionStartedRef.current) {
-      return;
+    if (!user?._id) return undefined;
+
+    if (resolutionRef.current?.key !== resolutionKey) {
+      const fallbackPath = IS_STANDALONE_DEPLOYMENT && !isMobile ? '/video' : '/vidgenie';
+      resolutionRef.current = {
+        key: resolutionKey,
+        promise: Promise.resolve().then(() => resolvePostAuthDestination({
+          user,
+          isMobile,
+          apiServer: PROCESSOR_SERVER,
+          search,
+          createIfMissing: true,
+        })).then((path) => path || appendRouteSearch(fallbackPath, search))
+          .catch(() => appendRouteSearch(fallbackPath, search)),
+      };
     }
 
-    resolutionStartedRef.current = true;
-    const resolveRoute = async () => {
-      const resolvedPath = await resolvePostAuthDestination({
-        user,
-        isMobile,
-        apiServer: PROCESSOR_SERVER,
-        search,
-        createIfMissing: true,
-      });
-      if (resolvedPath?.startsWith('/vidgenie')) {
+    let cancelled = false;
+    void resolutionRef.current.promise.then((path) => {
+      if (cancelled) return;
+      if (path.startsWith('/vidgenie')) {
         void preloadVidgenieEditor().catch(() => undefined);
       }
-      const fallbackPath = IS_STANDALONE_DEPLOYMENT && !isMobile ? '/video' : '/vidgenie';
-      setTargetPath(resolvedPath || appendRouteSearch(fallbackPath, search));
-    };
+      setDestination({ key: resolutionKey, path });
+    });
+    return () => { cancelled = true; };
+  }, [isMobile, resolutionKey, search, user]);
 
-    void resolveRoute();
-  }, [isMobile, search, user]);
-
-  if (targetPath) {
-    return <Navigate to={targetPath} replace />;
+  if (destination?.key === resolutionKey) {
+    return <Navigate to={destination.path} replace />;
   }
 
   return (
@@ -186,8 +207,14 @@ export default function Home() {
   const isMobile = useMediaQuery({ query: '(max-width: 767px)' });
 
   const { colorMode } = useColorMode();
-  const [extraProps, setExtraProps] = useState(() => new URLSearchParams());
+  // Resolve route options on the first render, before root bootstrap effects
+  // run. Updating them in an effect loses options on fast authentication.
+  const sanitizedRouteSearch = useMemo(() => getSanitizedRouteSearch(location.search), [location.search]);
+  const hasPendingLoginToken = location.pathname !== '/verify' && Boolean(new URLSearchParams(location.search).get('loginToken'));
   const initialUserFetchStartedRef = useRef(false);
+  const initialRootHydrationRef = useRef(null);
+  const initialRootResolutionRef = useRef(null);
+  const loginTokenExchangeRef = useRef(null);
   const initialEntryRef = useRef(null);
   if (initialEntryRef.current === null && typeof window !== 'undefined') {
     const initialSearchParams = new URLSearchParams(window.location.search);
@@ -205,13 +232,6 @@ export default function Home() {
   const [initialAuthenticatedRootStatus, setInitialAuthenticatedRootStatus] = useState(
     shouldResolveInitialAuthenticatedRoot ? 'pending' : 'done'
   );
-
-  useEffect(() => {
-    const queryParams = new URLSearchParams(location.search);
-    queryParams.delete('loginToken');
-    queryParams.delete('authToken');
-    setExtraProps(queryParams);
-  }, [location.search]);
 
   useEffect(() => {
     if (shouldResolveInitialAuthenticatedRoot && initialAuthenticatedRootStatus === 'pending') {
@@ -238,7 +258,7 @@ export default function Home() {
   ]);
 
   const isExternalUser = Boolean(user?.isExternalUser);
-  const isVidgeniePath = location.pathname.startsWith('/vidgenie');
+  const isVidgeniePath = location.pathname.startsWith('/vidgenie') || location.pathname.startsWith('/vidgemie');
   const isAccessAllowedPath = (() => {
     if (location.pathname.startsWith('/video/share/')) return true;
     if (location.pathname.startsWith('/video/collab/')) return true;
@@ -267,6 +287,7 @@ export default function Home() {
   })();
 
   useEffect(() => {
+    if (hasPendingLoginToken) return;
     if (initialAuthenticatedRootStatus === 'pending') return;
     if (!userInitiated || userFetching) return;
     if (location.pathname === '/') return;
@@ -289,6 +310,7 @@ export default function Home() {
       navigate(buildLoginPathForRedirect(getRoutePath(location)), { replace: true });
     }
   }, [
+    hasPendingLoginToken,
     initialAuthenticatedRootStatus,
     userInitiated,
     userFetching,
@@ -299,12 +321,6 @@ export default function Home() {
     navigate,
     isExternalUser,
   ]);
-
-  const appendQueryParams = useCallback((url) => {
-    const paramsString = extraProps.toString();
-    return paramsString ? `${url}?${paramsString}` : url;
-  }, [extraProps]);
-  const sanitizedRouteSearch = extraProps.toString() ? `?${extraProps.toString()}` : '';
 
   const navigateToDefaultAuthenticatedView = useCallback(async (resolvedUser = user) => {
     const targetPath = await resolvePostAuthDestination({
@@ -318,63 +334,90 @@ export default function Home() {
       void preloadVidgenieEditor().catch(() => undefined);
     }
     const fallbackPath = IS_STANDALONE_DEPLOYMENT && !isMobile ? '/video' : '/vidgenie';
-    navigate(targetPath || appendQueryParams(fallbackPath), { replace: true });
-  }, [appendQueryParams, isMobile, navigate, sanitizedRouteSearch, user]);
+    navigate(targetPath || appendRouteSearch(fallbackPath, sanitizedRouteSearch), { replace: true });
+  }, [isMobile, navigate, sanitizedRouteSearch, user]);
 
   useEffect(() => {
     if (!shouldResolveInitialAuthenticatedRoot || initialAuthenticatedRootStatus !== 'pending') {
       return undefined;
     }
 
-    let isCancelled = false;
+    if (location.pathname !== '/') {
+      setInitialAuthenticatedRootStatus('done');
+      return undefined;
+    }
 
-    const resolveInitialRoute = async () => {
-      initialUserFetchStartedRef.current = true;
-
-      try {
-        const resolvedUser = userInitiated && !userFetching ? user : await getUserAPI();
-        if (isCancelled) return;
+    const authToken = getAuthToken();
+    const routeKey = JSON.stringify([sanitizedRouteSearch, isMobile, IS_STANDALONE_DEPLOYMENT, authToken]);
+    const accountId = user?._id?.toString?.() || null;
+    let operation = initialRootResolutionRef.current;
+    if (operation?.routeKey !== routeKey || operation?.accountId !== accountId) {
+      operation = { active: false, promise: null, routeKey, accountId };
+    }
+    initialRootResolutionRef.current = operation;
+    operation.active = true;
+    initialUserFetchStartedRef.current = true;
+    if (!operation.promise) {
+      operation.promise = (async () => {
+        let resolvedUser = user;
+        if (!userInitiated || userFetching) {
+          if (initialRootHydrationRef.current?.authToken !== authToken) {
+            initialRootHydrationRef.current = {
+              authToken,
+              promise: Promise.resolve().then(() => getUserAPI()),
+            };
+          }
+          resolvedUser = await initialRootHydrationRef.current.promise;
+        }
+        // Hydrating the same account can rerender Home before its destination
+        // resolves. Adopt that identity before creating a project so this
+        // profile update reuses the lookup; account switches invalidate it.
+        operation.accountId = resolvedUser?._id?.toString?.() || null;
+        if (!operation.active) return null;
 
         if (!resolvedUser?._id) {
-          navigate('/login', { replace: true });
-          return;
+          return '/login';
         }
 
         if (resolvedUser.isExternalUser) {
-          navigate('/external/studio', { replace: true });
-          return;
-        }
-
-        const targetPath = await resolvePostAuthDestination({
-          user: resolvedUser,
-          isMobile,
-          apiServer: PROCESSOR_SERVER,
-          search: sanitizedRouteSearch,
-          createIfMissing: true,
-        });
-        if (isCancelled) return;
-        if (targetPath?.startsWith('/vidgenie')) {
-          void preloadVidgenieEditor().catch(() => undefined);
+          return '/external/studio';
         }
 
         const fallbackPath = IS_STANDALONE_DEPLOYMENT && !isMobile ? '/video' : '/vidgenie';
-        navigate(targetPath || fallbackPath, { replace: true });
-      } finally {
-        if (!isCancelled) {
-          setInitialAuthenticatedRootStatus('done');
+        try {
+          const targetPath = await resolvePostAuthDestination({
+            user: resolvedUser,
+            isMobile,
+            apiServer: PROCESSOR_SERVER,
+            search: sanitizedRouteSearch,
+            createIfMissing: true,
+          });
+          return targetPath || appendRouteSearch(fallbackPath, sanitizedRouteSearch);
+        } catch {
+          return appendRouteSearch(fallbackPath, sanitizedRouteSearch);
         }
-      }
-    };
+      })().catch(() => '/login');
+    }
 
-    void resolveInitialRoute();
+    let isCancelled = false;
+    void operation.promise.then((targetPath) => {
+      if (isCancelled || !targetPath) return;
+      if (targetPath.startsWith('/vidgenie')) {
+        void preloadVidgenieEditor().catch(() => undefined);
+      }
+      navigate(targetPath, { replace: true });
+      setInitialAuthenticatedRootStatus('done');
+    });
 
     return () => {
       isCancelled = true;
+      operation.active = false;
     };
   }, [
     getUserAPI,
     initialAuthenticatedRootStatus,
     isMobile,
+    location.pathname,
     navigate,
     sanitizedRouteSearch,
     shouldResolveInitialAuthenticatedRoot,
@@ -425,32 +468,81 @@ export default function Home() {
       return;
     }
 
+    // Effect replay and user hydration can rerender Home before the token is
+    // removed from the URL. Share each phase rather than consuming it again.
+    let operation = loginTokenExchangeRef.current;
+    if (operation?.token !== loginToken) {
+      operation = {
+        token: loginToken,
+        verification: Promise.resolve().then(() => axios.get(`${PROCESSOR_SERVER}/users/verify_token`, {
+          params: { loginToken, _: Date.now() },
+        })),
+        authentication: null,
+        destination: null,
+        finished: false,
+        path: null,
+      };
+      loginTokenExchangeRef.current = operation;
+    }
+    if (operation.finished) {
+      navigate(operation.path, { replace: true });
+      return undefined;
+    }
+    let isCancelled = false;
+
     const exchangeLoginToken = async () => {
       const returnToLogin = () => {
+        if (isCancelled || operation.finished) return;
+        operation.finished = true;
+        operation.path = buildLoginPathForRedirect(getRedirectParam(location));
         resetUser();
-        navigate(buildLoginPathForRedirect(getRedirectParam(location)), { replace: true });
+        navigate(operation.path, { replace: true });
       };
 
       try {
-        const response = await axios.get(`${PROCESSOR_SERVER}/users/verify_token`, {
-          params: { loginToken, _: Date.now() },
-        });
+        const response = await operation.verification;
+        if (isCancelled || operation.finished) return;
         const resolvedAuthToken = response?.data?.authToken;
         if (resolvedAuthToken) {
-          persistAuthToken(resolvedAuthToken);
-          const resolvedUser = await getUserAPI();
+          if (!operation.authentication) {
+            persistAuthToken(resolvedAuthToken);
+            initialUserFetchStartedRef.current = true;
+            operation.authentication = Promise.resolve().then(() => getUserAPI());
+          }
+          const resolvedUser = await operation.authentication;
+          if (isCancelled || operation.finished) return;
           if (!resolvedUser?._id) {
             returnToLogin();
             return;
           }
 
-          const redirectTarget = consumeResolvedAuthRedirect(getRedirectParam(location));
-          if (redirectTarget && !IS_STANDALONE_DEPLOYMENT) {
-            navigate(redirectTarget, { replace: true });
-            return;
+          if (!operation.destination) {
+            operation.destination = (async () => {
+              const redirectTarget = consumeResolvedAuthRedirect(getRedirectParam(location));
+              if (redirectTarget && !IS_STANDALONE_DEPLOYMENT) return redirectTarget;
+              const fallbackPath = IS_STANDALONE_DEPLOYMENT && !isMobile ? '/video' : '/vidgenie';
+              try {
+                const targetPath = await resolvePostAuthDestination({
+                  user: resolvedUser,
+                  isMobile,
+                  apiServer: PROCESSOR_SERVER,
+                  search: sanitizedRouteSearch,
+                  createIfMissing: true,
+                });
+                return targetPath || appendRouteSearch(fallbackPath, sanitizedRouteSearch);
+              } catch {
+                return appendRouteSearch(fallbackPath, sanitizedRouteSearch);
+              }
+            })();
           }
-
-          void navigateToDefaultAuthenticatedView(resolvedUser);
+          const destination = await operation.destination;
+          if (isCancelled || operation.finished) return;
+          operation.finished = true;
+          operation.path = destination;
+          if (destination.startsWith('/vidgenie')) {
+            void preloadVidgenieEditor().catch(() => undefined);
+          }
+          navigate(destination, { replace: true });
           return;
         }
       } catch  {
@@ -462,12 +554,14 @@ export default function Home() {
     };
 
     void exchangeLoginToken();
+    return () => { isCancelled = true; };
   }, [
     location.pathname,
     location.search,
     getUserAPI,
     navigate,
-    navigateToDefaultAuthenticatedView,
+    isMobile,
+    sanitizedRouteSearch,
     resetUser,
   ]);
 
@@ -495,6 +589,10 @@ export default function Home() {
         />
       </div>
     );
+  }
+
+  if (hasPendingLoginToken) {
+    return <div className={bodyBGColor}><RouteLoadingScreen label="Signing in..." /></div>;
   }
 
   if (shouldRequireStandaloneLogin) {
@@ -533,6 +631,8 @@ export default function Home() {
           <Route path="/quick_video" element={isMobile ? <OneshotEditorContainer /> : <QuickEditorLandingHome />} />
           <Route path="/vidgpt" element={<OneshotEditorContainer />} />
           <Route path="/vidgpt/:id" element={<OneshotEditorContainer />} />
+          <Route path="/vidgemie" element={<VidgenieRouteRedirect />} />
+          <Route path="/vidgemie/:id" element={<VidgenieRouteRedirect />} />
           <Route path="/vidgenie" element={<OneshotEditorContainer />} />
           <Route path="/vidgenie/:id" element={<OneshotEditorContainer />} />
           <Route path="/login" element={<LoginPage />} />

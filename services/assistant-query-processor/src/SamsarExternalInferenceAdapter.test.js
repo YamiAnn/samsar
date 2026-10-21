@@ -125,7 +125,7 @@ test('Qwen OpenRouter applies Qwen 3.8 Max to text and vision with bounded setti
     max_tokens: 50000,
   });
   await createOpenRouterChatCompletion({
-    model: 'gemini-3.1-pro',
+    model: 'gemini-4-argon',
     messages: [{ role: 'user', content: 'hello' }],
   });
   await createOpenRouterChatCompletion({

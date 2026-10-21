@@ -68,11 +68,11 @@ function getItemDisplayFrameRange(item, framesPerSecond, displayFramesPerSecond 
 
   const sourceRate = getFrameConfigSourceRate(item, framesPerSecond);
   const startFrame = Math.max(0, convertFramesBetweenRates(frameOffset, sourceRate, displayFramesPerSecond) ?? 0);
-  const durationFrames = Math.max(1, convertFramesBetweenRates(frameDuration, sourceRate, displayFramesPerSecond) ?? 1);
+  const endFrame = Math.max(startFrame + 1, convertFramesBetweenRates(frameOffset + frameDuration, sourceRate, displayFramesPerSecond) ?? startFrame + 1);
 
   return {
     startFrame,
-    endFrame: startFrame + durationFrames,
+    endFrame,
   };
 }
 
@@ -83,7 +83,7 @@ export function isItemVisibleAtDisplayFrame(item, currentRelativeFrame, framesPe
   }
 
   return currentRelativeFrame >= frameRange.startFrame
-    && currentRelativeFrame <= frameRange.endFrame;
+    && currentRelativeFrame < frameRange.endFrame;
 }
 
 export function ActiveRenderItem(props) {
@@ -114,7 +114,7 @@ export function ActiveRenderItem(props) {
 
   } = props;
 
-  const currentRelativeFrame = currentLayerSeek - (durationOffset * displayFramesPerSecond);
+  const currentRelativeFrame = currentLayerSeek - Math.round(durationOffset * displayFramesPerSecond);
 
 
   if (item.type === 'image') {

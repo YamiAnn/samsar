@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { GoogleAuth } from 'google-auth-library';
 
-import { buildGeminiContents } from './GoogleGemini.js';
+import { buildGeminiContents, createGoogleGeminiChatCompletion } from './GoogleGemini.js';
 
 test('Gemini reads mounted typed image aliases directly into inline image parts', async () => {
   const read = [];
@@ -36,4 +37,41 @@ test('Gemini reads mounted typed image aliases directly into inline image parts'
   assert.equal(result.contents[0].parts[1].inlineData.mimeType, 'image/png');
   assert.equal(result.contents[0].parts[3].inlineData.mimeType, 'image/jpeg');
   assert.equal(result.contents[0].parts[3].inlineData.data, 'YWJj');
+});
+
+test('versioned Argon environment model trims trailing model turns', async (t) => {
+  const previousProject = process.env.GOOGLE_CLOUD_PROJECT;
+  const previousModel = process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
+  const previousThinkingLevel = process.env.GOOGLE_GEMINI_THINKING_LEVEL;
+  process.env.GOOGLE_CLOUD_PROJECT = 'argon-shape-project';
+  process.env.GOOGLE_GEMINI_4_ARGON_MODEL = 'gemini-4-argon-20261013';
+  process.env.GOOGLE_GEMINI_THINKING_LEVEL = 'MEDIUM';
+  t.after(() => {
+    if (previousProject === undefined) delete process.env.GOOGLE_CLOUD_PROJECT;
+    else process.env.GOOGLE_CLOUD_PROJECT = previousProject;
+    if (previousModel === undefined) delete process.env.GOOGLE_GEMINI_4_ARGON_MODEL;
+    else process.env.GOOGLE_GEMINI_4_ARGON_MODEL = previousModel;
+    if (previousThinkingLevel === undefined) delete process.env.GOOGLE_GEMINI_THINKING_LEVEL;
+    else process.env.GOOGLE_GEMINI_THINKING_LEVEL = previousThinkingLevel;
+  });
+
+  let capturedUrl;
+  let capturedBody;
+  t.mock.method(GoogleAuth.prototype, 'getClient', async () => ({
+    getAccessToken: async () => ({ token: 'test-token' }),
+  }));
+  const fetchImpl = async (url, options) => {
+    capturedUrl = url;
+    capturedBody = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }) };
+  };
+
+  await createGoogleGeminiChatCompletion([
+    { role: 'user', content: 'First prompt' },
+    { role: 'assistant', content: 'Previous answer' },
+  ], 'gemini-4-argon', { fetchImpl });
+
+  assert.match(capturedUrl, /models\/gemini-4-argon-20261013:generateContent$/);
+  assert.deepEqual(capturedBody.contents.map(({ role }) => role), ['user']);
+  assert.deepEqual(capturedBody.generationConfig.thinkingConfig, { thinkingLevel: 'MEDIUM' });
 });

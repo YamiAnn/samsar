@@ -45,9 +45,9 @@ const DEPLOYMENT_PROVIDER_LABELS = Object.freeze({
 const DEPLOYMENT_INFERENCE_MODELS_BY_PROVIDER = Object.freeze({
   openai: ["gpt-6.1-sol"],
   anthropic: ["claude-opus-5.5"],
-  googleCloud: ["gemini-3.1-pro"],
+  googleCloud: ["gemini-4-argon"],
   kimi: [KIMI_K3_INFERENCE_MODEL_VALUE],
-  openrouter: ["gpt-6.1-sol", "gemini-3.1-pro", QWEN_INFERENCE_MODEL_VALUE, "claude-opus-5.5"],
+  openrouter: ["gpt-6.1-sol", "gemini-4-argon", QWEN_INFERENCE_MODEL_VALUE, "claude-opus-5.5"],
   gmicloud: [QWEN_INFERENCE_MODEL_VALUE],
   // Alibaba/Qwen requires explicit, validated model provenance below. A
   // provider name by itself is not enough to make Qwen selectable.
@@ -55,7 +55,7 @@ const DEPLOYMENT_INFERENCE_MODELS_BY_PROVIDER = Object.freeze({
   samsar: [
     "gpt-6.1-sol",
     "claude-opus-5.5",
-    "gemini-3.1-pro",
+    "gemini-4-argon",
     QWEN_INFERENCE_MODEL_VALUE,
     KIMI_K3_INFERENCE_MODEL_VALUE,
   ],
@@ -198,21 +198,8 @@ export function normalizeDeploymentInferenceModelValue(value) {
   ) {
     return QWEN_INFERENCE_MODEL_VALUE;
   }
-  if (
-    normalized === "gemini-3.1-pro" ||
-    normalized === "gemini-3.1-pro-preview" ||
-    normalized === "gemini-3-pro" ||
-    normalized === "gemini-3-pro-preview" ||
-    normalized === "gemini 3.1 pro" ||
-    normalized === "gemini 3.1 pro preview" ||
-    normalized === "gemini 3 pro" ||
-    normalized === "gemini 3 pro preview" ||
-    normalized === "gemini31pro" ||
-    normalized === "gemini31propreview" ||
-    normalized === "gemini3pro" ||
-    normalized === "gemini3propreview"
-  ) {
-    return "gemini-3.1-pro";
+  if (["gemini-4-argon", "gemini-4", "gemini4", "gemini 4", "gemini 4 argon", "gemini4argon", "google/gemini-4-argon"].includes(normalized)) {
+    return "gemini-4-argon";
   }
   if (inferGPT56SolEffortFromModelValue(compact)) {
     return DEFAULT_INFERENCE_MODEL_VALUE;

@@ -11,7 +11,7 @@ import {
 test('request model wins over session and saved user model', () => {
   assert.equal(resolveRequestInferenceModel({
     request: { inferenceModel: 'QWEN3.8' },
-    session: { expressGenerationInferenceModel: 'gemini-3.1-pro' },
+    session: { expressGenerationInferenceModel: 'gemini-4-argon' },
     user: { selectedInferenceModel: 'gpt-6.1-sol' },
   }), 'QWEN3.8');
 });
@@ -20,7 +20,7 @@ test('queued payload fallback wins when the refreshed retry row has no model', (
   assert.equal(resolveRequestInferenceModel({
     request: {},
     fallbackRequest: { expressGenerationInferenceModel: 'QWEN3.8' },
-    session: { expressGenerationInferenceModel: 'gemini-3.1-pro' },
+    session: { expressGenerationInferenceModel: 'gemini-4-argon' },
   }), 'QWEN3.8');
 });
 
@@ -28,7 +28,7 @@ test('session generation override wins over saved user setting', () => {
   assert.equal(resolveRequestInferenceModel({
     session: {
       expressGenerationInferenceModel: 'QWEN3.8',
-      inferenceModel: 'gemini-3.1-pro',
+      inferenceModel: 'gemini-4-argon',
     },
     user: { selectedInferenceModel: 'gpt-6.1-sol' },
   }), 'QWEN3.8');

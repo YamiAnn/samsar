@@ -125,9 +125,11 @@ export default function CommonDropdownButton({
         leaveTo="opacity-0 scale-95"
       >
         <Menu.Items
+          anchor={{ to: 'bottom end', gap: 8 }}
+          portal
           className={`
-            origin-top-right absolute right-0 mt-2
-            w-36 rounded-lg p-1 z-[320] ${menuSurface}
+            origin-top-right max-h-[calc(100dvh-24px)] overflow-y-auto
+            w-36 rounded-lg p-1 z-[11050] ${menuSurface}
           `}
         >
           {dropdownItems.map((item, idx) => (

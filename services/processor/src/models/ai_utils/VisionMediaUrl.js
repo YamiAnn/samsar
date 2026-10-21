@@ -613,31 +613,25 @@ async function getLegacyAccessibleProviderMediaUrl(value, mediaKind) {
       isKnownCloudMediaUrl(parsedUrl) || isConfiguredLocalDeliveryUrl(parsedUrl)
     );
     if (!isOwnedDeliveryUrl) {
+      if (!isProbablyPublicHttpUrl(parsedUrl)) {
+        throw buildInvalidReferenceError(value, 'the URL is local or private', mediaKind);
+      }
       return value;
     }
   }
   if (!shouldAttemptMediaSigning(value)) {
-    return value;
+    throw buildInvalidReferenceError(value, 'the reference is not a public media URL', mediaKind);
   }
 
   const signedUrl = buildSecureMediaDeliveryUrl(getLegacyMediaKeyReference(value, mediaKind));
-  if (!signedUrl) {
-    return value;
+  if (!isProbablyPublicHttpUrl(signedUrl)) {
+    throw buildInvalidReferenceError(value, 'the media asset has no public delivery URL', mediaKind);
   }
 
-  try {
-    await primeCDNCache(signedUrl, { requireSuccess: true });
-  } catch (error) {
-    if (isHttpUrl(value)) {
-      console.error('[VisionMediaUrl] Falling back to original media URL after CDN prime failure', {
-        url: withoutQuery(value),
-        signedUrl: withoutQuery(signedUrl),
-        error: error?.message || error,
-      });
-      return value;
-    }
-    throw error;
-  }
+  // An owned media URL may be private even when it has an HTTP origin. A
+  // failed CDN probe must stop provider dispatch instead of forwarding the
+  // original reference, which may require browser or internal credentials.
+  await primeCDNCache(signedUrl, { requireSuccess: true });
   return signedUrl;
 }
 

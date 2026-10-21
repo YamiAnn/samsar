@@ -41,13 +41,14 @@ function resolveProcessorAssetUrlFromStaticUrl(value, apiServer = API_SERVER) {
     const normalizedApiServer = typeof apiServer === 'string'
       ? apiServer.trim().replace(/\/+$/, '')
       : '';
-    return normalizedApiServer ? `${normalizedApiServer}/${normalizedPath}` : `/${normalizedPath}`;
+    const assetPath = `/${normalizedPath}${parsedUrl.search}${parsedUrl.hash}`;
+    return normalizedApiServer ? `${normalizedApiServer}${assetPath}` : assetPath;
   } catch {
     return null;
   }
 }
 
-export function getRenderableImageUrl(asset, apiServer = API_SERVER) {
+export function getRenderableImageUrl(asset, apiServer = API_SERVER, { legacyGenerationFilename = false } = {}) {
   const imagePath = typeof asset === 'string'
     ? asset
     : firstImageUrlValue([
@@ -76,6 +77,12 @@ export function getRenderableImageUrl(asset, apiServer = API_SERVER) {
     ? apiServer.trim().replace(/\/+$/, '')
     : '';
   const normalizedPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+
+  if (legacyGenerationFilename && !normalizedPath.slice(1).split(/[?#]/, 1)[0].includes('/')) {
+    return normalizedApiServer
+      ? `${normalizedApiServer}/generations${normalizedPath}`
+      : `/generations${normalizedPath}`;
+  }
 
   if (normalizedPath.startsWith('/video_sessions/guest_media')) {
     return normalizedApiServer ? `${normalizedApiServer}${normalizedPath}` : normalizedPath;

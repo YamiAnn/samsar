@@ -115,16 +115,15 @@ function resolveProcessorAssetUrlFromStaticUrl(value, options) {
     if (
       !isStaticCdnHost(parsedUrl.hostname, staticCdnUrl)
       || !(normalizedPath.startsWith('assets_v2/') || normalizedPath.startsWith('assets/'))
-      || isRemoteUserResourcePath(normalizedPath)
+      || (isRemoteUserResourcePath(normalizedPath) && !parsedUrl.searchParams.has('asset_token'))
       || isCloudFrontSignedVideoUrl(value)
     ) {
       return null;
     }
 
     const processorBaseUrl = normalizeBaseUrl(processorApiUrl);
-    return processorBaseUrl
-      ? `${processorBaseUrl}/${normalizedPath}`
-      : `/${normalizedPath}`;
+    const assetPath = `/${normalizedPath}${parsedUrl.search}${parsedUrl.hash}`;
+    return processorBaseUrl ? `${processorBaseUrl}${assetPath}` : assetPath;
   } catch {
     return null;
   }
