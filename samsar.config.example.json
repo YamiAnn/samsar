@@ -69,6 +69,7 @@
     },
     "googleCloud": {
       "enabled": false,
+      "gemini4ArgonModel": "gemini-4-argon",
       "projectId": "",
       "credentialsJsonB64": ""
     },

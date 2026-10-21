@@ -760,6 +760,9 @@ const env = {
   GOOGLE_LYRIA_GEMINI_API_KEY: config.providers?.googleCloud?.lyriaGeminiConfigured ? (providerSecrets.googleCloud?.geminiApiKey || '') : '',
   GOOGLE_CLOUD_PROJECT: config.providers?.googleCloud?.projectId || '',
   GOOGLE_APPLICATION_CREDENTIALS_JSON_B64: config.providers?.googleCloud?.credentialsJsonB64 || '',
+  GOOGLE_GEMINI_4_ARGON_MODEL: config.providers?.googleCloud?.enabled && !config.providers.googleCloud.musicOnly
+    ? normalizeString(config.providers.googleCloud.gemini4ArgonModel) || 'gemini-4-argon'
+    : '',
   DOCKER_SETUP_SECRET: config.security?.dockerSetupSecret || '',
   SAMSAR_ORGANIZATION_NAME: config.organization?.name || '',
   ...buildMailEnv(),
