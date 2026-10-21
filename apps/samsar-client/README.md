@@ -345,7 +345,7 @@ The client also includes supporting surfaces:
 
 The client-side model inventory lives primarily in `src/constants/Types.ts` and `src/constants/ModelPrices.jsx`.
 
-In Docker deployments, the processor-provided availability response filters the inference selectors. One configured `OPENROUTER_API_KEY` exposes `gpt-6.1-sol`, `gemini-4-argon`, and `QWEN3.8` for chat, assistant, and their corresponding vision-input workflows. Provider priority is the model's direct native credential, then OpenRouter, then the Samsar deployed fallback; the client preserves the selected provider provenance when deciding whether a saved model remains authorized. In hosted production, the client exposes Qwen as `QWEN3.8` with the label `Qwen 3.8 Max`. When `SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED=true` and an Alibaba credential is configured, both text and vision inference use native Alibaba Cloud Qwen 3.8 Max; otherwise they use the OpenRouter model `qwen/qwen3.8-max`.
+In Docker deployments, the processor-provided availability response filters the inference selectors. One configured `OPENROUTER_API_KEY` exposes `gpt-6-astra`, `gemini-4-argon`, and `QWEN3.8` for chat, assistant, and their corresponding vision-input workflows. Provider priority is the model's direct native credential, then OpenRouter, then the Samsar deployed fallback; the client preserves the selected provider provenance when deciding whether a saved model remains authorized. In hosted production, the client exposes Qwen as `QWEN3.8` with the label `Qwen 3.8 Max`. When `SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED=true` and an Alibaba credential is configured, both text and vision inference use native Alibaba Cloud Qwen 3.8 Max; otherwise they use the OpenRouter model `qwen/qwen3.8-max`.
 
 ### Image Generation
 
@@ -438,6 +438,22 @@ Each express video second includes fixed pipeline components:
 | Effects and lip sync | 2 |
 
 The remaining credits are attributed to the selected video model.
+
+### Image Billing
+
+Studio image generation, edits, and enhancements use the [final image model prices](https://docs.samsar.one/pricing#image-models) and are charged on completion. Rerolls settle each completed image, AI-video, lip-sync and video sound-effect model call individually. Production agent pipelines retain their flat stage pricing. Standalone Docker waives local image debits; its Samsar.js calls are billed by the hosted image endpoint.
+
+### AI Video Billing
+
+Studio video generation, lip-sync and sound-effect layers, rerolls and direct hosted model calls are charged on completion. See the [final output prices](https://docs.samsar.one/pricing#video-model-calls). Production agent workflows retain fixed stage pricing. Standalone deployments waive local credit debits; hosted Samsar.js model calls receive one hosted charge. Reuse the original request key while billing confirmation is pending.
+
+For single text-to-video model calls, use `requestV2ExternalVideo('direct_text_to_video', { input: { prompt, video_model, duration, aspect_ratio } }, { idempotencyKey })`. The full `text_to_video` workflow retains production agent pricing.
+
+### Assistant Billing
+
+Hosted assistant completions and public chat/assistant endpoints called through `samsar-js` use the [final input, output, and cached-input token prices](https://docs.samsar.one/pricing#inference-rates) for the listed model and adapter routes. Production agent pipeline inference keeps the flat component pricing above. The standalone Studio queued assistant worker retains its local-credit waiver; native providers or hosted Samsar calls still bill their own accounts.
+
+Reuse a stable SDK `idempotencyKey` or `client_request_id` for retries. Completed replays return the original charge without another debit. Requests awaiting billing confirmation or completion after a timeout can remain pending; keep the same key while checking completion. See [Assistant billing and retries](https://docs.samsar.one/assistant-api#billing-and-retries).
 
 ## Route Map
 

@@ -33,6 +33,7 @@ export async function generateHailuoNativeVideoLayer(payload) {
   }
 
 
+  payload.videoBillingNativeReceipt = { adapter: 'hailuo', model: inputPayload.model, seconds: duration, resolution: '768P' };
   const resData = await axios.post(`${HAILUO_VIDEO_LINK}`, inputPayload, headers);
 
 
@@ -97,7 +98,8 @@ export async function listenToPendingHailuoNativeVideoRequest(payload) {
 
     return {
       remoteUrl: videoURL,
-      responseStatus: 'COMPLETED'
+      responseStatus: 'COMPLETED',
+      videoBillingReceipt: { ...payload.videoBillingNativeReceipt, providerRequestId: generationId }
     };
   } else if (responseStatus === 'FAILED') {
 

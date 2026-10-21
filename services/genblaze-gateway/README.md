@@ -35,7 +35,7 @@ mounted read-only and has this shape:
 
 The gateway-side allowlist currently understands these Samsar contracts:
 
-- inference/vision: `gpt-6.1-sol`, `gemini-4-argon`, `QWEN3.8`;
+- inference/vision: `gpt-6-astra`, `gemini-4-argon`, `QWEN3.8`;
 - image generation: `GPTIMAGE2`, `SEEDREAM`, `NANOBANANA2`,
   `NANOBANANAPRO`;
 - image editing: `GPTIMAGE2EDIT`, `NANOBANANA2EDIT`,

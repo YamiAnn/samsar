@@ -603,3 +603,18 @@ test('reused narrative initial charges waive narrative inference without changin
     },
   });
 });
+
+
+for (const stageKey of ['ai_video_generation', 'lip_sync_generation', 'sound_effect_generation']) {
+  test(`processor stage API does not prepay usage-billed reroll ${stageKey}`, async t => {
+    const harness = installVideoSessionBillingHarness(t, { _id: 'reroll', userId: 'owner',
+      videoBillingPolicy: 'adapter', totalDuration: 10, expressGenerativeVideoModel: 'RUNWAYML' });
+    const result = await chargeExpressVideoStageCredits({ sessionId: 'reroll', stageKey }, {
+      connect: async () => {}, deductCredits: async () => assert.fail('duplicate stage debit'),
+      reserveExternalCredits: async () => assert.fail('duplicate external stage debit'),
+    });
+    assert.equal(result.creditsCharged, 0);
+    assert.equal(result.adapterBilled, true);
+    assert.equal(harness.claims.length, 0);
+  });
+}

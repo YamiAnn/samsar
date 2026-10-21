@@ -522,6 +522,8 @@ export async function createGenerativeVideoAnimationsForFrames(sessionId) {
     );
 
     let payload = {
+      videoBillingPolicy: sessionData.videoBillingPolicy || 'pipeline',
+      videoBillingAPIKeyUsage: sessionData.videoBillingAPIKeyUsage || null,
       userId: userId,
       videoSessionId: sessionId,
       layerId: currentLayerId,

@@ -190,6 +190,7 @@ async function createCompatibleChatCompletionForProvider(
   dependencyOverrides = {},
 ) {
   const {
+    assistantBillingRequestId,
     externalMaxRetries,
     timeout,
     maxRetries,
@@ -299,10 +300,10 @@ function buildResponsesRequest(chatRequest) {
     body.reasoning = { effort: requestedReasoningEffort };
   }
 
-  if (body.model !== 'gpt-6.1-sol' && temperature !== undefined) {
+  if (body.model !== 'gpt-6-astra' && temperature !== undefined) {
     body.temperature = temperature;
   }
-  if (body.model !== 'gpt-6.1-sol' && top_p !== undefined) {
+  if (body.model !== 'gpt-6-astra' && top_p !== undefined) {
     body.top_p = top_p;
   }
   if (user !== undefined) {

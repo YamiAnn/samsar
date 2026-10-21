@@ -197,6 +197,7 @@ export async function handleNanoBananaEditDispatch(payload) {
 
     return handleUnsupportedCaseType(routedPayload, caseType);
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     return await markCaseAsFailed(routedPayload, caseType, error?.message || 'NanoBanana dispatcher error');
   }
 }

@@ -19,7 +19,7 @@ import PublicationMetadataRequest from '../../schema/PublicationMetadataRequest.
 import GenerationCreditTransaction from '../../schema/GenerationCreditTransaction.js';
 import User from '../../schema/User.js';
 import VideoSession from '../../schema/VideoSession.js';
-import { calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
+import { calculateInferenceCreditsFromUsage as calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
 import { normalizeAPIKeyUsageContext } from './RequestAuthContext.js';
 
 const MAX_PROMPT_LENGTH = 4000;

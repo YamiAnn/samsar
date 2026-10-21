@@ -1,3 +1,4 @@
+import { reportedImageCharge } from '../billing/ImagePricing.js';
 import { getDBConnectionString } from '../DBString.js';
 import ImageGeneration from '../schema/ImageGeneration.js';
 import { saveRemoteFile } from '../utils/FileUtils.js';
@@ -269,11 +270,13 @@ export async function pollGenBlazeImageRequest(payload = {}, dependencies = {}) 
       );
       return normalizeGPTImageTwoResult({
         image,
+        imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) },
         width: output.width,
         height: output.height,
       });
     }
-    return { image, resultUrl: imageUrl, resultUrls: [imageUrl] };
+    return { image, resultUrl: imageUrl, resultUrls: [imageUrl],
+      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) } };
   } catch (error) {
     logger.error('[GenBlazeImage] poll failed:', error);
     return {

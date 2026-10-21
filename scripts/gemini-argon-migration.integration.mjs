@@ -30,7 +30,7 @@ for (const [name, modelsFile, adapterFile] of services) {
       const resolveModel = models.getProviderModelForInferenceModel || models.resolveGeminiModel;
       if (resolveModel) assert.equal(resolveModel(alias), 'gemini-4-argon', alias);
     }
-    assert.equal(models.normalizeInferenceModel('gpt-6.1-sol'), 'gpt-6.1-sol');
+    assert.equal(models.normalizeInferenceModel('gpt-6-astra'), 'gpt-6-astra');
     assert.equal(models.normalizeInferenceModel('QWEN3.8'), 'QWEN3.8');
     assert.equal(models.normalizeInferenceModel('kimi-k3'), 'kimi-k3');
     assert.equal(models.normalizeInferenceModel('claude-opus-5.5'), 'claude-opus-5.5');

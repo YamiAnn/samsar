@@ -238,8 +238,8 @@ export function normalizeInferenceModelFromPayload(payload = {}) {
   const normalizedModel = INFERENCE_MODEL_ALIASES[token];
   if (!normalizedModel) {
     throw makeValidationError(
-      'inference_model must be one of: gpt-6.1-sol, gemini-4-argon, QWEN3.8, ' +
-      'kimi-k3. Legacy gpt-6.1-sol-high and gpt-6.1-sol-xhigh aliases are accepted.'
+      'inference_model must be one of: gpt-6-astra, gemini-4-argon, QWEN3.8, ' +
+      'kimi-k3. Legacy gpt-6-astra-high and gpt-6-astra-xhigh aliases are accepted.'
     );
   }
 
@@ -280,7 +280,7 @@ export function resolveEffectiveInferenceSettings(
 
   if (requestedEffort && !isGPT56Sol) {
     throw makeValidationError(
-      'effort is only supported when inference_model is gpt-6.1-sol.'
+      'effort is only supported when inference_model is gpt-6-astra.'
     );
   }
 

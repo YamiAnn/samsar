@@ -1,3 +1,4 @@
+import { checkpointImageResult } from '../billing/ImageResultCheckpoint.js';
 import { getDBConnectionString } from '../DBString.js';
 import ImageGeneration from '../schema/ImageGeneration.js';
 import { saveRemoteFile } from '../utils/FileUtils.js';
@@ -48,6 +49,8 @@ export async function handleAlibabaWan27Request(payload = {}) {
   try {
     const result = await requestAlibabaWan27Image(payload);
     const imageName = await saveRemoteFile(result.imageUrl);
+    await checkpointImageResult(payload, { image: imageName, provider: 'alibabaCloud',
+      imageBillingReceipt: result.imageBillingReceipt, providerRequestId: result.requestId });
 
     await ImageGeneration.findOneAndUpdate(
       { _id },
@@ -62,10 +65,12 @@ export async function handleAlibabaWan27Request(payload = {}) {
 
     return {
       image: imageName,
+      ...(result.imageBillingReceipt ? { imageBillingReceipt: result.imageBillingReceipt } : {}),
       provider: 'alibabaCloud',
       providerRequestId: result.requestId,
     };
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     const message = error?.message || 'Alibaba Wan2.7 Pro generation failed.';
     await ImageGeneration.findOneAndUpdate(
       { _id },

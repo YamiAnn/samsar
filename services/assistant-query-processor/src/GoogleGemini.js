@@ -357,7 +357,7 @@ function normalizeGeminiUsage(usageMetadata) {
   }
 
   const promptTokens = Number(usageMetadata.promptTokenCount) || 0;
-  const completionTokens = Number(usageMetadata.candidatesTokenCount) || 0;
+  const completionTokens = (Number(usageMetadata.candidatesTokenCount) || 0) + (Number(usageMetadata.thoughtsTokenCount) || 0);
   const totalTokens = Number(usageMetadata.totalTokenCount) || promptTokens + completionTokens;
   const cachedTokens = Number(usageMetadata.cachedContentTokenCount) || 0;
   const reasoningTokens = Number(usageMetadata.thoughtsTokenCount) || 0;
@@ -496,7 +496,7 @@ export async function sendAssistantGeminiCompletionRequest(
   const outputText = extractGeminiOutputText(responsePayload);
   return {
     model,
-    response: normalizeGeminiToResponses(responsePayload, outputText, model),
+    response: { ...normalizeGeminiToResponses(responsePayload, outputText, model), samsarBilling: { adapter: 'google', region: location } },
     outputText,
     outputContent: [
       {

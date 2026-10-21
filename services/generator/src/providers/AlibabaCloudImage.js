@@ -1,3 +1,4 @@
+import { reportedImageCharge } from '../billing/ImagePricing.js';
 const DEFAULT_ALIBABA_IMAGE_GENERATION_URL =
   'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 const ALIBABA_IMAGE_GENERATION_PATH =
@@ -266,6 +267,11 @@ export async function requestAlibabaImageGeneration(requestBody, options = {}) {
       imageUrl,
       requestId: normalizeString(responseBody?.request_id),
       usage: responseBody?.usage || null,
+      imageBillingReceipt: { adapter: 'alibabaCloud', model: requestBody.model,
+        providerRequestId: responseBody.request_id, outputImages: 1, inputImages: 0,
+        resolution: /^(2048)[*x]2048$/.test(requestBody.parameters?.size || '') ? '2K' : '1K',
+        region: new URL(requestUrl).hostname.includes('-intl') ? 'international' : 'china',
+        ...reportedImageCharge(responseBody) },
     };
   } catch (error) {
     if (error?.name === 'AbortError') {

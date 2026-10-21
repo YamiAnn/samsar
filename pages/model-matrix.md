@@ -31,12 +31,12 @@ Plan scenes, understand images, write copy and build assistants.
 
 | Model / request key | Hosted path | Supported deployment adapters | Workflow scope | Notes |
 | --- | --- | --- | --- | --- |
-| GPT 6.1 Sol · `gpt-6.1-sol` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [OpenAI](https://platform.openai.com/docs/overview) · [Samsar.js](https://docs.samsar.one/external-requests) · [GMICloud via GenBlaze](https://docs.gmicloud.ai/) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Branching | Current public key. Older setup files may contain gpt-5.6-sol or gpt-6-astra; the processor normalizes that alias. GenBlaze still requires an exact validated mapping. |
+| GPT 6 Astra · `gpt-6-astra` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [OpenAI](https://platform.openai.com/docs/overview) · [Samsar.js](https://docs.samsar.one/external-requests) · [GMICloud via GenBlaze](https://docs.gmicloud.ai/) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Branching | Current public key. Older setup files may contain gpt-5.6-sol or gpt-6.1-sol; the processor normalizes that alias. GenBlaze still requires an exact validated mapping. |
 | Claude Opus 5.5 · `claude-opus-5.5` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [Anthropic](https://platform.claude.com/docs/en/api/overview) · [Samsar.js](https://docs.samsar.one/external-requests) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Branching | Enable a supported adapter and check the target deployment before selecting this model. |
 | Gemini 4 Argon · `gemini-4-argon` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [Google Cloud](https://cloud.google.com/vertex-ai/generative-ai/docs) · [Samsar.js](https://docs.samsar.one/external-requests) · [GMICloud via GenBlaze](https://docs.gmicloud.ai/) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Modality API / Studio | Enable a supported adapter and check the target deployment before selecting this model. |
 | Kimi K3 · `kimi-k3` (setup: `KIMIK3`) | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [Kimi](https://platform.kimi.ai/docs/overview) · [Samsar.js](https://docs.samsar.one/external-requests) | Modality API / Studio | Setup key KIMIK3; inference requests use kimi-k3. Native Kimi first, then Samsar; OpenRouter is not in this chain. |
 | Qwen 3.8 Max · `QWEN3.8` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [Alibaba Cloud](https://www.alibabacloud.com/help/en/model-studio/) · [Samsar.js](https://docs.samsar.one/external-requests) · [GMICloud via GenBlaze](https://docs.gmicloud.ai/) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Modality API / Studio | Native Alibaba is a Docker option. Hosted Qwen uses OpenRouter internally; callers still use Samsar.js. |
-| GPT 6.1 Sol · extra high reasoning · `gpt-6.1-sol-xhigh` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [OpenAI](https://platform.openai.com/docs/overview) · [Samsar.js](https://docs.samsar.one/external-requests) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Branching | Reasoning option on GPT 6.1 Sol, not a separate provider model. Omitted from the normal runtime catalog. |
+| GPT 6 Astra · extra high reasoning · `gpt-6-astra-xhigh` | [Samsar.js](https://docs.samsar.one/external-requests#chat) | [OpenAI](https://platform.openai.com/docs/overview) · [Samsar.js](https://docs.samsar.one/external-requests) · [OpenRouter](https://openrouter.ai/docs/quickstart) | Branching | Reasoning option on GPT 6 Astra, not a separate provider model. Omitted from the normal runtime catalog. |
 
 <a id="image"></a>
 
@@ -268,7 +268,7 @@ curl http://localhost:3002/v1/video/supported_models
 
 This endpoint describes Express workflows; it is not the complete Studio or audio catalog. Review `runtime/config/available-models.json` and **Settings → Model Adapters** for your local installation. GenBlaze routes additionally depend on the exact validated credential catalog.
 
-The stable setup key `KIMIK3` is submitted as `kimi-k3` in inference requests. Older setup records may use `gpt-5.6-sol` or `gpt-6-astra`; both normalize to `gpt-6.1-sol` with high reasoning by default. Stable media keys can retain their spelling when the underlying provider model is upgraded.
+The stable setup key `KIMIK3` is submitted as `kimi-k3` in inference requests. Older setup records may use `gpt-5.6-sol` or `gpt-6.1-sol`; both normalize to `gpt-6-astra` with high reasoning by default. Stable media keys can retain their spelling when the underlying provider model is upgraded.
 
 ## Catalog maintenance
 

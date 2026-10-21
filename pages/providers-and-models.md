@@ -34,6 +34,20 @@ The [per-model matrix](model-matrix.md) is the compatibility reference. A provid
 
 </details>
 
+## Image Pricing Across Adapters
+
+Image model calls use the [final image token and output prices](https://docs.samsar.one/pricing#image-models) for the listed routes and are charged on completion. See [Image billing and retries](image-billing.md) for standalone Samsar.js routing and deployment configuration.
+
+## AI-Video Pricing Across Adapters
+
+Studio, direct hosted calls and rerolls use the [final AI-video output prices](video-model-billing.md#final-ai-video-output-prices) for the named adapter and configuration. Lip-sync and video sound-effect layers report configuration-specific final prices in completion receipts. Production agent workflows retain their fixed stage prices. Standalone Samsar.js calls receive one hosted charge, with no local credit debit.
+
+## Assistant Pricing Across Adapters
+
+See the [final input, output, and cached-input token prices](assistant-billing.md#final-token-prices), in credits per one million tokens. Prices apply to the listed model, adapter, context, and date period; another adapter route may have different final prices.
+
+Production agent pipeline inference keeps its flat stage pricing. Standalone Studio queued assistants retain their local-credit waiver, while calls to hosted Samsar assistant endpoints consume hosted credits. See [Assistant billing and retries](assistant-billing.md) for SDK examples, credit receipts, and pending requests.
+
 ## Generated Availability
 
 The renderer script builds availability by unioning enabled provider capabilities:
@@ -97,7 +111,9 @@ The runtime renderer writes `KIMI_K3_API_KEY` once into mode-`0600` `runtime/sec
 | Text only | `qwen/qwen3.8-max` |
 | Contains image or video input | `qwen/qwen3.8-max` |
 
-`OPENROUTER_QWEN_38_MAX_MODEL` overrides that mapping. Native Alibaba routing uses `qwen3.8-max` for text and vision, including Docker installations configured with a Token Plan endpoint; the renderer writes that shared selection as `ALIBABA_QWEN_MODEL`. OpenRouter requests explicitly use high reasoning for Qwen and Gemini and `xhigh` for GPT, with a 65,536-token completion allowance and a 10-minute minimum timeout. All external-assistant providers apply up to three exponential-backoff retries for transient, rate-limit, and malformed-response errors and honor provider `Retry-After` guidance. Payment-required and insufficient-credit failures are never retried.
+`OPENROUTER_QWEN_38_MAX_MODEL` overrides that mapping. Native Alibaba routing uses `qwen3.8-max` for text and vision, including Docker installations configured with a Token Plan endpoint; the renderer writes that shared selection as `ALIBABA_QWEN_MODEL`. OpenRouter requests explicitly use high reasoning for Qwen and Gemini and `xhigh` for GPT, with a 65,536-token completion allowance and a 10-minute minimum timeout.
+
+Billed assistant requests disable hidden SDK retries and recover settlement from the saved response. An ambiguous timeout or reset is retained for reconciliation instead of automatically dispatching another billable call. Other inference callers retain their configured adapter retry policies. Payment-required and insufficient-credit failures do not trigger provider retries. See [Assistant billing and retries](assistant-billing.md#retries-and-settlement).
 
 The adapter policy is shared by the processor, generator, audio generator, AI video layer generator, express video listener, and assistant query processor. `configuration.custom_adapters` is a separate media-operation feature and cannot override the hosted Qwen inference route.
 

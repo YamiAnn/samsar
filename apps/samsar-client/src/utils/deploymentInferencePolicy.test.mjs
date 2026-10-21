@@ -17,7 +17,7 @@ import {
 } from './deploymentInferencePolicy.mjs';
 
 const MODEL_OPTIONS = [
-  { label: 'gpt-6.1-sol', value: 'gpt-6.1-sol' },
+  { label: 'gpt-6-astra', value: 'gpt-6-astra' },
   { label: 'Claude Opus 5.5', value: 'claude-opus-5.5' },
   { label: 'Gemini 4 Argon', value: 'gemini-4-argon' },
   { label: 'Qwen 3.8 Max', value: 'QWEN3.8' },
@@ -28,7 +28,7 @@ test('hosted inference labels Qwen 3.8 Max for text and vision', () => {
   const hostedOptions = filterHostedInferenceModelOptions(MODEL_OPTIONS);
   assert.deepEqual(
     hostedOptions.map((option) => option.value),
-    ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-4-argon', 'QWEN3.8', 'kimi-k3'],
+    ['gpt-6-astra', 'claude-opus-5.5', 'gemini-4-argon', 'QWEN3.8', 'kimi-k3'],
   );
   assert.equal(
     hostedOptions[3].label,
@@ -89,7 +89,7 @@ test('standalone exposes Qwen only with an explicit model and validated Alibaba 
 test('provider fallbacks expose their configured inference models', () => {
   assert.deepEqual(
     extractDeploymentInferenceModelValues({ deployment: { providers: ['samsar'] } }),
-    ['gpt-6.1-sol', 'claude-opus-5.5', 'gemini-4-argon', 'QWEN3.8', 'kimi-k3'],
+    ['gpt-6-astra', 'claude-opus-5.5', 'gemini-4-argon', 'QWEN3.8', 'kimi-k3'],
   );
   assert.equal(
     labelOptionsForDeploymentInferenceProviders(MODEL_OPTIONS, {
@@ -99,7 +99,7 @@ test('provider fallbacks expose their configured inference models', () => {
   );
   assert.deepEqual(
     extractDeploymentInferenceModelValues({ deployment: { providers: ['openai', 'googleCloud'] } }),
-    ['gpt-6.1-sol', 'gemini-4-argon'],
+    ['gpt-6-astra', 'gemini-4-argon'],
   );
   assert.deepEqual(
     extractDeploymentInferenceModelValues({ deployment: { providers: ['alibabaCloud'] } }),
@@ -135,11 +135,11 @@ test('modern GMICloud model catalogs stay authoritative while legacy envelopes r
     extractDeploymentInferenceModelValues({
       deployment: {
         providers: ['gmicloud'],
-        models: ['gpt-6.1-sol'],
-        modelProviders: { 'gpt-6.1-sol': 'gmicloud' },
+        models: ['gpt-6-astra'],
+        modelProviders: { 'gpt-6-astra': 'gmicloud' },
       },
     }),
-    ['gpt-6.1-sol'],
+    ['gpt-6-astra'],
   );
   assert.deepEqual(
     extractDeploymentInferenceModelValues({
@@ -172,9 +172,9 @@ test('OpenRouter alone exposes every inference model with validated Qwen provena
   const payload = {
     deployment: {
       providers: ['openrouter'],
-      models: ['gpt-6.1-sol', 'gemini-4-argon', 'QWEN3.8'],
+      models: ['gpt-6-astra', 'gemini-4-argon', 'QWEN3.8'],
       modelProviders: {
-        'gpt-6.1-sol': 'openrouter',
+        'gpt-6-astra': 'openrouter',
         'gemini-4-argon': 'openrouter',
         'QWEN3.8': 'openrouter',
       },
@@ -188,7 +188,7 @@ test('OpenRouter alone exposes every inference model with validated Qwen provena
     'Qwen 3.8 Max',
   );
   assert.deepEqual(extractDeploymentInferenceModelValues(payload), [
-    'gpt-6.1-sol',
+    'gpt-6-astra',
     'gemini-4-argon',
     'QWEN3.8',
     'claude-opus-5.5',
@@ -218,7 +218,7 @@ test('model preferences resolve against the allowed options without mutating can
     'QWEN3.8',
   );
   assert.deepEqual(MODEL_OPTIONS.map((option) => option.value), [
-    'gpt-6.1-sol',
+    'gpt-6-astra',
     'claude-opus-5.5',
     'gemini-4-argon',
     'QWEN3.8',
@@ -228,49 +228,49 @@ test('model preferences resolve against the allowed options without mutating can
 
 test('legacy GPT 5.6 XHigh model values resolve to canonical Sol with separate effort', () => {
   for (const value of [
-    'gpt-6.1-sol-xhigh',
-    'GPT 6.1 Sol XHigh',
-    'GPT 6.1 Sol Extra High',
+    'gpt-6-astra-xhigh',
+    'GPT 6 Astra XHigh',
+    'GPT 6 Astra Extra High',
     'GPT5.6XHIGH',
   ]) {
     assert.equal(
       normalizeDeploymentInferenceModelValue(value),
-      'gpt-6.1-sol',
+      'gpt-6-astra',
     );
     assert.equal(
       getDeploymentInferenceAvailabilityModelValue(value),
-      'gpt-6.1-sol',
+      'gpt-6-astra',
     );
   }
 
   assert.equal(
-    normalizeDeploymentInferenceModelValue('GPT 6.1 Sol High'),
-    'gpt-6.1-sol',
+    normalizeDeploymentInferenceModelValue('GPT 6 Astra High'),
+    'gpt-6-astra',
   );
-  assert.equal(normalizeDeploymentInferenceModelValue('gpt-6.1-sol-unknown'), '');
+  assert.equal(normalizeDeploymentInferenceModelValue('gpt-6-astra-unknown'), '');
   assert.equal(
-    resolveAllowedInferenceModelOption('gpt-6.1-sol-xhigh', MODEL_OPTIONS)?.value,
-    'gpt-6.1-sol',
+    resolveAllowedInferenceModelOption('gpt-6-astra-xhigh', MODEL_OPTIONS)?.value,
+    'gpt-6-astra',
   );
   assert.equal(
-    resolveAllowedInferenceModelOption('gpt-6.1-sol', MODEL_OPTIONS)?.value,
-    'gpt-6.1-sol',
+    resolveAllowedInferenceModelOption('gpt-6-astra', MODEL_OPTIONS)?.value,
+    'gpt-6-astra',
   );
 
   assert.deepEqual(
-    filterOptionsForDeploymentInferenceModels(MODEL_OPTIONS, ['gpt-6.1-sol'])
+    filterOptionsForDeploymentInferenceModels(MODEL_OPTIONS, ['gpt-6-astra'])
       .map((option) => option.value),
-    ['gpt-6.1-sol'],
+    ['gpt-6-astra'],
   );
 });
 
-test('GPT 6.1 Sol effort inference is exact and preserves legacy suffix intent', () => {
-  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6.1-sol'), 'high');
-  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6.1-sol-high'), 'high');
-  assert.equal(inferGPT56SolEffortFromModelValue('GPT 6.1 Sol Extra High'), 'xhigh');
-  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6.1-sol-xhigh'), 'xhigh');
+test('GPT 6 Astra effort inference is exact and preserves legacy suffix intent', () => {
+  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6-astra'), 'high');
+  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6-astra-high'), 'high');
+  assert.equal(inferGPT56SolEffortFromModelValue('GPT 6 Astra Extra High'), 'xhigh');
+  assert.equal(inferGPT56SolEffortFromModelValue('gpt-6-astra-xhigh'), 'xhigh');
 
-  for (const value of ['gpt-5.6-pro', 'gpt-5.6-preview', 'gpt-6.1-solstice', 'gemini-xhigh']) {
+  for (const value of ['gpt-5.6-pro', 'gpt-5.6-preview', 'gpt-6-astrastice', 'gemini-xhigh']) {
     assert.equal(inferGPT56SolEffortFromModelValue(value), '');
   }
 });

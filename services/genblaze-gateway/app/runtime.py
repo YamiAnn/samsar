@@ -1696,7 +1696,12 @@ class GatewayRuntime:
                 message = message.replace(self.settings.gmi_api_key, "[redacted]")
             return {"status": terminal_status, "assets": [], "error": message}
 
+        cost_usd = getattr(fetched_step, "cost_usd", None)
+        billing = {}
+        if route.modality in {"image", "video", "audio"} and cost_usd is not None:
+            billing = {"billing": {"cost_usd": cost_usd}}
         return {
+            **billing,
             "status": "succeeded",
             "assets": [
                 {"url": asset.url, "media_type": asset.media_type}

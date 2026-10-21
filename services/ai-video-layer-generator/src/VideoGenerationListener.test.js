@@ -339,30 +339,30 @@ test('express session authorization wins over generic session authorization', as
   });
 });
 
-test('GPT 6.1 Sol effort follows explicit request, legacy alias, and session precedence', async () => {
+test('GPT 6 Astra effort follows explicit request, legacy alias, and session precedence', async () => {
   assert.deepEqual(await getInferenceSettingsForSession({
-    inferenceModel: 'gpt-6.1-sol',
+    inferenceModel: 'gpt-6-astra',
     inferenceEffort: 'xhigh',
   }), {
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     effort: 'xhigh',
     authorization: '',
   });
   assert.deepEqual(await getInferenceSettingsForSession({}, {
-    inferenceModel: 'gpt-6.1-sol-xhigh',
+    inferenceModel: 'gpt-6-astra-xhigh',
   }), {
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     effort: 'xhigh',
     authorization: '',
   });
   assert.deepEqual(await getInferenceSettingsForSession({
-    inferenceModel: 'gpt-6.1-sol-xhigh',
+    inferenceModel: 'gpt-6-astra-xhigh',
     inferenceEffort: 'xhigh',
   }, {
-    inferenceModel: 'gpt-6.1-sol-xhigh',
+    inferenceModel: 'gpt-6-astra-xhigh',
     effort: 'high',
   }), {
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     effort: 'high',
     authorization: '',
   });

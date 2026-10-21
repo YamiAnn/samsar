@@ -72,21 +72,21 @@ test('normalizes request TTS model aliases', () => {
 });
 
 test('normalizes request inference model aliases', () => {
-  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'GPT 6.1 Sol' }), 'gpt-6.1-sol');
+  assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'GPT 6 Astra' }), 'gpt-6-astra');
   assert.equal(
-    normalizeInferenceModelFromPayload({ inference_model: 'GPT 6.1 Sol High' }),
-    'gpt-6.1-sol',
+    normalizeInferenceModelFromPayload({ inference_model: 'GPT 6 Astra High' }),
+    'gpt-6-astra',
   );
   assert.equal(
-    normalizeInferenceModelFromPayload({ inference_model: 'gpt-6.1-sol-high' }),
-    'gpt-6.1-sol',
+    normalizeInferenceModelFromPayload({ inference_model: 'gpt-6-astra-high' }),
+    'gpt-6-astra',
   );
-  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gpt-6.1-sol' }), 'gpt-6.1-sol');
+  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gpt-6-astra' }), 'gpt-6-astra');
   assert.equal(
-    normalizeInferenceModelFromPayload({ inferenceModel: 'GPT 6.1 Sol Extra High' }),
-    'gpt-6.1-sol-xhigh',
+    normalizeInferenceModelFromPayload({ inferenceModel: 'GPT 6 Astra Extra High' }),
+    'gpt-6-astra-xhigh',
   );
-  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gpt-5.6' }), 'gpt-6.1-sol');
+  assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gpt-5.6' }), 'gpt-6-astra');
   assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'Gemini 4 Argon' }), 'gemini-4-argon');
   assert.equal(normalizeInferenceModelFromPayload({ inference_model: 'GEMINI4' }), 'gemini-4-argon');
   assert.equal(normalizeInferenceModelFromPayload({ inferenceModel: 'gemini-4-argon' }), 'gemini-4-argon');
@@ -101,57 +101,57 @@ test('normalizes request inference model aliases', () => {
 test('rejects unsupported request inference model aliases', () => {
   assert.throws(
     () => normalizeInferenceModelFromPayload({ inference_model: 'gpt-5' }),
-    /Legacy gpt-6.1-sol-high and gpt-6.1-sol-xhigh aliases are accepted/,
+    /Legacy gpt-6-astra-high and gpt-6-astra-xhigh aliases are accepted/,
   );
   assert.throws(
     () => normalizeInferenceModelFromPayload({ inference_model: 'claude' }),
-    /Legacy gpt-6.1-sol-high and gpt-6.1-sol-xhigh aliases are accepted/,
+    /Legacy gpt-6-astra-high and gpt-6-astra-xhigh aliases are accepted/,
   );
 });
 
-test('resolves canonical GPT 6.1 Sol plus explicit effort and legacy suffixes', () => {
+test('resolves canonical GPT 6 Astra plus explicit effort and legacy suffixes', () => {
   assert.equal(normalizeInferenceEffortFromPayload({ effort: 'XHIGH' }), 'xhigh');
   assert.deepEqual(
     resolveEffectiveInferenceSettings({
-      inference_model: 'gpt-6.1-sol',
+      inference_model: 'gpt-6-astra',
       effort: 'xhigh',
     }),
-    { inferenceModel: 'gpt-6.1-sol-xhigh', inferenceEffort: 'xhigh' },
+    { inferenceModel: 'gpt-6-astra-xhigh', inferenceEffort: 'xhigh' },
   );
   assert.deepEqual(
-    resolveEffectiveInferenceSettings({ inference_model: 'gpt-6.1-sol-high' }),
-    { inferenceModel: 'gpt-6.1-sol', inferenceEffort: 'high' },
+    resolveEffectiveInferenceSettings({ inference_model: 'gpt-6-astra-high' }),
+    { inferenceModel: 'gpt-6-astra', inferenceEffort: 'high' },
   );
   assert.deepEqual(
     resolveEffectiveInferenceSettings({
-      inference_model: 'gpt-6.1-sol-xhigh',
+      inference_model: 'gpt-6-astra-xhigh',
       effort: 'high',
     }),
-    { inferenceModel: 'gpt-6.1-sol', inferenceEffort: 'high' },
+    { inferenceModel: 'gpt-6-astra', inferenceEffort: 'high' },
   );
   assert.deepEqual(
-    resolveEffectiveInferenceSettings({}, 'gpt-6.1-sol', 'xhigh'),
-    { inferenceModel: 'gpt-6.1-sol-xhigh', inferenceEffort: 'xhigh' },
+    resolveEffectiveInferenceSettings({}, 'gpt-6-astra', 'xhigh'),
+    { inferenceModel: 'gpt-6-astra-xhigh', inferenceEffort: 'xhigh' },
   );
   assert.throws(
     () => resolveEffectiveInferenceSettings({
       inference_model: 'gemini-4-argon',
       effort: 'xhigh',
     }),
-    /effort is only supported when inference_model is gpt-6.1-sol/,
+    /effort is only supported when inference_model is gpt-6-astra/,
   );
 });
 
 test('resolves effective inference model from request override or account setting', () => {
   assert.equal(
-    resolveEffectiveInferenceModel({ inference_model: 'GPT 6.1 Sol' }, 'gemini-4-argon'),
-    'gpt-6.1-sol',
+    resolveEffectiveInferenceModel({ inference_model: 'GPT 6 Astra' }, 'gemini-4-argon'),
+    'gpt-6-astra',
   );
   assert.equal(
     resolveEffectiveInferenceModel({}, 'gemini-4-argon'),
     'gemini-4-argon',
   );
-  assert.equal(resolveEffectiveInferenceModel({}, null), 'gpt-6.1-sol');
+  assert.equal(resolveEffectiveInferenceModel({}, null), 'gpt-6-astra');
 });
 
 test('reads request speaker options aliases', () => {

@@ -56,11 +56,12 @@ export function buildFalGPTImageTwoInput(payload = {}) {
   };
 }
 
-export function normalizeGPTImageTwoResult({ image, width, height }) {
+export function normalizeGPTImageTwoResult({ image, width, height, imageBillingReceipt }) {
   return {
     image,
     width,
     height,
     preserveOriginalForAiVideo: true,
+    ...(imageBillingReceipt ? { imageBillingReceipt } : {}),
   };
 }

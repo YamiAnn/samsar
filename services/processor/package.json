@@ -9,13 +9,16 @@
     "repair:publication-flags": "node scripts/repair_publication_session_flags.js",
     "repair:published-media": "node scripts/repair_published_media.js",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:image-billing": "node --test src/models/api/ImageRequestBilling.test.js src/models/api/ImageAPI.test.js src/models/api/VideoSessionRerollAPI.test.js src/models/Images.providerAvailability.test.js src/routes/api/image.model-keys.test.js src/models/GenerationCredits.test.js src/models/ExpressVideoStageBilling.test.js src/consts/pricing/ExpressVideoPricingDistribution.test.js src/models/movie_session/image_list_to_video/SessionRequestBuilder.enhancement.test.js",
+    "test:assistant-billing": "node --test src/models/api/AssistantBilling*.test.js src/models/api/AssistantRequestBilling.test.js src/models/api/AssistantAPI*.test.js src/models/api/ExternalChatAPI.test.js src/models/ai_utils/AssistantAdapterBilling.test.js src/models/GenerationCredits.test.js src/models/ExpressVideoStageBilling.test.js src/models/api/NarrativeBilling.test.js",
     "test:credits-security": "node --test src/routes/api/credits.security.test.js src/models/Payment.security.test.js src/models/external/User.ownership.test.js src/models/external/User.billingMode.test.js",
     "test:assets-security": "node --test src/utils/PrivateAssetAccess.test.js src/utils/PrivateAssetAccess.auth.test.js src/utils/PrivateAssetResponse.test.js src/utils/PrivateProviderUrlClient.test.js src/utils/SupportedFontSamples.test.js src/models/PrivateAssetOwnership.test.js src/models/VideoSession.mediaDelivery.test.js src/models/QuickSession.mediaDelivery.test.js",
     "test:security": "npm run test:credits-security && npm run test:assets-security",
     "test:outro-footer-layout": "node --test src/test_cases/outro_footer_layout/*.test.js",
     "google:auth:check": "node scripts/check_google_adc.js",
     "generate:font-samples": "node src/utils/SupportedFontSamples.js --generate",
-    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/models/VideoSession.frameDrift.test.js src/models/video/FrameDrift.test.js src/models/video/SourceFrameRate.f2p.test.js"
+    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/models/VideoSession.frameDrift.test.js src/models/video/FrameDrift.test.js src/models/video/SourceFrameRate.f2p.test.js",
+    "test:video-billing": "node --test src/models/ai_video/DirectExternalI2V.test.js src/models/ai_video/VideoRequestBilling.test.js src/models/api/ExternalVideoAPI.direct-i2v.test.js src/models/api/VideoModelStatusBilling.test.js src/models/api/VideoSessionRerollAPI.test.js src/models/api/StatusAPI.test.js src/models/ExpressVideoStageBilling.test.js src/routes/api/v2.test.js"
   },
   "engines": {
     "node": ">=24 <25"

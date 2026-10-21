@@ -70,8 +70,8 @@ const narrativeRequestSchema = new Schema({
   inferenceModel: {
     type: String,
     enum: [
-      'gpt-6.1-sol',
-      'gpt-6.1-sol-xhigh',
+      'gpt-6-astra',
+      'gpt-6-astra-xhigh',
       'claude-opus-5.5',
       'gemini-4-argon',
       'QWEN3.8',

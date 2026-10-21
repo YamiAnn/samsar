@@ -220,9 +220,9 @@ const LOGGER_SERVICE_KEY = 'logger';
 const CAPABILITY_FAMILIES = {
   gpt56: {
     key: 'gpt56',
-    label: 'GPT 6.1 Sol',
+    label: 'GPT 6 Astra',
     providerKeys: ['openai', 'gmicloud', 'samsar', 'openrouter'],
-    modelKeys: ['gpt-6.1-sol'],
+    modelKeys: ['gpt-6-astra'],
   },
   claude: {
     key: 'claude',
@@ -252,7 +252,7 @@ const CAPABILITY_FAMILIES = {
     key: 'gptAssistant',
     label: 'GPT Assistant',
     providerKeys: ['openai', 'gmicloud', 'samsar', 'openrouter'],
-    modelKeys: ['gpt-6.1-sol'],
+    modelKeys: ['gpt-6-astra'],
   },
   claudeAssistant: {
     key: 'claudeAssistant',

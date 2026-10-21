@@ -466,6 +466,10 @@ export async function chargeExpressVideoStageCredits({ sessionId, stageKey }, de
     return { ok: false, stageKey: normalizedStageKey, error: 'Session not found.' };
   }
 
+  if (sessionData.videoBillingPolicy === 'adapter' && ['ai_video_generation', 'lip_sync_generation', 'sound_effect_generation'].includes(normalizedStageKey)) {
+    return { ok: true, stageKey: normalizedStageKey, creditsCharged: 0, adapterBilled: true };
+  }
+
   const existingStage = sessionData.expressGenerationCreditCharges?.stages?.[normalizedStageKey];
   if (STAGE_BILLING_HANDLED_STATUSES.has(existingStage?.status)) {
     return { ok: true, stageKey: normalizedStageKey, alreadyCharged: true, stage: existingStage };

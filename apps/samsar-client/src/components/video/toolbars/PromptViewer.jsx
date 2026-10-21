@@ -151,10 +151,6 @@ export default function PromptViewer(props) {
   //  Pricing
   // ─────────────────────────────────────────────────────────
   const modelPricing = IMAGE_MODEL_PRICES.find((m) => m.key === selectedModel);
-  const priceObj = modelPricing
-    ? modelPricing.prices.find((price) => price.aspectRatio === aspectRatio)
-    : null;
-  const modelPrice = priceObj ? priceObj.price : 0;
   const usesProviderBilling =
     isStandaloneModelFilteringEnabled && isProviderBilledImagePricing(modelPricing);
   const panelClassName = colorMode === 'dark'
@@ -174,7 +170,7 @@ export default function PromptViewer(props) {
           {usesProviderBilling ? (
             <span className={creditTextClassName}>Billed by the configured provider API</span>
           ) : (
-            <>Incurs <span className={creditTextClassName}>{modelPrice} Credits</span></>
+            <span className={creditTextClassName}>Image calls are charged on completion</span>
           )}
           <label className="ml-2 items-center">
             <input

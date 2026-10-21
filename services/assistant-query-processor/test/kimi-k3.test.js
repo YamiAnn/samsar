@@ -238,6 +238,10 @@ test('assistant Kimi response remains Responses-compatible for persistence and b
   assert.equal(result.response.object, 'response');
   assert.equal(result.response.output_text, 'A concise answer.');
   assert.deepEqual(result.response.usage, {
+    prompt_tokens: 20,
+    prompt_tokens_details: { cached_tokens: 5 },
+    completion_tokens: 7,
+    completion_tokens_details: { reasoning_tokens: 2 },
     input_tokens: 20,
     input_tokens_details: { cached_tokens: 5 },
     output_tokens: 7,

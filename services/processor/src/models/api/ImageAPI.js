@@ -1,17 +1,12 @@
 import { getDBConnectionString } from '../DBString.js';
 import { deductGenerationCredits } from '../GenerationCredits.js';
 import ImageGeneration from '../../schema/ImageGeneration.js';
+import { prepareImageRequestBilling, imageSubmissionCreditReceipt, saveImageAPIRequest, findImageAPIReplay } from './ImageRequestBilling.js';
 import GlobalSession from '../../schema/GlobalSession.js';
 import RollupBannerEnhanceTask from '../../schema/RollupBannerEnhanceTask.js';
 import User from '../../schema/User.js';
 import { upsertGlobalSessionMapping } from '../GlobalSession.js';
 import { getDescriptionForImageToCreateImageList } from '../ai_utils/VisionUtils.js';
-import {
-  getEnhanceImagePricing,
-  getExtendImageListPricing,
-  getRemoveBrandingFromImagePricing,
-  getTextToImagePricing,
-} from '../../consts/pricing/ApiPricing.js';
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
 import sharp from 'sharp';
@@ -34,7 +29,7 @@ import {
   isAlibabaQwenImage3ProAvailable,
 } from '../../consts/DockerProviderPriority.js';
 
-const OPENAI_MODEL = process.env.IMAGE_SET_PROMPT_MODEL || 'gpt-6.1-sol';
+const OPENAI_MODEL = process.env.IMAGE_SET_PROMPT_MODEL || 'gpt-6-astra';
 const openaiClient = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const ROLLUP_MAX_IMAGES = 28;
 const ROLLUP_COLUMNS = 4;
@@ -326,7 +321,8 @@ export function getTextToImageRequestPricing(model, requestedImages = 1) {
       },
     };
   }
-  return getTextToImagePricing(outputImages);
+  return { key: 'textToImage', credits: null, billingTiming: 'completion',
+    distribution: { requestedImages: outputImages, totalCredits: null } };
 }
 
 /**
@@ -368,17 +364,9 @@ export async function updateImageSet(payload = {}) {
     throw new Error('num_images must be a positive number.');
   }
 
-  const pricing = getExtendImageListPricing(numImagesRequested);
-
-  const creditResult = await deductGenerationCredits(userId, pricing.credits, {
-    source: 'image_update_set',
-    metadata: {
-      imageCount,
-      targetImageCount: numImagesRequested,
-      pricing,
-      requestType: 'API',
-    },
-  });
+  const replay = await findImageAPIReplay(userId, 'image_list_to_image_set', payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
+  if (replay) return replay;
+  const imageBilling = await prepareImageRequestBilling(userId);
 
   await getDBConnectionString();
 
@@ -400,6 +388,7 @@ export async function updateImageSet(payload = {}) {
 
 
   const generationPayload = new ImageGeneration({
+    ...imageBilling,
     editStatus: 'INIT',
     apiEditStatus: 'INIT',
     rowLocked: false,
@@ -415,7 +404,7 @@ export async function updateImageSet(payload = {}) {
     userId,
   });
 
-  const doc = await generationPayload.save({});
+  const doc = await saveImageAPIRequest(generationPayload, payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
 
   await upsertGlobalSessionMapping({
     sessionId: doc._id,
@@ -443,8 +432,7 @@ export async function updateImageSet(payload = {}) {
     num_images: numImagesRequested,
     aspect_ratio: normalizedAspectRatio,
     userId,
-    creditsCharged: pricing.credits,
-    remainingCredits: creditResult.remainingCredits,
+    ...imageSubmissionCreditReceipt(),
   };
 }
 
@@ -492,7 +480,6 @@ export async function generateTextToImage(payload = {}) {
     ? { ...normalizedMetadata, resolution: normalizedResolution }
     : normalizedMetadata;
   const outputImages = Math.max(1, Math.floor(requestedImages));
-  const pricing = getTextToImageRequestPricing(normalizedModel, outputImages);
 
   await getDBConnectionString();
   if (normalizedModel.startsWith(CUSTOM_TEXT_TO_IMAGE_MODEL_PREFIX)) {
@@ -515,20 +502,13 @@ export async function generateTextToImage(payload = {}) {
     }
   }
 
-  const creditResult = await deductGenerationCredits(userId, pricing.credits, {
-    source: 'image_text_to_image',
-    metadata: {
-      model: normalizedModel,
-      aspectRatio: normalizedAspectRatio,
-      ...(normalizedResolution ? { resolution: normalizedResolution } : {}),
-      requestedImages: outputImages,
-      pricing,
-      requestType: 'API',
-    },
-  });
+  const replay = await findImageAPIReplay(userId, 'text_to_image', payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
+  if (replay) return replay;
+  const imageBilling = await prepareImageRequestBilling(userId);
 
   const normalizedPrompt = prompt.trim();
   const generationPayload = new ImageGeneration({
+    ...imageBilling,
     generationStatus: 'INIT',
     apiGenerationStatus: 'INIT',
     rowLocked: false,
@@ -547,7 +527,7 @@ export async function generateTextToImage(payload = {}) {
     userId,
   });
 
-  const doc = await generationPayload.save({});
+  const doc = await saveImageAPIRequest(generationPayload, payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
 
   await upsertGlobalSessionMapping({
     sessionId: doc._id,
@@ -579,8 +559,7 @@ export async function generateTextToImage(payload = {}) {
     ...(normalizedResolution ? { resolution: normalizedResolution } : {}),
     num_images: outputImages,
     userId,
-    creditsCharged: pricing.credits,
-    remainingCredits: creditResult.remainingCredits,
+    ...imageSubmissionCreditReceipt(),
   };
 }
 
@@ -602,16 +581,9 @@ export async function removeBrandingFromImage(payload = {}) {
     throw new Error('image_url is required.');
   }
 
-  const pricing = getRemoveBrandingFromImagePricing();
-
-  const creditResult = await deductGenerationCredits(userId, pricing.credits, {
-    source: 'image_remove_branding',
-    metadata: {
-      imageUrl: image_url.trim(),
-      pricing,
-      requestType: 'API',
-    },
-  });
+  const replay = await findImageAPIReplay(userId, 'logo_remove', payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
+  if (replay) return replay;
+  const imageBilling = await prepareImageRequestBilling(userId);
 
   await getDBConnectionString();
 
@@ -619,6 +591,7 @@ export async function removeBrandingFromImage(payload = {}) {
   const aspectRatio = await determineAspectRatioFromImage(normalizedImageUrl);
 
   const generationPayload = new ImageGeneration({
+    ...imageBilling,
     editStatus: 'INIT',
     apiEditStatus: 'INIT',
     rowLocked: false,
@@ -632,7 +605,7 @@ export async function removeBrandingFromImage(payload = {}) {
     userId,
   });
 
-  const doc = await generationPayload.save({});
+  const doc = await saveImageAPIRequest(generationPayload, payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
 
   await upsertGlobalSessionMapping({
     sessionId: doc._id,
@@ -655,8 +628,7 @@ export async function removeBrandingFromImage(payload = {}) {
     case_type: 'logo_remove',
     image_url: normalizedImageUrl,
     userId,
-    creditsCharged: pricing.credits,
-    remainingCredits: creditResult.remainingCredits,
+    ...imageSubmissionCreditReceipt(),
   };
 }
 
@@ -679,18 +651,9 @@ export async function enhanceImage(payload = {}) {
 
   const normalizedResolution = normalizeResolution(resolution);
   const normalizedAspectRatio = normalizeAspectRatio(aspect_ratio) || '16:9';
-  const pricing = getEnhanceImagePricing(normalizedResolution);
-
-  const creditResult = await deductGenerationCredits(userId, pricing.credits, {
-    source: 'image_enhance',
-    metadata: {
-      imageUrl: image_url.trim(),
-      resolution: normalizedResolution,
-      aspectRatio: normalizedAspectRatio,
-      pricing,
-      requestType: 'API',
-    },
-  });
+  const replay = await findImageAPIReplay(userId, 'image_enhance', payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
+  if (replay) return replay;
+  const imageBilling = await prepareImageRequestBilling(userId);
 
   await getDBConnectionString();
 
@@ -698,6 +661,7 @@ export async function enhanceImage(payload = {}) {
   const prompt = `Upscale and enhance this image to ${normalizedResolution}`;
 
   const generationPayload = new ImageGeneration({
+    ...imageBilling,
     editStatus: 'INIT',
     apiEditStatus: 'INIT',
     rowLocked: false,
@@ -713,7 +677,7 @@ export async function enhanceImage(payload = {}) {
     userId,
   });
   
-  const doc = await generationPayload.save({});
+  const doc = await saveImageAPIRequest(generationPayload, payload.idempotencyKey, { ...payload, userId, idempotencyKey: undefined });
 
   await upsertGlobalSessionMapping({
     sessionId: doc._id,
@@ -739,8 +703,7 @@ export async function enhanceImage(payload = {}) {
     resolution: normalizedResolution,
     aspect_ratio: normalizedAspectRatio,
     userId,
-    creditsCharged: pricing.credits,
-    remainingCredits: creditResult.remainingCredits,
+    ...imageSubmissionCreditReceipt(),
   };
 }
 
@@ -790,7 +753,10 @@ export async function getImageStatus({ requestId, userId }) {
     throw error;
   }
 
-  const status = resolveImageStatus(imageDoc, globalSession?.status);
+  const completedStatus = resolveImageStatus(imageDoc, globalSession?.status);
+  const status = imageDoc?.imageBillingPolicy === 'adapter' &&
+    !isStandaloneEdition() && (imageDoc.imageBillingPending || imageDoc.imageDeliveryPending) && completedStatus === 'COMPLETED'
+    ? 'PENDING' : completedStatus;
 
   return buildImageStatusPayload({
     globalSession,
@@ -1460,10 +1426,7 @@ async function processEnhanceAndGenerateRollupBanner({
         if (!enhanceResponse?.session_id) {
           throw new Error('Enhancement request did not return a session_id.');
         }
-        const charged = Number(enhanceResponse?.creditsCharged);
-        enhanceCreditsCharged += Number.isFinite(charged)
-          ? charged
-          : getEnhanceImagePricing(resolution).credits;
+
 
         const taskDoc = await RollupBannerEnhanceTask.create({
           batchId,
@@ -1490,6 +1453,9 @@ async function processEnhanceAndGenerateRollupBanner({
         timeoutMs: ROLLUP_ENHANCE_TIMEOUT_MS,
         pollIntervalMs: ROLLUP_ENHANCE_POLL_INTERVAL_MS,
       });
+
+      const settledEnhancements = await ImageGeneration.find({ _id: { $in: enhanceTasks.map(task => task.sessionId) } }).lean();
+      enhanceCreditsCharged = settledEnhancements.reduce((sum, job) => sum + (Number(job.imageCreditsCharged) || 0), 0);
 
       enhancedResults.forEach((resultUrl, index) => {
         if (!normalizedImages[index]) {
@@ -1721,12 +1687,14 @@ async function waitForRollupEnhancements(tasks, opts = {}) {
     const sessionMap = new Map(
       sessions.map((session) => [session?.sessionId?.toString(), session])
     );
+    const billingJobs = await ImageGeneration.find({ _id: { $in: sessionIds } }).lean();
+    const pendingBilling = new Set(billingJobs.filter(job => job.imageBillingPending && !isStandaloneEdition() && (job.generationStatus === 'COMPLETED' || job.editStatus === 'COMPLETED')).map(job => String(job._id)));
 
     const updates = [];
 
     for (const [sessionId, task] of pending.entries()) {
       const session = sessionMap.get(sessionId);
-      const status = (session?.status || 'PENDING').toString().toUpperCase();
+      const status = pendingBilling.has(sessionId) ? 'PENDING' : (session?.status || 'PENDING').toString().toUpperCase();
       if (status === 'COMPLETED') {
         const resultUrl = session?.resultUrl || (Array.isArray(session?.resultUrls) ? session.resultUrls[0] : null);
         if (resultUrl) {
@@ -1915,7 +1883,7 @@ async function generatePromptForImageSet({
         { role: 'system', content: systemPrompt },
         { role: 'user', content: parts.join('\n') },
       ],
-      ...(!usesSelectedNonOpenAIProvider && OPENAI_MODEL === 'gpt-6.1-sol' ? {} : { temperature: 0.8 }),
+      ...(!usesSelectedNonOpenAIProvider && OPENAI_MODEL === 'gpt-6-astra' ? {} : { temperature: 0.8 }),
     };
     const completion = usesPreferenceAwareRouting
       ? await createCompatibleChatCompletion(openaiClient, completionPayload)
@@ -1972,16 +1940,17 @@ function normalizeAspectRatio(aspectRatio) {
   return `${match[1]}:${match[2]}`;
 }
 
-function resolveImageStatus(imageDoc, fallbackStatus = 'PENDING') {
+export function resolveImageStatus(imageDoc, fallbackStatus = 'PENDING') {
   if (!imageDoc) {
     return fallbackStatus || 'PENDING';
   }
 
-  if (imageDoc.operationType === 'EDIT') {
-    return imageDoc.editStatus || imageDoc.apiEditStatus || fallbackStatus || 'PENDING';
-  }
-
-  return imageDoc.generationStatus || imageDoc.apiGenerationStatus || fallbackStatus || 'PENDING';
+  const status = imageDoc.operationType === 'EDIT'
+    ? imageDoc.editStatus || imageDoc.apiEditStatus || fallbackStatus || 'PENDING'
+    : imageDoc.generationStatus || imageDoc.apiGenerationStatus || fallbackStatus || 'PENDING';
+  if (String(status).toUpperCase() === 'COMPLETED' && imageDoc.imageBillingPolicy === 'adapter' &&
+      !isStandaloneEdition() && (imageDoc.imageBillingPending || imageDoc.imageDeliveryPending)) return 'PENDING';
+  return status;
 }
 
 function buildImageStatusPayload({
@@ -1992,10 +1961,9 @@ function buildImageStatusPayload({
 }) {
   const sessionId = globalSession?.sessionId?.toString() || imageDoc?._id?.toString() || null;
   const requestId = globalSession?.requestId?.toString() || sessionId;
-  const resultUrls = Array.isArray(globalSession?.resultUrls)
-    ? globalSession.resultUrls.filter(Boolean)
-    : [];
-  const resultUrl = globalSession?.resultUrl || resultUrls[0] || null;
+  const resultUrls = globalSession?.resultUrls?.length ? globalSession.resultUrls.filter(Boolean)
+    : Array.isArray(imageDoc?.resultUrls) ? imageDoc.resultUrls.filter(Boolean) : [];
+  const resultUrl = globalSession?.resultUrl || imageDoc?.resultUrl || resultUrls[0] || null;
   const provider = globalSession?.provider || imageDoc?.model || null;
   const caseType = globalSession?.sessionSubType || imageDoc?.case_type;
 
@@ -2005,6 +1973,11 @@ function buildImageStatusPayload({
     status: status || 'PENDING',
     type: 'image',
     provider,
+    ...(imageDoc?.imageBillingPolicy === 'adapter' ? {
+      creditsCharged: imageDoc.imageCreditsCharged || 0,
+      remainingCredits: imageDoc.imageCreditsRemaining ?? null,
+      billingStatus: imageDoc.imageBillingPending ? 'PENDING' : (status === 'COMPLETED' ? 'COMPLETED' : 'PENDING'),
+    } : {}),
   };
 
   if (resultUrl) {

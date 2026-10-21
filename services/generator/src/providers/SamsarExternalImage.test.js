@@ -6,6 +6,7 @@ import {
   buildExternalImageIdempotencyKey,
   pollSamsarExternalImageEditRequest,
   pollSamsarExternalTextToImageRequest,
+  submitSamsarExternalTextToImageRequest,
 } from './SamsarExternalImage.js';
 
 function createModelRecorder() {
@@ -38,6 +39,49 @@ test('external image retries use a new idempotency key without splitting the sam
     buildExternalImageIdempotencyKey({ ...initialPayload, filterRetryCount: 1 }),
     buildExternalImageIdempotencyKey(initialPayload),
   );
+});
+
+test('a lost hosted submission response retries the same Samsar.js image call without a second job', async () => {
+  const jobs = new Map();
+  const keys = [];
+  const updates = [];
+  const payload = { _id: 'local-agent-image', model: 'GPTIMAGE2.5', prompt: 'A tree',
+    imageBillingPolicy: 'pipeline', userId: 'local-user' };
+  let loseResponse = true;
+  const dependencies = {
+    connect: async () => {}, recordProviderUsageLog: async () => {},
+    imageGenerationModel: {
+      async findByIdAndUpdate() {},
+      async findOneAndUpdate(filter, update) { updates.push(update); },
+    },
+    client: { async requestV2ExternalImage(route, request, options) {
+      assert.equal(route, 'text_to_image');
+      assert.equal(request.input.imageBillingPolicy, undefined);
+      keys.push(options.idempotencyKey);
+      jobs.set(options.idempotencyKey, 'hosted-image-id');
+      if (loseResponse) {
+        loseResponse = false;
+        throw Object.assign(new Error('submission response lost'), { status: 504 });
+      }
+      return { data: { request_id: jobs.get(options.idempotencyKey) }, creditsCharged: 0 };
+    } },
+  };
+  assert.equal(await submitSamsarExternalTextToImageRequest(payload, dependencies), null);
+  await submitSamsarExternalTextToImageRequest(payload, dependencies);
+  assert.equal(jobs.size, 1);
+  assert.equal(keys[0], keys[1]);
+  assert.equal(updates[0].apiGenerationStatus, 'INIT');
+  assert.equal(updates.at(-1).apiRequestId, 'samsar-external-image:hosted-image-id');
+});
+
+test('a hosted image polling timeout leaves the original request pending', async () => {
+  const recorder = createModelRecorder();
+  const result = await pollSamsarExternalTextToImageRequest({
+    _id: 'local-image', apiRequestId: 'samsar-external-image:original-hosted-job',
+  }, { connect: async () => {}, imageGenerationModel: recorder.model,
+    client: { async getV2ExternalImageStatus() { throw new Error('timeout'); } }, logger: { error() {} } });
+  assert.equal(result, null);
+  assert.deepEqual(recorder.updates.at(-1).update, { rowLocked: false });
 });
 
 test('completed external image generation retains its lock for downstream finalization', async () => {

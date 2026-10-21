@@ -83,9 +83,9 @@ function createTestGenblazeCatalog() {
         text: { modelId: 'Qwen/Qwen3.8-Max', operation: 'chat.completions' },
         vision: { modelId: 'Qwen/Qwen3.8-Max', operation: 'chat.completions' },
       },
-      'gpt-6.1-sol': {
-        text: { modelId: 'gpt-6.1-sol', operation: 'chat.completions' },
-        vision: { modelId: 'gpt-6.1-sol', operation: 'chat.completions' },
+      'gpt-6-astra': {
+        text: { modelId: 'gpt-6-astra', operation: 'chat.completions' },
+        vision: { modelId: 'gpt-6-astra', operation: 'chat.completions' },
       },
       'gemini-4-argon': {
         text: { modelId: 'gemini-4-argon', operation: 'chat.completions' },
@@ -105,7 +105,7 @@ test('GenBlaze adapter preserves the OpenAI chat completion contract', async (t)
     id: 'chatcmpl-genblaze',
     model: 'Qwen/Qwen3.8-Max',
     choices: [{ message: { role: 'assistant', content: 'ok' } }],
-    usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+    usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.001 },
   };
   const response = await createGenblazeChatCompletion({
     model: 'qwen3.8-max',
@@ -126,7 +126,7 @@ test('GenBlaze adapter preserves the OpenAI chat completion contract', async (t)
 
   assert.equal(capturedPayload.model, 'QWEN3.8');
   assert.equal(capturedPayload.authorization, undefined);
-  assert.deepEqual(response, expected);
+  assert.deepEqual(response, { ...expected, samsarBilling: { adapter: 'gmicloud', costUsd: 0.001 } });
 });
 
 test('GenBlaze sends canonical GPT and Gemini models with high reasoning and multimodal content', async (t) => {
@@ -150,7 +150,7 @@ test('GenBlaze sends canonical GPT and Gemini models with high reasoning and mul
   };
 
   await createGenblazeChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'reason deeply' }],
     temperature: 0.2,
     top_p: 0.9,
@@ -161,7 +161,7 @@ test('GenBlaze sends canonical GPT and Gemini models with high reasoning and mul
     reasoning_effort: 'low',
   }, { genblazeClient });
   await createGenblazeChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'use explicit effort' }],
     reasoning_effort: 'xhigh',
   }, { genblazeClient });
@@ -176,24 +176,24 @@ test('GenBlaze sends canonical GPT and Gemini models with high reasoning and mul
     resolveMediaUrl: async (url) => url,
   });
   await createGenblazeChatCompletion({
-    model: 'gpt-6.1-sol-xhigh',
+    model: 'gpt-6-astra-xhigh',
     messages: [{ role: 'user', content: 'reason extra deeply' }],
   }, { genblazeClient });
 
-  assert.equal(payloads[0].model, 'gpt-6.1-sol');
+  assert.equal(payloads[0].model, 'gpt-6-astra');
   for (const key of ['temperature', 'top_p', 'top_logprobs', 'logprobs', 'max_tokens']) {
     assert.equal(payloads[0][key], undefined);
   }
   assert.equal(payloads[0].max_completion_tokens, 4096);
   assert.equal(payloads[0].reasoning_effort, 'high');
   assert.equal(payloads[0].reasoning, undefined);
-  assert.equal(payloads[1].model, 'gpt-6.1-sol');
+  assert.equal(payloads[1].model, 'gpt-6-astra');
   assert.equal(payloads[1].reasoning_effort, 'xhigh');
   assert.equal(payloads[2].model, 'gemini-4-argon');
   assert.equal(payloads[2].reasoning_effort, 'high');
   assert.equal(payloads[2].reasoning, undefined);
   assert.deepEqual(payloads[2].messages[0].content[1], imagePart);
-  assert.equal(payloads[3].model, 'gpt-6.1-sol');
+  assert.equal(payloads[3].model, 'gpt-6-astra');
   assert.equal(payloads[3].reasoning_effort, 'xhigh');
   await assert.rejects(
     createGenblazeChatCompletion({ model: 'kimi-k3', messages: [] }, { genblazeClient }),
@@ -234,11 +234,11 @@ test('unwrapSamsarExternalChatCompletionResponse unwraps samsar-js response enve
     ],
   };
 
-  assert.equal(unwrapSamsarExternalChatCompletionResponse({
+  assert.deepEqual(unwrapSamsarExternalChatCompletionResponse({
     data: chatCompletion,
     status: 200,
     creditsCharged: 1.23,
-  }), chatCompletion);
+  }), { ...chatCompletion, samsarBilling: { adapter: 'samsar', costUsd: 0.0123 } });
 });
 
 test('unwrapSamsarExternalChatCompletionResponse preserves raw OpenAI-compatible responses', () => {
@@ -275,13 +275,13 @@ test('production Docker does not enable standalone external inference implicitly
   process.env.SAMSAR_API_KEY = 'test-samsar-key';
 
   assert.equal(shouldUseSamsarExternalInference({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
   }), false);
 
   process.env.SAMSAR_EXTERNAL_INFERENCE_ENABLED = 'true';
   assert.equal(shouldUseSamsarExternalInference({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
   }), true);
 });
@@ -305,7 +305,7 @@ test('shouldUseSamsarExternalInference falls back for OpenAI models in docker wi
   process.env.SAMSAR_API_KEY = 'test-samsar-key';
 
   assert.equal(shouldUseSamsarExternalInference({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
   }), true);
 });
@@ -317,7 +317,7 @@ test('shouldUseSamsarExternalInference keeps OpenAI native when OpenAI auth is c
   process.env.OPENAI_API_KEY = 'test-openai-key';
 
   assert.equal(shouldUseSamsarExternalInference({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
   }), false);
 });
@@ -405,7 +405,7 @@ test('Docker Qwen uses native, GMICloud, Samsar, then OpenRouter', () => {
   process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
   process.env.SAMSAR_API_KEY = 'test-samsar-key';
 
-  for (const model of ['gpt-6.1-sol', 'gemini-4-argon']) {
+  for (const model of ['gpt-6-astra', 'gemini-4-argon']) {
     assert.equal(resolveConfiguredInferenceProvider(model), DOCKER_INFERENCE_PROVIDER.OPENROUTER);
     assert.equal(shouldUseSamsarExternalInference({ model }), true);
   }
@@ -660,13 +660,13 @@ test('OpenRouter preserves explicit Sol xhigh for inference and metadata', async
     response_format: responseFormat,
   });
   await createOpenRouterChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'return JSON' }],
     reasoning_effort: 'xhigh',
     response_format: responseFormat,
   });
   await createOpenRouterChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'generate metadata' }],
     reasoning_effort: 'xhigh',
     response_format: responseFormat,
@@ -676,11 +676,11 @@ test('OpenRouter preserves explicit Sol xhigh for inference and metadata', async
   assert.equal(payloads[0].reasoning.effort, 'high');
   assert.equal(payloads[0].max_tokens, 65536);
   assert.equal(Object.hasOwn(payloads[0], 'max_completion_tokens'), false);
-  assert.equal(payloads[1].model, 'openai/gpt-6.1-sol');
+  assert.equal(payloads[1].model, 'openai/gpt-6-astra');
   assert.equal(payloads[1].reasoning.effort, 'xhigh');
   assert.equal(payloads[1].max_completion_tokens, 128000);
   assert.equal(Object.hasOwn(payloads[1], 'max_tokens'), false);
-  assert.equal(payloads[2].model, 'openai/gpt-6.1-sol');
+  assert.equal(payloads[2].model, 'openai/gpt-6-astra');
   assert.equal(payloads[2].reasoning.effort, 'xhigh');
   assert.equal(payloads[2].max_completion_tokens, 128000);
   for (const payload of payloads) {
@@ -941,7 +941,7 @@ test('native authorization preserves Samsar fallback until provider credentials 
     authorization: 'native',
   }), true);
   assert.equal(shouldUseSamsarExternalInference({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     authorization: 'native',
   }), true);
 });
@@ -958,17 +958,17 @@ test('external inference preserves explicit Sol reasoning effort without changin
   });
 
   await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
     reasoning_effort: 'low',
   });
   await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'deep analysis' }],
     reasoning_effort: 'xhigh',
   });
   await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'generate metadata' }],
     reasoning_effort: 'xhigh',
   });
@@ -979,9 +979,9 @@ test('external inference preserves explicit Sol reasoning effort without changin
   });
 
   assert.equal(payloads[0].reasoning_effort, 'high');
-  assert.equal(payloads[1].model, 'gpt-6.1-sol');
+  assert.equal(payloads[1].model, 'gpt-6-astra');
   assert.equal(payloads[1].reasoning_effort, 'xhigh');
-  assert.equal(payloads[2].model, 'gpt-6.1-sol');
+  assert.equal(payloads[2].model, 'gpt-6-astra');
   assert.equal(payloads[2].reasoning_effort, 'xhigh');
   assert.equal(payloads[3].reasoning_effort, 'high');
 });
@@ -1017,7 +1017,7 @@ test('Samsar external inference resolves provider media freshly on every retry',
   const originalMessages = JSON.parse(JSON.stringify(sourceMessages));
   let resolverCalls = 0;
   const response = await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: sourceMessages,
     externalMaxRetries: 1,
     timeout: 1000,
@@ -1065,7 +1065,7 @@ test('deployed external inference can queue and poll a long-running assistant re
   });
 
   const response = await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'return JSON' }],
     externalPolling: true,
     externalPollIntervalMs: 1,
@@ -1121,7 +1121,7 @@ test('Docker external polling persists correlation before polling the hosted req
   }));
 
   const response = await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'hello' }],
     externalPolling: true,
     externalPollIntervalMs: 1,
@@ -1181,7 +1181,7 @@ test('Docker external polling resumes a persisted hosted request without resubmi
   });
 
   const response = await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'resume' }],
     externalPolling: true,
     externalPollTimeoutMs: 1000,
@@ -1201,7 +1201,7 @@ test('Docker external polling marks a completed persisted response as reused wit
   clearProviderEnv();
   process.env.SAMSAR_API_KEY = 'completed-polling-test-key';
   const persistedResponse = {
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     usage: { input_tokens: 10, output_tokens: 2 },
     choices: [{ message: { content: 'already completed' } }],
   };
@@ -1223,7 +1223,7 @@ test('Docker external polling marks a completed persisted response as reused wit
   });
 
   const response = await createSamsarExternalChatCompletion({
-    model: 'gpt-6.1-sol',
+    model: 'gpt-6-astra',
     messages: [{ role: 'user', content: 'reuse' }],
     externalPolling: true,
     externalRequestContext: {
@@ -1282,7 +1282,7 @@ test('Docker does not resubmit after an ambiguous hosted reset', async (t) => {
 
   await assert.rejects(
     createSamsarExternalChatCompletion({
-      model: 'gpt-6.1-sol',
+      model: 'gpt-6-astra',
       messages: [{
         role: 'user',
         content: [{

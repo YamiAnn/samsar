@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 import { getDBConnectionString } from '../DBString.js';
 import VideoSession from '../../schema/VideoSession.js';
 import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
@@ -70,7 +71,7 @@ export async function requestRenderLumaVideo(payload) {
   aiVideoRenderPayload.userId = userId;
 
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   const renderSaveRes = await aiRenderPayload.save();
 
 

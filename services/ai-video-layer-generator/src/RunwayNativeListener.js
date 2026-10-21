@@ -49,6 +49,7 @@ export async function generateRunwayNativeVideoLayer(payload) {
     }
   }
 
+ payload.videoBillingNativeReceipt = { adapter: 'runway', model: inputPayload.model, seconds: inputPayload.duration };
  const response = await axios.post(RUNWAY_VIDEO_LINK, inputPayload, headers);
 
   const responseData = response.data;
@@ -114,7 +115,8 @@ export async function listenToPendingRunwayNativeVideoRequest(payload) {
   
       return {
         responseStatus: 'COMPLETED',
-        remoteUrl: videoURL
+        remoteUrl: videoURL,
+        videoBillingReceipt: { ...payload.videoBillingNativeReceipt, providerRequestId: generationId }
       };
 
     } catch (error) {

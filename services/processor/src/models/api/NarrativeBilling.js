@@ -1,4 +1,4 @@
-import { calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
+import { calculateInferenceCreditsFromUsage as calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
 
 const CREDITS_PER_DOLLAR = 100;
 

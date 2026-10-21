@@ -1,3 +1,5 @@
+import { normalizeAssistantResponseUsage } from './AssistantBilling.js';
+import { isAssistantProviderOutcomeUncertain } from './AssistantRequestBilling.js';
 import OpenAI from "openai";
 import {
   DEFAULT_INFERENCE_MODEL,
@@ -172,6 +174,7 @@ function getInferenceAdapterErrorMetadata(error) {
 }
 
 export function isRetryableInferenceAdapterError(error) {
+  if (error?.retryable === false) return false;
   const { status, codes, names, message } = getInferenceAdapterErrorMetadata(error);
   if (codes.includes('GENBLAZE_MODEL_UNSUPPORTED')) {
     return true;
@@ -312,7 +315,10 @@ export async function sendAssistantCompletionRequest(messageList, inferenceModel
           messageList,
           model,
           buildProviderPinnedCompletionOptions(completionOptions, provider),
-        ),
+        ).catch(error => {
+          if (completionOptions.assistantBillingRequestId && isAssistantProviderOutcomeUncertain(error)) error.retryable = false;
+          throw error;
+        }),
       );
     }
   }
@@ -402,6 +408,7 @@ export async function sendAssistantKimiK3CompletionRequest(
     messages: messageList,
     reasoning_effort: GPT_56_SOL_REASONING_EFFORT,
     timeout: getRequestTimeoutMs(options),
+    maxRetries: options.maxRetries, externalMaxRetries: options.externalMaxRetries,
   }, dependencyOverrides);
   const outputText = response?.choices?.[0]?.message?.content || '';
 
@@ -421,6 +428,7 @@ export async function sendAssistantQwenCompletionRequest(messageList, inferenceM
     bypassSamsarExternalInference,
     samsarExternalInference,
     inferenceAdapterProvider,
+    assistantBillingRequestId,
     ...providerOptions
   } = options;
   const response = await createQwenChatCompletion({
@@ -447,6 +455,8 @@ export async function sendAssistantSamsarExternalCompletionRequest(messageList, 
     ...getCompatibleChatRequestOptions(options),
     model,
     messages: messageList,
+    assistantBillingRequestId: options.assistantBillingRequestId,
+    maxRetries: options.maxRetries, externalMaxRetries: options.externalMaxRetries,
     authorization: options.authorization,
     bypassSamsarExternalInference: options.bypassSamsarExternalInference,
     samsarExternalInference: options.samsarExternalInference,
@@ -818,16 +828,7 @@ function normalizeChatCompletionToResponses(chatResponse) {
         content: buildFallbackAssistantContent(text),
       },
     ],
-    usage: {
-      input_tokens: Number(chatResponse?.usage?.prompt_tokens) || 0,
-      input_tokens_details: {
-        cached_tokens: Number(chatResponse?.usage?.prompt_tokens_details?.cached_tokens) || 0,
-      },
-      output_tokens: Number(chatResponse?.usage?.completion_tokens) || 0,
-      output_tokens_details: {
-        reasoning_tokens: Number(chatResponse?.usage?.completion_tokens_details?.reasoning_tokens) || 0,
-      },
-      total_tokens: Number(chatResponse?.usage?.total_tokens) || 0,
-    },
+    samsarBilling: chatResponse?.samsarBilling,
+    usage: normalizeAssistantResponseUsage(chatResponse?.usage),
   };
 }

@@ -967,7 +967,7 @@ router.post('/assistant/completion', authenticateExternalRequest, async (req, re
     const result = await createAssistantCompletion(
       req.userId,
       requestPayload,
-      { externalUser },
+      { externalUser, idempotencyKey: req.get('Idempotency-Key') },
     );
     const externalCreditState = await loadExternalCreditState(externalUser);
     setCreditHeaders(res, result.creditsCharged, externalCreditState.remainingCredits);

@@ -1,4 +1,5 @@
 import SamsarClient from 'samsar-js';
+import { isSubmissionOutcomeUnknown } from '../utils/ProviderSubmissionSafety.js';
 
 import { getDBConnectionString } from '../DBString.js';
 import ImageGeneration from '../schema/ImageGeneration.js';
@@ -421,7 +422,7 @@ export async function handleSamsarExternalTextToImageRequest(payload = {}, depen
   const status = normalizeString(apiGenerationStatus || 'INIT').toUpperCase();
 
   if (status === 'INIT') {
-    return submitSamsarExternalTextToImageRequest(payload);
+    return submitSamsarExternalTextToImageRequest(payload, dependencies);
   }
   if (status === 'PENDING') {
     return pollSamsarExternalTextToImageRequest(payload, dependencies);
@@ -435,7 +436,7 @@ export async function handleSamsarExternalTextToImageRequest(payload = {}, depen
 export async function handleSamsarExternalImageEditRequest(payload = {}, dependencies = {}) {
   const status = normalizeString(payload?.apiEditStatus || 'INIT').toUpperCase();
   if (status === 'INIT') {
-    return submitSamsarExternalImageEditRequest(payload);
+    return submitSamsarExternalImageEditRequest(payload, dependencies);
   }
   if (status === 'PENDING') {
     return pollSamsarExternalImageEditRequest(payload, dependencies);
@@ -446,15 +447,16 @@ export async function handleSamsarExternalImageEditRequest(payload = {}, depende
   return null;
 }
 
-async function submitSamsarExternalTextToImageRequest(payload = {}) {
+export async function submitSamsarExternalTextToImageRequest(payload = {}, dependencies = {}) {
   const { _id, model, prompt, aspectRatio, numImages } = payload;
-  const client = getExternalClient();
+  const client = dependencies.client || getExternalClient();
+  const imageGenerationModel = dependencies.imageGenerationModel || ImageGeneration;
   if (!client) {
     throw new Error('SAMSAR_API_KEY is required for external Samsar image generation.');
   }
 
-  await getDBConnectionString();
-  await ImageGeneration.findByIdAndUpdate(_id, { rowLocked: true });
+  await (dependencies.connect || getDBConnectionString)();
+  await imageGenerationModel.findByIdAndUpdate(_id, { rowLocked: true });
 
   try {
     const response = await client.requestV2ExternalImage(
@@ -487,7 +489,7 @@ async function submitSamsarExternalTextToImageRequest(payload = {}) {
       throw new Error('Samsar external image submit returned no request id.');
     }
 
-    await recordProviderUsageLog({
+    await (dependencies.recordProviderUsageLog || recordProviderUsageLog)({
       payload,
       requestType: 'text_to_image',
       callType: 'text_to_image',
@@ -504,7 +506,7 @@ async function submitSamsarExternalTextToImageRequest(payload = {}) {
       },
     });
 
-    await ImageGeneration.findOneAndUpdate(
+    await imageGenerationModel.findOneAndUpdate(
       { _id },
       {
         apiRequestId: `${EXTERNAL_REQUEST_PREFIX}${requestId}`,
@@ -517,14 +519,21 @@ async function submitSamsarExternalTextToImageRequest(payload = {}) {
   } catch (error) {
     const message = error?.message || 'Error submitting request to Samsar external image API.';
     console.error('Error submitting request to Samsar external image API: ', error);
-    await failExternalRequest(_id, message);
+    if (isSubmissionOutcomeUnknown(error)) {
+      await imageGenerationModel.findOneAndUpdate({ _id }, { rowLocked: false,
+        apiGenerationStatus: 'INIT', generationStatus: 'PENDING',
+        nextAttemptAfter: new Date(Date.now() + 15000) });
+      return null;
+    }
+    await failExternalRequest(_id, message, imageGenerationModel);
     return { image: null, error: message };
   }
 }
 
-async function submitSamsarExternalImageEditRequest(payload = {}) {
+export async function submitSamsarExternalImageEditRequest(payload = {}, dependencies = {}) {
   const { _id, model } = payload;
-  const client = getExternalClient();
+  const client = dependencies.client || getExternalClient();
+  const imageGenerationModel = dependencies.imageGenerationModel || ImageGeneration;
   if (!client) {
     throw new Error('SAMSAR_API_KEY is required for external Samsar image edit.');
   }
@@ -537,8 +546,8 @@ async function submitSamsarExternalImageEditRequest(payload = {}) {
     };
   }
 
-  await getDBConnectionString();
-  await ImageGeneration.findByIdAndUpdate(_id, { rowLocked: true });
+  await (dependencies.connect || getDBConnectionString)();
+  await imageGenerationModel.findByIdAndUpdate(_id, { rowLocked: true });
 
   try {
     const requestPayload = await buildExternalImageEditPayload(payload, route);
@@ -556,7 +565,7 @@ async function submitSamsarExternalImageEditRequest(payload = {}) {
       throw new Error('Samsar external image edit submit returned no request id.');
     }
 
-    await recordProviderUsageLog({
+    await (dependencies.recordProviderUsageLog || recordProviderUsageLog)({
       payload,
       requestType: 'image_edit',
       callType: normalizeCaseType(payload.case_type),
@@ -572,7 +581,7 @@ async function submitSamsarExternalImageEditRequest(payload = {}) {
       },
     });
 
-    await ImageGeneration.findOneAndUpdate(
+    await imageGenerationModel.findOneAndUpdate(
       { _id },
       {
         apiRequestId: `${EXTERNAL_REQUEST_PREFIX}${requestId}`,
@@ -587,7 +596,13 @@ async function submitSamsarExternalImageEditRequest(payload = {}) {
   } catch (error) {
     const message = error?.message || 'Error submitting request to Samsar external image edit API.';
     console.error('Error submitting request to Samsar external image edit API: ', error);
-    await failExternalEditRequest(_id, message);
+    if (isSubmissionOutcomeUnknown(error)) {
+      await imageGenerationModel.findOneAndUpdate({ _id }, { rowLocked: false,
+        apiEditStatus: 'INIT', editStatus: 'PENDING',
+        nextAttemptAfter: new Date(Date.now() + 15000) });
+      return null;
+    }
+    await failExternalEditRequest(_id, message, imageGenerationModel);
     return { image: null, error: message };
   }
 }
@@ -645,8 +660,8 @@ export async function pollSamsarExternalTextToImageRequest(payload = {}, depende
   } catch (error) {
     const message = error?.message || 'Error polling Samsar external image API.';
     logger.error('Error polling Samsar external image API: ', error);
-    await failExternalRequest(_id, message, imageGenerationModel);
-    return { image: null, error: message };
+    await imageGenerationModel.findOneAndUpdate({ _id }, { rowLocked: false });
+    return null;
   }
 }
 
@@ -706,11 +721,7 @@ export async function pollSamsarExternalImageEditRequest(payload = {}, dependenc
   } catch (error) {
     const message = error?.message || 'Error polling Samsar external image edit API.';
     logger.error('Error polling Samsar external image edit API: ', error);
-    await failExternalEditRequest(_id, message, imageGenerationModel);
-    return {
-      image: null,
-      error: message,
-      ambiguousAdapterFailure: true,
-    };
+    await imageGenerationModel.findOneAndUpdate({ _id }, { rowLocked: false });
+    return null;
   }
 }

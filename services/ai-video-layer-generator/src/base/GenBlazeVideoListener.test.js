@@ -456,6 +456,7 @@ test('poll response maps back to the existing listener result shape', async () =
   assert.deepEqual(completed, {
     responseStatus: 'COMPLETED',
     remoteUrl: 'https://cdn.example/video.mp4',
+    videoBillingReceipt: { adapter: 'gmicloud', model: undefined, providerRequestId: 'sealed/video-job' },
   });
 
   const failed = await listenToPendingGenBlazeVideoRequest(
@@ -485,3 +486,18 @@ test('GMICloud Seedance 2.5 supports up to 20 seconds without extending Seedance
   };
   assert.equal(buildGenBlazeVideoRequest(payload).params.duration, 15);
 });
+
+for (const costUsd of [0, 0.425, undefined]) {
+  test(`GMI video polling preserves reported completion charge ${costUsd}`, async () => {
+    const result = await listenToPendingGenBlazeVideoRequest({
+      generationId: 'genblaze-video:receipt-job', model: 'SEEDANCE2.5I2V',
+    }, { request: async () => ({ status: 'succeeded',
+      assets: [{ url: 'https://cdn.example/clip.mp4' }],
+      ...(costUsd === undefined ? {} : { billing: { cost_usd: costUsd } }),
+    }) });
+    assert.equal(result.videoBillingReceipt.adapter, 'gmicloud');
+    assert.equal(result.videoBillingReceipt.providerRequestId, 'receipt-job');
+    assert.equal(Object.hasOwn(result.videoBillingReceipt, 'costUsd'), costUsd !== undefined);
+    if (costUsd !== undefined) assert.equal(result.videoBillingReceipt.costUsd, costUsd);
+  });
+}

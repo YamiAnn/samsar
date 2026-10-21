@@ -30,7 +30,7 @@ export async function getImageFromText(payload) {
     const imageURL = await getImageFromWebModel(prompt);
     return imageURL;
   } else if (model === IMAGE_GENERAITON_MODEL_TYPES['DALLE3']) {
-    const response = await getImageFromAPI(prompt, aspectRatio);
+    const response = await getImageFromAPI(prompt, aspectRatio, payload);
     return response;
   } 
 }

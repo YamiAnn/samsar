@@ -1,3 +1,5 @@
+import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
+import { prepareVideoRequestBilling } from './VideoRequestBilling.js';
 import { requestRenderLumaVideo } from './Luma.js';
 import { requestRenderSDVideo } from './SDVideo.js';
 import { requestRenderRunwayVideo } from './RunwayML.js';
@@ -20,11 +22,9 @@ import { requestRenderCreatifyLipSyncVideo }  from './CreatifyLipSync.js';
 import { requestRenderVeoVideo } from './Veo.js';
 
 import { setSessionLayerAiVideoGenerationPending } from '../VideoSession.js';
-import User from '../../schema/User.js';
 import {
   COSMOS3_SUPER_MODEL_KEY,
   getVideoModelDurationUnitsForFramesPerSecond,
-  VIDEO_MODEL_PRICES,
 } from '../../consts/ModelPrices.js';
 import { getDBConnectionString } from '../DBString.js';
 
@@ -40,24 +40,9 @@ import { requestRenderDirectExternalI2VVideo } from './DirectExternalI2V.js';
 
 import { requestRenderGenericVideo, requestRenderGenericLipSyncVideo } from './Generic.js';
 
-import { shouldBypassGenerationCredits } from '../../utils/EnvironmentUtils.js';
-import { maybeTriggerAutoRecharge } from '../AutoRecharge.js';
-import { deductGenerationCreditsIdempotently } from '../GenerationCredits.js';
 import VideoSession from '../../schema/VideoSession.js';
 import { getRenderableItemListForLayer } from '../../utils/ImageRenderUtils.js';
 import { assertVideoModelEnabled } from '../../consts/VideoModelAvailability.js';
-
-const STUDIO_VIDEO_DURATION_UNITS_BY_MODEL = {
-  'VEO3.1I2V': [4, 6, 8],
-  'VEO3.1I2VFAST': [4, 6, 8],
-  'SEEDANCE2.0I2V': [5, 10, 15],
-  'SEEDANCE2.5I2V': [5, 10, 15, 20],
-  HAPPYHORSEI2V: [5, 10, 15],
-};
-
-function getStudioVideoDurationUnits(model, fallbackUnits) {
-  return STUDIO_VIDEO_DURATION_UNITS_BY_MODEL[model] || fallbackUnits;
-}
 
 function pickDuration(units, target) {
   if (!Array.isArray(units) || units.length === 0) {
@@ -164,6 +149,11 @@ export async function requestGenerateCustomAIVideo(userId, payload) {
 
   await getDBConnectionString();
 
+  if (payload.generationRequestId) {
+    const existing = await AIVideoLayerGeneration.findOne({ _id: payload.generationRequestId, userId: String(userId) }).lean();
+    if (existing) return;
+  }
+
   await assertLayerCanQueueAiVideoGeneration(payload);
 
   payload = await normalizeCosmos3PayloadDuration(payload);
@@ -171,70 +161,8 @@ export async function requestGenerateCustomAIVideo(userId, payload) {
   const { model, aspectRatio, duration = 5 } = payload;
 
 
-  if (!shouldBypassGenerationCredits()) {
-    const generationCostObject = VIDEO_MODEL_PRICES.find((model) => (model.key === payload.model));
-    if (!generationCostObject?.prices?.length) {
-      throw new Error('Invalid model');
-    }
-
-    const costItem =
-      generationCostObject.prices.find((price) => (price.aspectRatio === aspectRatio)) ||
-      generationCostObject.prices[0];
-
-    if (!costItem?.price) {
-      throw new Error('Invalid model');
-    }
-
-    let generationCost = costItem.price;
-
-
-
-    if (payload.duration) {
-      if (generationCostObject.isPerSecondPricing === true) {
-        generationCost = generationCost * duration;
-      } else {
-        const generationCostUnits = getStudioVideoDurationUnits(payload.model, generationCostObject.units);
-        if (Array.isArray(generationCostUnits) && generationCostUnits.length > 0) {
-          const costItemUnitIndex = generationCostUnits.findIndex((unit) => (unit.toString() === duration.toString()));
-          const generationCostMultiplier = costItemUnitIndex >= 0 ? costItemUnitIndex + 1 : 1;
-
-          generationCost = generationCost * generationCostMultiplier;
-        } else {
-          generationCost = generationCost * duration;
-        }
-      }
-    }
-
-    if (!generationCost) {
-      throw new Error('Invalid model');
-    }
-
-    if (payload.creditIdempotencyKey) {
-      await deductGenerationCreditsIdempotently(userId, generationCost, {
-        source: 'direct_external_image_to_video',
-        idempotencyKey: payload.creditIdempotencyKey,
-        metadata: {
-          sessionId: payload.videoSessionId || payload.sessionId,
-          layerId: payload.currentLayerId || payload.layerId,
-          model: payload.model,
-        },
-      });
-    } else {
-      const updateResult = await User.updateOne(
-        { _id: userId, generationCredits: { $gt: generationCost } },
-        { $inc: { generationCredits: -generationCost } }
-      );
-
-
-
-      // If no documents were updated, it means the user either doesn't exist or doesn't have enough credits
-      if (updateResult.modifiedCount === 0) {
-        throw new Error('Not enough credits');
-      }
-
-      await maybeTriggerAutoRecharge(userId);
-    }
-  }
+  const billingFields = await prepareVideoRequestBilling(userId);
+  payload = { ...payload, ...billingFields };
 
   payload.userId = userId;
 

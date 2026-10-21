@@ -1,4 +1,6 @@
+import { checkpointImageResult } from '../billing/ImageResultCheckpoint.js';
 import 'dotenv/config';
+import { reportedImageCharge } from '../billing/ImagePricing.js';
 import * as fs from 'fs';
 import path from "path";
 import { mkdir, writeFile } from "fs/promises";
@@ -38,7 +40,7 @@ export async function handleGPTImageTwoRequest(payload) {
   try {
     const inputPayload = buildOpenAIGPTImageTwoInput({ prompt, aspectRatio });
 
-    const image = await openai.images.generate(inputPayload);
+    const image = await openai.images.generate(inputPayload, { maxRetries: 0 });
 
     const imageData = image.data[0]['b64_json'];
 
@@ -54,11 +56,13 @@ export async function handleGPTImageTwoRequest(payload) {
 
 
 
-    return normalizeGPTImageTwoResult({
+    return checkpointImageResult(payload, normalizeGPTImageTwoResult({
       image: imageName,
       width: metadata.width,
       height: metadata.height,
-    });
+      imageBillingReceipt: { adapter: 'openai', model: inputPayload.model, usage: image.usage,
+        providerRequestId: image.id || image._request_id, ...reportedImageCharge(image) },
+    }));
 
   } catch (error) {
     let errorString = 'An error occurred while generating the image. Please try again with a different prompt.'
@@ -149,7 +153,7 @@ export async function getImage2OutpaintImageFromApi(payload) {
 
   try {
     const image = await openai.images.edit(
-      inputPayload
+      inputPayload, { maxRetries: 0 }
     );
 
     const imageData = image.data[0]['b64_json'];
@@ -167,7 +171,8 @@ export async function getImage2OutpaintImageFromApi(payload) {
     const imageName = await saveBufferToFile(buffer);
 
 
-    return { image: imageName };
+    return checkpointImageResult(payload, { image: imageName, imageBillingReceipt: { adapter: 'openai', model: inputPayload.model,
+      usage: image.usage, providerRequestId: image.id || image._request_id, ...reportedImageCharge(image) } });
 
   } catch (error) {
 

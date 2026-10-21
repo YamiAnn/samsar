@@ -114,6 +114,7 @@ export function fromAnthropicMessage(response) {
       finish_reason: response.stop_reason === 'tool_use' ? 'tool_calls'
         : response.stop_reason === 'max_tokens' ? 'length' : 'stop' }],
     usage: {
+      anthropic_usage: response.usage,
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
       total_tokens: promptTokens + completionTokens,

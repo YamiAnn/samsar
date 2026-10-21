@@ -6,12 +6,10 @@ import { DEFAULT_INFERENCE_MODEL, normalizeInferenceModel } from '../../consts/I
 import ExternalAssistantRequest from '../../schema/ExternalAssistantRequest.js';
 import { createCompatibleChatCompletion } from '../ai_utils/OpenAICompat.js';
 import { getDBConnectionString } from '../DBString.js';
-import { deductGenerationCredits } from '../GenerationCredits.js';
-import {
-  calculateAssistantCreditsFromUsage,
-  calculateLegacyAssistantCredits,
-  EXTERNAL_CHAT_PRICING_MULTIPLIER,
-} from './AssistantBilling.js';
+import { assistantRequestIdentity, runAssistantRequest } from './AssistantRequestBilling.js';
+import { assistantBillingStore, admitAssistantRequest, chargeAssistantRequest } from './AssistantBillingStore.js';
+import { getCurrentAPIKeyUsageContext } from './RequestAuthContext.js';
+
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
 const DEFAULT_EXTERNAL_CHAT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -127,7 +125,7 @@ function getRequestedModel(payload = {}) {
 }
 
 export async function createExternalChatCompletion(
-  { userId, payload = {} } = {},
+  { userId, payload = {}, idempotencyKey, apiKeyUsage = getCurrentAPIKeyUsageContext() } = {},
   dependencyOverrides = {},
 ) {
   if (!userId) {
@@ -154,43 +152,20 @@ export async function createExternalChatCompletion(
   const createCompletion = typeof dependencyOverrides.createCompletion === 'function'
     ? dependencyOverrides.createCompletion
     : createCompatibleChatCompletion;
-  const response = await createCompletion(openai, providerPayload, dependencyOverrides);
-
-  const assistantMessage = response?.choices?.[0]?.message;
-  const outputText = typeof assistantMessage?.content === 'string'
-    ? assistantMessage.content
-    : '';
-  const billing = calculateAssistantCreditsFromUsage({
-    model: response?.model || model,
-    usage: response?.usage,
-    pricingMultiplier: EXTERNAL_CHAT_PRICING_MULTIPLIER,
+  await (dependencyOverrides.connect || getDBConnectionString)();
+  const identity = assistantRequestIdentity(userId, 'external_chat', payload, idempotencyKey);
+  return runAssistantRequest({ ...identity, userId, scope: 'external_chat', model,
+    store: dependencyOverrides.store || assistantBillingStore, leaseMs: timeout + 60000,
+    context: { apiKeyUsage },
+    admit: () => (dependencyOverrides.admit || admitAssistantRequest)(userId, null, { apiKeyUsage }),
+    generate: requestId => createCompletion(openai, { ...providerPayload,
+      assistantBillingRequestId: requestId, maxRetries: 0, externalMaxRetries: 0 }, dependencyOverrides),
+    charge: (credits, context) => dependencyOverrides.deductCredits
+      ? dependencyOverrides.deductCredits(userId, credits, { ...context, source: 'external_chat_completion',
+        metadata: { category: 'external_chat', pricingMultiplier: 1.2, costUsd: context.billing.costUsd } })
+      : chargeAssistantRequest(userId, credits, { ...context, source: 'external_chat_completion',
+        metadata: { apiKeyUsage: context.requestContext?.apiKeyUsage } }),
   });
-  const creditsCharged = billing.credits || calculateLegacyAssistantCredits({
-    inputMessages: messages,
-    outputText,
-  });
-
-  const deductCredits = typeof dependencyOverrides.deductCredits === 'function'
-    ? dependencyOverrides.deductCredits
-    : deductGenerationCredits;
-  const chargeResult = await deductCredits(userId, creditsCharged, {
-    source: 'external_chat_completion',
-    metadata: {
-      requestType: 'API',
-      category: 'external_chat',
-      model: response?.model || model,
-      pricingMultiplier: billing.pricingMultiplier ?? EXTERNAL_CHAT_PRICING_MULTIPLIER,
-      costUsd: billing.costUsd ?? null,
-      usage: billing.usage ?? null,
-      creditsCharged,
-    },
-  });
-
-  return {
-    response,
-    creditsCharged,
-    remainingCredits: chargeResult?.remainingCredits ?? null,
-  };
 }
 
 function getRequestErrorStatus(error) {
@@ -239,16 +214,17 @@ function buildExternalChatRequestPayload(request) {
   return payload;
 }
 
-export async function processExternalChatCompletionRequest(requestId) {
-  await getDBConnectionString();
-  const persisted = await ExternalAssistantRequest.findById(requestId)
+export async function processExternalChatCompletionRequest(requestId, dependencies = {}) {
+  await (dependencies.connect || getDBConnectionString)();
+  const Requests = dependencies.Requests || ExternalAssistantRequest;
+  const persisted = await Requests.findById(requestId)
     .select('payload')
     .lean();
   if (!persisted) return null;
   const now = new Date();
   const timeoutMs = getExternalChatTimeoutMs(persisted.payload || {});
   const staleStartedBefore = new Date(now.getTime() - timeoutMs - 30000);
-  const request = await ExternalAssistantRequest.findOneAndUpdate(
+  const request = await Requests.findOneAndUpdate(
     {
       _id: requestId,
       $or: [
@@ -279,9 +255,11 @@ export async function processExternalChatCompletionRequest(requestId) {
   try {
     const result = await createExternalChatCompletion({
       userId: request.userId,
+      apiKeyUsage: request.apiKeyUsage,
       payload: request.payload || {},
-    });
-    const completed = await ExternalAssistantRequest.findByIdAndUpdate(
+      idempotencyKey: request.billingKey || request.clientRequestId || `queued:${request._id}`,
+    }, dependencies.completionDependencies || {});
+    const completed = await Requests.findByIdAndUpdate(
       requestId,
       {
         $set: {
@@ -301,7 +279,16 @@ export async function processExternalChatCompletionRequest(requestId) {
     ).lean();
     return completed ? buildExternalChatRequestPayload(completed) : null;
   } catch (error) {
-    const failed = await ExternalAssistantRequest.findByIdAndUpdate(
+    const identity = assistantRequestIdentity(request.userId, 'external_chat', request.payload || {}, request.billingKey || request.clientRequestId || `queued:${request._id}`);
+    const billingReceipt = await (dependencies.completionDependencies?.store || assistantBillingStore).get(identity.id).catch(() => null);
+    if (billingReceipt?.providerResponse || billingReceipt?.status === 'BILLING_PENDING' || error.code === 'ASSISTANT_REQUEST_IN_PROGRESS') {
+      await Requests.findByIdAndUpdate(requestId, { $set: {
+        status: 'PENDING', workerLeaseExpiresAt: null,
+        errorMessage: error.message, errorCode: error.code || 'ASSISTANT_BILLING_PENDING',
+      }, $unset: { expireAt: '' } });
+      return { ...buildExternalChatRequestPayload(request), status: 'PENDING' };
+    }
+    const failed = await Requests.findByIdAndUpdate(
       requestId,
       {
         $set: {
@@ -331,7 +318,7 @@ function queueExternalChatCompletionRequest(requestId) {
   });
 }
 
-export async function createExternalChatCompletionRequest({ userId, payload = {} } = {}) {
+export async function createExternalChatCompletionRequest({ userId, payload = {}, idempotencyKey } = {}, dependencies = {}) {
   if (!userId) {
     throw buildError('User ID is required.', 401);
   }
@@ -340,11 +327,14 @@ export async function createExternalChatCompletionRequest({ userId, payload = {}
   }
 
   const correlation = normalizeExternalChatRequestCorrelation(payload);
+  correlation.clientRequestId = correlation.clientRequestId || idempotencyKey;
+  const identity = assistantRequestIdentity(userId, 'external_chat', payload, correlation.clientRequestId);
   const requestPayload = stripExternalChatAsyncControlFields(payload);
   normalizeMessages(requestPayload.messages);
   getRequestedModel(requestPayload);
 
-  await getDBConnectionString();
+  await (dependencies.connect || getDBConnectionString)();
+  const Requests = dependencies.Requests || ExternalAssistantRequest;
   let request;
   if (correlation.clientRequestId) {
     const query = {
@@ -354,7 +344,7 @@ export async function createExternalChatCompletionRequest({ userId, payload = {}
       clientRequestId: correlation.clientRequestId,
     };
     try {
-      request = await ExternalAssistantRequest.findOneAndUpdate(
+      request = await Requests.findOneAndUpdate(
         query,
         {
           $setOnInsert: {
@@ -363,20 +353,25 @@ export async function createExternalChatCompletionRequest({ userId, payload = {}
             clientRequestKey: correlation.clientRequestKey,
             status: 'PENDING',
             payload: requestPayload,
+            billingKey: correlation.clientRequestId,
+            requestFingerprint: identity.fingerprint,
+            apiKeyUsage: getCurrentAPIKeyUsageContext(),
           },
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },
       ).lean();
     } catch (error) {
       if (error?.code !== 11000) throw error;
-      request = await ExternalAssistantRequest.findOne(query).lean();
+      request = await Requests.findOne(query).lean();
     }
   } else {
-    const created = await ExternalAssistantRequest.create({
+    const created = await Requests.create({
       userId,
       requestType: 'external_chat',
       status: 'PENDING',
       payload: requestPayload,
+      requestFingerprint: identity.fingerprint,
+      apiKeyUsage: getCurrentAPIKeyUsageContext(),
     });
     request = created.toObject();
   }
@@ -384,9 +379,12 @@ export async function createExternalChatCompletionRequest({ userId, payload = {}
   if (!request) {
     throw buildError('Unable to persist external assistant request.', 500);
   }
+  if (request.requestFingerprint && request.requestFingerprint !== identity.fingerprint) {
+    throw buildError('Request key was already used with a different payload.', 409, 'ASSISTANT_IDEMPOTENCY_CONFLICT');
+  }
   const requestId = request._id.toString();
   if (request.status === 'PENDING') {
-    queueExternalChatCompletionRequest(requestId);
+    (dependencies.queue || queueExternalChatCompletionRequest)(requestId);
   }
   return buildExternalChatRequestPayload(request);
 }

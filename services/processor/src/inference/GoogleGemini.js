@@ -563,6 +563,7 @@ export async function createGoogleGeminiChatCompletion(chatRequest = {}, depende
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
     model,
+    samsarBilling: { adapter: 'google', region: location },
     usage: normalizeGeminiUsage(responsePayload?.usageMetadata),
     google_response: {
       modelVersion: responsePayload?.modelVersion || null,

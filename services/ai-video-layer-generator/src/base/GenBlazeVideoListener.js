@@ -1,3 +1,4 @@
+import { reportedVideoCharge } from '../billing/VideoPricing.js';
 const GENBLAZE_REQUEST_PREFIX = 'genblaze-video:';
 const DEFAULT_GENBLAZE_BASE_URL = 'http://genblaze:8080/v1';
 const DEFAULT_GENBLAZE_MEDIA_TIMEOUT_MS = 120_000;
@@ -449,7 +450,8 @@ export async function listenToPendingGenBlazeVideoRequest(payload = {}, dependen
     if (!/^https?:\/\//i.test(remoteUrl)) {
       throw invalidUpstreamResponse('GMICloud video result returned no valid video URL.');
     }
-    return { responseStatus: 'COMPLETED', remoteUrl };
+    return { responseStatus: 'COMPLETED', remoteUrl, videoBillingReceipt: {
+      adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedVideoCharge(response) } };
   }
   if (status !== 'failed' && status !== 'cancelled') {
     throw invalidUpstreamResponse(`GMICloud video returned an unexpected status: ${status || '<missing>'}.`);

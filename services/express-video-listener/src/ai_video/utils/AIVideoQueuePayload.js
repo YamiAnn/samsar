@@ -18,6 +18,9 @@ export function buildRetryableImageToVideoQueuePayload(
 ) {
   const initialVideoAdapter = getInitialVideoAdapter(payload.model, env);
   return {
+    videoBillingPolicy: payload.videoBillingPolicy || 'pipeline',
+    videoBillingAPIKeyUsage: payload.videoBillingAPIKeyUsage || null,
+    ...(payload.videoBillingPolicy === 'adapter' ? { expireAt: null } : {}),
     prompt: payload.prompt,
     model: payload.model,
     originalVideoModel: payload.originalVideoModel,

@@ -170,7 +170,13 @@ async function createInferenceChatCompletionForProvider(
     timeoutMs,
     ...providerRequest
   } = chatRequest || {};
-  const model = providerRequest.model || getDefaultUserInferenceModel();
+  const requestedModel = providerRequest.model || getDefaultUserInferenceModel();
+  const gptAlias = typeof requestedModel === 'string'
+    ? requestedModel.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    : '';
+  const model = /^GPT(?:61SOL|6ASTRA|56SOL|56|6)(?:HIGH|XHIGH|EXTRAHIGH)?$/.test(gptAlias)
+    ? normalizeInferenceModel(requestedModel)
+    : requestedModel;
   const createSamsarCompletion =
     dependencyOverrides.createSamsarExternalChatCompletion ||
     createSamsarExternalChatCompletion;
@@ -327,7 +333,7 @@ export async function getAlternatePromptFromPrompt(
 
 export async function sendAssistantMessageRequest(
   messageList,
-  model = "gpt-6.1-sol",
+  model = "gpt-6-astra",
   inferenceAuthorization,
   reasoningEffort,
 ) {

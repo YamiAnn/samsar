@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { isClaudeOpus55Model, OPENROUTER_OPUS_55_MODEL } from './AnthropicChatAdapter.js';
 import fs from 'node:fs';
 
@@ -37,11 +38,11 @@ const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_GENBLAZE_BASE_URL = 'http://genblaze:8080/v1';
 const GENBLAZE_INFERENCE_MODELS = new Set([
   'QWEN3.8',
-  'gpt-6.1-sol',
+  'gpt-6-astra',
   'gemini-4-argon',
 ]);
 const GENBLAZE_HIGH_REASONING_MODELS = new Set([
-  'gpt-6.1-sol',
+  'gpt-6-astra',
   'gemini-4-argon',
 ]);
 const GOOGLE_NATIVE_CREDENTIAL_KEYS = Object.freeze([
@@ -87,7 +88,7 @@ export const DOCKER_INFERENCE_PROVIDER_PRIORITY_BY_MODEL = Object.freeze({
     DOCKER_INFERENCE_PROVIDER.KIMI,
     DOCKER_INFERENCE_PROVIDER.SAMSAR,
   ]),
-  'gpt-6.1-sol': Object.freeze([
+  'gpt-6-astra': Object.freeze([
     DOCKER_INFERENCE_PROVIDER.OPENAI,
     DOCKER_INFERENCE_PROVIDER.GMICLOUD,
     DOCKER_INFERENCE_PROVIDER.SAMSAR,
@@ -170,7 +171,7 @@ function getOpenRouterReasoningEffort(requestedModel, effort, request = {}) {
 
 function buildOpenRouterRequestPayload(request, requestedModel, openRouterModel, effort) {
   const payload = { ...request, model: openRouterModel };
-  if (requestedModel === 'gpt-6.1-sol' || requestedModel === 'gpt-6.1-sol-xhigh' || isClaudeOpus55Model(requestedModel)) {
+  if (requestedModel === 'gpt-6-astra' || requestedModel === 'gpt-6-astra-xhigh' || isClaudeOpus55Model(requestedModel)) {
     for (const key of ['temperature', 'top_p', 'top_logprobs', 'logprobs']) delete payload[key];
   }
   const effectiveEffort = isClaudeOpus55Model(requestedModel)
@@ -335,8 +336,8 @@ function getCanonicalGenblazeInferenceModel(model) {
     return 'gemini-4-argon';
   }
   const normalized = normalizeString(model).toLowerCase();
-  return normalized === 'gpt-6.1-sol' || normalized.startsWith('gpt-6.1-sol-')
-    ? 'gpt-6.1-sol'
+  return normalized === 'gpt-6-astra' || normalized.startsWith('gpt-6-astra-')
+    ? 'gpt-6-astra'
     : '';
 }
 
@@ -408,7 +409,7 @@ function getInferenceProviderPriority(model, chatRequest = {}) {
   } else {
     preferenceModelKey = normalizeInferenceModel(model);
     const genblazePriority = DOCKER_INFERENCE_PROVIDER_PRIORITY_BY_MODEL[preferenceModelKey] ||
-      DOCKER_INFERENCE_PROVIDER_PRIORITY_BY_MODEL['gpt-6.1-sol'];
+      DOCKER_INFERENCE_PROVIDER_PRIORITY_BY_MODEL['gpt-6-astra'];
     defaultPriority = Boolean(getGenblazeClient()) && hasGenblazeModelMapping(model, chatRequest)
       ? genblazePriority
       : [
@@ -479,7 +480,11 @@ export function getOpenRouterModelForInferenceRequest(chatRequest = {}, env = pr
   if (isGeminiInferenceModel(model)) {
     return normalizeString(env?.OPENROUTER_GEMINI_4_ARGON_MODEL) || 'google/gemini-4-argon';
   }
-  return normalizeString(env?.OPENROUTER_GPT_56_SOL_MODEL) || 'openai/gpt-6.1-sol';
+  const configuredModel = normalizeString(env?.OPENROUTER_GPT_6_ASTRA_MODEL) ||
+    normalizeString(env?.OPENROUTER_GPT_56_SOL_MODEL);
+  return /^(?:openai\/)?gpt-(?:6\.1-sol|5\.6-sol)(?:-(?:high|xhigh))?$/i.test(configuredModel)
+    ? 'openai/gpt-6-astra'
+    : configuredModel || 'openai/gpt-6-astra';
 }
 
 export function shouldUseOpenRouterInference(chatRequest = {}) {
@@ -505,7 +510,8 @@ export function shouldUseGenblazeInference(chatRequest = {}) {
 }
 
 export async function createGenblazeChatCompletion(chatRequest = {}, dependencyOverrides = {}) {
-  const model = getCanonicalGenblazeInferenceModel(getRequestedInferenceModel(chatRequest));
+  const requestedModel = getRequestedInferenceModel(chatRequest);
+  const model = getCanonicalGenblazeInferenceModel(requestedModel);
   if (!hasGenblazeModelMapping(model, chatRequest)) {
     const error = new Error(
       'GMICloud via GenBlaze does not expose an exact compatible model for this inference request.',
@@ -516,11 +522,12 @@ export async function createGenblazeChatCompletion(chatRequest = {}, dependencyO
   const client = dependencyOverrides.genblazeClient || getGenblazeClient();
   if (!client) throw new Error('SAMSAR_GENBLAZE_ENABLED is required for GMICloud inference.');
   const {
+    assistantBillingRequestId,
     authorization, bypassSamsarExternalInference, samsarExternalInference,
     timeout, timeoutMs, maxRetries, externalMaxRetries,
     reasoning, reasoning_effort, reasoningEffort, effort: requestEffort, ...request
   } = chatRequest || {};
-  if (requestedModel === 'gpt-6.1-sol' || requestedModel === 'gpt-6.1-sol-xhigh') {
+  if (requestedModel === 'gpt-6-astra' || requestedModel === 'gpt-6-astra-xhigh') {
     for (const key of ['temperature', 'top_p', 'top_logprobs', 'logprobs']) delete request[key];
     if (request.max_tokens !== undefined) {
       request.max_completion_tokens ??= request.max_tokens;
@@ -535,7 +542,7 @@ export async function createGenblazeChatCompletion(chatRequest = {}, dependencyO
   ).toLowerCase();
   const requestTimeout = Number(timeout ?? timeoutMs ?? process.env.SAMSAR_GENBLAZE_INFERENCE_TIMEOUT_MS) ||
     DEFAULT_EXTERNAL_INFERENCE_TIMEOUT_MS;
-  return runExternalInferenceWithRetry(
+  const completion = await runExternalInferenceWithRetry(
     async ({ signal }) => client.chat.completions.create(
       await resolveProviderMediaPayload({
         ...request,
@@ -568,6 +575,7 @@ export async function createGenblazeChatCompletion(chatRequest = {}, dependencyO
       ...(dependencyOverrides.retryOptions || {}),
     },
   );
+  return { ...completion, samsarBilling: { adapter: 'gmicloud', costUsd: completion?.usage?.cost } };
 }
 
 export async function createOpenRouterChatCompletion(chatRequest = {}, dependencyOverrides = {}) {
@@ -579,6 +587,7 @@ export async function createOpenRouterChatCompletion(chatRequest = {}, dependenc
   const client = dependencyOverrides.client || getOpenRouterClient();
   if (!client) throw new Error('OPENROUTER_API_KEY is required for OpenRouter inference.');
   const {
+    assistantBillingRequestId,
     authorization, bypassSamsarExternalInference, samsarExternalInference,
     timeout, timeoutMs, maxRetries, externalMaxRetries, reasoning_effort,
     reasoningEffort, effort: requestedEffort, reasoning, ...request
@@ -619,12 +628,13 @@ export async function createOpenRouterChatCompletion(chatRequest = {}, dependenc
         resolveMediaUrl: dependencyOverrides.resolveMediaUrl,
         serviceName: 'samsar_assistant_query_processor_openrouter',
       });
-      return client.chat.completions.create(providerPayload, {
+      const completion = await client.chat.completions.create(providerPayload, {
         timeout: requestTimeout,
         // The adapter owns retries so every attempt gets fresh media URLs.
         maxRetries: 0,
         signal,
       });
+      return { ...completion, samsarBilling: { adapter: 'openrouter', costUsd: completion?.usage?.cost } };
     },
     {
       provider: 'openrouter',
@@ -653,7 +663,9 @@ function normalizeRequestedInferenceModel(value) {
 
   const normalizedModel = normalizeInferenceModel(requestedModel);
   const defaultModel = normalizeInferenceModel();
+  const gptAlias = requestedModel.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   return normalizedModel !== defaultModel ||
+    /^GPT(?:61SOL|6ASTRA|56SOL|56|6)(?:HIGH|XHIGH|EXTRAHIGH)?$/.test(gptAlias) ||
     requestedModel === defaultModel ||
     requestedModel.startsWith(`${defaultModel}-`)
     ? normalizedModel
@@ -669,19 +681,14 @@ function isOpenAICompatibleChatCompletion(value) {
 }
 
 export function unwrapSamsarExternalChatCompletionResponse(response) {
-  if (isOpenAICompatibleChatCompletion(response)) {
-    return response;
-  }
-
-  if (isOpenAICompatibleChatCompletion(response?.data)) {
-    return response.data;
-  }
-
-  if (isOpenAICompatibleChatCompletion(response?.response)) {
-    return response.response;
-  }
-
-  return response?.data ?? response;
+  const completion = isOpenAICompatibleChatCompletion(response) ? response
+    : isOpenAICompatibleChatCompletion(response?.data) ? response.data
+    : isOpenAICompatibleChatCompletion(response?.data?.response) ? response.data.response
+    : isOpenAICompatibleChatCompletion(response?.response) ? response.response
+    : response?.data ?? response;
+  const credits = response?.headers?.['x-credits-charged'] ?? response?.data?.creditsCharged ?? response?.creditsCharged;
+  if (credits === undefined || credits === null) return completion;
+  return Object.assign(completion, { samsarBilling: { adapter: 'samsar', costUsd: Number(credits) / 100 } });
 }
 
 export function shouldUseSamsarExternalInference(chatRequest = {}) {
@@ -722,6 +729,7 @@ export async function createSamsarExternalChatCompletion(chatRequest = {}, depen
   }
 
   const {
+    assistantBillingRequestId,
     authorization,
     bypassSamsarExternalInference,
     samsarExternalInference,
@@ -755,13 +763,14 @@ export async function createSamsarExternalChatCompletion(chatRequest = {}, depen
       : {}),
     timeout: requestTimeout,
   };
+  const idempotencyKey = assistantBillingRequestId || randomUUID();
   const response = await runExternalInferenceWithRetry(
     async ({ signal }) => client.createV2ExternalChatCompletion(
       await resolveProviderMediaPayload(requestPayload, {
         resolveMediaUrl: dependencyOverrides.resolveMediaUrl,
         serviceName: 'samsar_assistant_query_processor_external_inference',
       }),
-      { signal },
+      { signal, idempotencyKey },
     ),
     {
       provider: 'samsar',
@@ -772,5 +781,7 @@ export async function createSamsarExternalChatCompletion(chatRequest = {}, depen
     },
   );
 
-  return unwrapSamsarExternalChatCompletionResponse(response);
+  const completion = unwrapSamsarExternalChatCompletionResponse(response);
+  if (completion && typeof completion === 'object') completion.samsarBilling ||= { adapter: 'samsar' };
+  return completion;
 }

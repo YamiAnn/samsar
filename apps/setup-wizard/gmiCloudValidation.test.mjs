@@ -47,7 +47,7 @@ test('validates a GMICloud credential and preserves actual active catalog ids', 
     fetchImpl: buildFetch({
       calls,
       catalog: [
-        { id: 'OPENAI/GPT-6.1-SOL', status: 'active' },
+        { id: 'OPENAI/GPT-6-ASTRA', status: 'active' },
         { id: 'tenant/google/gemini-4-argon', active: true },
         { id: 'Qwen/Qwen3.8-Max', state: 'available' },
       ],
@@ -61,7 +61,7 @@ test('validates a GMICloud credential and preserves actual active catalog ids', 
   assert.equal(calls[1].options.method, 'GET');
   assert.equal(calls[1].options.body, undefined);
   assert.equal(validation.ok, true);
-  assert.equal(validation.modelMappings['gpt-6.1-sol'].text.modelId, 'OPENAI/GPT-6.1-SOL');
+  assert.equal(validation.modelMappings['gpt-6-astra'].text.modelId, 'OPENAI/GPT-6-ASTRA');
   assert.equal(validation.modelMappings['gemini-4-argon'].vision.modelId, 'tenant/google/gemini-4-argon');
   assert.equal(validation.modelMappings['QWEN3.8'].text.modelId, 'Qwen/Qwen3.8-Max');
   assert.equal(validation.modelMappings['QWEN3.8'].vision.modelId, 'Qwen/Qwen3.8-Max');
@@ -92,7 +92,7 @@ test('requires active status when status metadata is present', async () => {
   const result = await validateGmiCloudProviderCredential({ gmiCloudApiKey: 'gmi-test-key' }, {
     fetchImpl: buildFetch({
       catalog: [
-        { id: 'openai/gpt-6.1-sol', status: 'inactive' },
+        { id: 'openai/gpt-6-astra', status: 'inactive' },
         { id: 'google/gemini-4-argon', enabled: false },
         { id: 'Qwen/Qwen3.8-Max', active: true },
       ],
@@ -103,7 +103,7 @@ test('requires active status when status metadata is present', async () => {
 });
 
 test('chat matching ignores owner prefixes and case but remains version exact', () => {
-  assert.equal(chatCatalogModelMatches('tenant/OPENAI/GPT-6.1-SOL', 'openai/gpt-6.1-sol'), true);
+  assert.equal(chatCatalogModelMatches('tenant/OPENAI/GPT-6-ASTRA', 'openai/gpt-6-astra'), true);
   assert.equal(chatCatalogModelMatches('google/gemini-4-argon-v2', 'google/gemini-4-argon'), false);
   assert.equal(chatCatalogModelMatches('Qwen/Qwen3.8-Max-2026-08-01', 'Qwen/Qwen3.8-Max'), false);
 });
@@ -244,14 +244,14 @@ test('accepts the authenticated GMICloud model_ids catalog response shape', asyn
 test('keeps authenticated chat routes when the secondary media catalog is unavailable', async () => {
   const result = await validateGmiCloudProviderCredential({ gmiCloudApiKey: 'gmi-test-key' }, {
     fetchImpl: buildFetch({
-      catalog: [{ id: 'openai/gpt-6.1-sol', status: 'active' }],
+      catalog: [{ id: 'openai/gpt-6-astra', status: 'active' }],
       mediaStatus: 503,
     }),
   });
 
   const validation = result.providers.gmicloud;
   assert.equal(validation.ok, true);
-  assert.equal(validation.modelMappings['gpt-6.1-sol'].text.modelId, 'openai/gpt-6.1-sol');
+  assert.equal(validation.modelMappings['gpt-6-astra'].text.modelId, 'openai/gpt-6-astra');
   assert.equal(validation.mediaCatalogVerified, false);
   assert.match(validation.mediaCatalogWarning, /unavailable.*only verified inference models/i);
 });
@@ -273,8 +273,8 @@ test('keeps authenticated chat routes when the secondary media catalog is unread
 
 test('normalizes mappings against the curated exact route set', () => {
   assert.deepEqual(normalizeGmiCloudModelMappings({
-    'gpt-6.1-sol': {
-      text: { modelId: 'tenant/openai/gpt-6.1-sol', operation: 'attacker.operation' },
+    'gpt-6-astra': {
+      text: { modelId: 'tenant/openai/gpt-6-astra', operation: 'attacker.operation' },
     },
     'QWEN3.8': {
       text: { modelId: 'tenant/Qwen3.8-Max' },
@@ -290,8 +290,8 @@ test('normalizes mappings against the curated exact route set', () => {
     'SEEDANCE2.0I2V': { video: { modelId: 'seedance-2-0-260128' } },
     'SEEDANCE2.0T2V': { video: { modelId: 'seedance-2-0-260128' } },
   }), {
-    'gpt-6.1-sol': {
-      text: { modelId: 'tenant/openai/gpt-6.1-sol', operation: 'chat.completions' },
+    'gpt-6-astra': {
+      text: { modelId: 'tenant/openai/gpt-6-astra', operation: 'chat.completions' },
     },
     'QWEN3.8': {
       text: { modelId: 'tenant/Qwen3.8-Max', operation: 'chat.completions' },

@@ -1,3 +1,4 @@
+import { reportedVideoCharge } from '../billing/VideoPricing.js';
 import axios from 'axios';
 
 const DEFAULT_ALIBABA_VIDEO_BASE_URL = 'https://dashscope-intl.aliyuncs.com';
@@ -243,11 +244,16 @@ function getAlibabaHeaders({ includeAsyncHeader = false } = {}) {
 }
 
 export async function generateAlibabaHappyHorseImgToVideoLayer(payload = {}) {
+  const requestBody = buildAlibabaHappyHorseI2VPayload(payload);
+  const host = getAlibabaHappyHorseBaseUrl();
+  payload.videoBillingNativeReceipt = { adapter: 'alibabaCloud', model: requestBody.model,
+    resolution: requestBody.parameters.resolution, seconds: requestBody.parameters.duration,
+    region: host.includes('dashscope-intl') ? 'international' : host.includes('dashscope.aliyuncs.com') ? 'china' : 'global' };
   let response;
   try {
     response = await axios.post(
       getAlibabaHappyHorseSubmitUrl(),
-      buildAlibabaHappyHorseI2VPayload(payload),
+      requestBody,
       {
         headers: getAlibabaHeaders({ includeAsyncHeader: true }),
         timeout: Number(process.env.ALIBABA_VIDEO_SUBMIT_TIMEOUT_MS) || 120000,
@@ -284,5 +290,8 @@ export async function listenToPendingAlibabaHappyHorseImgToVidRequests(payload =
     throwAlibabaAxiosResponseError(error, 'Alibaba Happy Horse task polling failed.');
   }
 
-  return parseAlibabaHappyHorseTask(response?.data);
+  const result = parseAlibabaHappyHorseTask(response?.data);
+  if (result.responseStatus === 'COMPLETED') result.videoBillingReceipt = {
+    ...payload.videoBillingNativeReceipt, providerRequestId: taskId, ...reportedVideoCharge(response?.data) };
+  return result;
 }

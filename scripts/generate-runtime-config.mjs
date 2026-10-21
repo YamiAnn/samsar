@@ -749,6 +749,7 @@ const env = {
     ALIBABA_QWEN_MODEL: alibabaQwenModel,
     ALIBABA_QWEN_TEXT_MODEL: alibabaQwenModel,
 	  FAL_API_KEY: config.providers?.fal?.apiKey || '',
+	  FAL_BILLING_API_KEY: config.providers?.fal?.billingApiKey || '',
 	  ...(config.providers?.elevenlabs?.enabled && config.providers.elevenlabs.apiKey
 	    ? {
 	      ELEVENLABS_API_TOKEN: config.providers.elevenlabs.apiKey,

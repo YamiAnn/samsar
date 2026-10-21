@@ -173,15 +173,11 @@ export default function PromptGenerator(props) {
   const pricingInfo = IMAGE_MODEL_PRICES.find(
     (m) => m.key === selectedGenerationModel
   );
-  const priceObj = pricingInfo
-    ? pricingInfo.prices.find((price) => price.aspectRatio === aspectRatio)
-    : null;
-  const modelPrice = priceObj ? priceObj.price : 0;
   const usesProviderBilling =
     isStandaloneModelFilteringEnabled && isProviderBilledImagePricing(pricingInfo);
   const modelCostTooltip = usesProviderBilling
     ? "Billed directly by the configured provider API"
-    : `Currently selected model cost: ${modelPrice} credits`;
+    : "Usage-based image pricing; charged when each model call completes";
 
   // ------------------------------------------------------------------
   // Handle user selecting a new model from the dropdown

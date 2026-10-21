@@ -1,6 +1,8 @@
 // Centralized pricing for API chat and image endpoints.
 const CREDITS_PER_USD = 100;
-const IMAGE_API_PRICE_MULTIPLIER = 1.8;
+const IMAGE_API_PRICE_MULTIPLIER = 1.2;
+// These legacy quote helpers estimate Fal Nano Banana 2 only. Actual image
+// charges are settled from adapter receipts after completion.
 const NANO_BANANA_2_EDIT_BASE_COST_USD = 0.08;
 const NANO_BANANA_2_EDIT_RESOLUTION_MULTIPLIERS = Object.freeze({
   '0.5K': 0.75,
@@ -179,5 +181,5 @@ function buildNanoBanana2EditDistribution(resolution, outputImages = 1) {
 }
 
 function roundCredits(value) {
-  return Math.ceil(value);
+  return Math.round(value * 10000) / 10000;
 }

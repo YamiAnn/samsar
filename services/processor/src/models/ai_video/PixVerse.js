@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 
 
 
@@ -72,7 +73,7 @@ export async function requestRenderPixVerseVideo(payload) {
 
 
 
-  const aiVideoRenderPayloadDes = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiVideoRenderPayloadDes = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
 
   await aiVideoRenderPayloadDes.save();
 

@@ -418,8 +418,7 @@ export default function VideoPromptGenerator(props) {
               <span className="text-blue-300">Provider billed by configured adapter</span>
             ) : (
               <>
-                This action will incur{" "}
-                <span className="text-blue-300">{modelPrice} Credits</span>
+                <span className="text-blue-300">Charged on completion</span>
               </>
             )}
           </div>

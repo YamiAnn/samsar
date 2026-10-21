@@ -1,3 +1,4 @@
+import { reportedImageCharge } from '../billing/ImagePricing.js';
 import { getDBConnectionString } from '../DBString.js';
 import ImageGeneration from '../schema/ImageGeneration.js';
 import { isStandaloneEdition } from '../utils/Environment.js';
@@ -252,7 +253,8 @@ export async function pollGenBlazeImageEditRequest(payload = {}, dependencies = 
     if (!resultUrl) throw new Error('GMICloud image edit result returned no image URL.');
     const image = await saveFile(resultUrl);
     // Keep the request locked until downstream edit persistence completes.
-    return { image, resultUrl, resultUrls: [resultUrl] };
+    return { image, resultUrl, resultUrls: [resultUrl],
+      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) } };
   } catch (error) {
     logger.error('[GenBlazeImageEdit] poll failed:', error);
     return {

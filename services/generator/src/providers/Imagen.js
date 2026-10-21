@@ -1,3 +1,4 @@
+import { checkpointImageResult } from '../billing/ImageResultCheckpoint.js';
 import { getDBConnectionString } from "../DBString.js";
 import ImageGeneration from "../schema/ImageGeneration.js";
 import axios from 'axios';
@@ -110,6 +111,7 @@ export async function submitImagenRequest(payload) {
 
 
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     // Check if this is possibly an invalid/expired token error and we haven't retried yet
     if (
       shouldRetryForAuth(error) &&
@@ -155,6 +157,8 @@ export async function submitImagenRequest(payload) {
 
     // Decode and save the image locally
     const imageName = await saveBase64Image(resByteBase64);
+    const checkpoint = await checkpointImageResult(payload, { image: imageName,
+      imageBillingReceipt: { adapter: 'googleCloud', model, costUsd: model === 'IMAGEN3' ? 0.04 : 0.02 } });
 
     // Mark the generation as completed directly since we have the image now
     await ImageGeneration.findOneAndUpdate(
@@ -162,9 +166,10 @@ export async function submitImagenRequest(payload) {
       buildImagenCompletionUpdate()
     );
 
-    return { image: imageName };
+    return checkpoint;
 
   } catch (error) {
+    if (error.imageBillingPending) throw error;
 
 
 
@@ -250,6 +255,7 @@ async function saveBase64Image(base64Str) {
 
     return imageName;
   } catch (error) {
+    if (error.imageBillingPending) throw error;
     console.error(`Error saving image: ${error.message}`);
     throw error;
   }

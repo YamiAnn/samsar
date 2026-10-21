@@ -1,3 +1,5 @@
+import { checkpointImageResult } from '../../billing/ImageResultCheckpoint.js';
+import { imageBillingMode } from '../../billing/ImagePricing.js';
 import { fal } from "@fal-ai/client";
 import { getDBConnectionString } from "../../DBString.js";
 import ImageGeneration from "../../schema/ImageGeneration.js";
@@ -257,6 +259,8 @@ export async function pollNanoBananaGetImageSetFromImageListRequest(payload) {
 
       const remoteUrl = `/generations/${imageName}`;
       const resultUrl = await uploadGenerationToCDN(imageName, remoteUrl);
+  const checkpoint = await checkpointImageResult(payload, { image: imageName, resultUrl, resultUrls: [resultUrl],
+    imageBillingReceipt: { adapter: 'fal', model, providerRequestId: apiRequestId } });
       uploadedResultUrls.push(resultUrl);
     } catch {
     }
@@ -268,14 +272,16 @@ export async function pollNanoBananaGetImageSetFromImageListRequest(payload) {
   }
 
   const firstResultUrl = uploadedResultUrls[0] || null;
+  const checkpoint = await checkpointImageResult(payload, { image: imageNames[0], images: imageNames,
+    resultUrls: uploadedResultUrls, imageBillingReceipt: { adapter: 'fal', model, providerRequestId: apiRequestId } });
 
-  await updateGlobalSessionStatus(_id, { status: 'COMPLETED', resultUrl: firstResultUrl, resultUrls: uploadedResultUrls });
+  await updateGlobalSessionStatus(_id, { status: imageBillingMode(payload) === 'adapter' ? 'PROCESSING' : 'COMPLETED', resultUrl: firstResultUrl, resultUrls: uploadedResultUrls });
   await ImageGeneration.findOneAndUpdate(
     { _id },
     { editStatus: 'COMPLETED', apiEditStatus: 'COMPLETED', rowLocked: false }
   );
 
-  return { images: imageNames, resultUrls: uploadedResultUrls };
+  return checkpoint;
 }
 
 export async function submitNanoBananaEnhanceRequest(payload) {
@@ -462,14 +468,16 @@ async function pollNanoBananaCommon(payload) {
 
   const remoteUrl = `/generations/${imageName}`;
   const resultUrl = await uploadGenerationToCDN(imageName, remoteUrl);
+  const checkpoint = await checkpointImageResult(payload, { image: imageName, resultUrl, resultUrls: [resultUrl],
+    imageBillingReceipt: { adapter: 'fal', model, providerRequestId: apiRequestId } });
 
-  await updateGlobalSessionStatus(_id, { status: 'COMPLETED', resultUrl, resultUrls: [resultUrl] });
+  await updateGlobalSessionStatus(_id, { status: imageBillingMode(payload) === 'adapter' ? 'PROCESSING' : 'COMPLETED', resultUrl, resultUrls: [resultUrl] });
   await ImageGeneration.findOneAndUpdate(
     { _id },
     { editStatus: 'COMPLETED', apiEditStatus: 'COMPLETED', rowLocked: false }
   );
 
-  return { image: imageName, resultUrl, resultUrls: [resultUrl] };
+  return checkpoint;
 }
 
 function normalizeNanoBananaStatus(responseStatus) {

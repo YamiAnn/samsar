@@ -1,3 +1,4 @@
+import { videoQueueBillingFields } from './VideoRequestBilling.js';
 
 
 
@@ -135,7 +136,7 @@ export async function requestRenderGenericVideo(payload) {
 
 
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   const renderSaveRes = await aiRenderPayload.save();
 
 
@@ -201,7 +202,7 @@ export async function requestRenderGenericLipSyncVideo(payload) {
   aiVideoRenderPayload.audioPrompt = audioPrompt;
 
 
-  const aiRenderPayload = new AIVideoLayerGeneration(aiVideoRenderPayload);
+  const aiRenderPayload = new AIVideoLayerGeneration({ ...aiVideoRenderPayload, ...(payload.generationRequestId ? { _id: payload.generationRequestId } : {}), ...videoQueueBillingFields(payload) });
   const renderSaveRes = await aiRenderPayload.save();
 
 
