@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { secondsToFrameCount, frameCountToSeconds, getLayerFrameRange } from './FrameClock.js';
+import { secondsToFrameCount, frameCountToSeconds, getLayerFrameRange, buildFrameExtractionFilter } from './FrameClock.js';
 
 for (const fps of [16, 24, 30]) {
   test(`P2P ${fps} fps: frame counts survive 1000 duration round trips`, () => {
@@ -31,4 +31,9 @@ test('P2P invalid and zero durations never request negative frames', () => {
   }
   assert.equal(frameCountToSeconds(5, 0), 0);
   assert.equal(getLayerFrameRange({duration: 0}, 24).frameCount, 0);
+});
+
+test('P2P API end rounding is explicit and retains the legacy two-argument worker contract', () => {
+  assert.match(buildFrameExtractionFilter(24, 'scale=32:32'), /eof_action=pass/);
+  assert.match(buildFrameExtractionFilter(24, 'scale=32:32', { roundEndTimestamp: true }), /eof_action=round/);
 });

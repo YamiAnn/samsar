@@ -44,6 +44,7 @@ jobs:
       # Installing outside the checkout avoids resolving all monorepo
       # workspaces. Both layouts use the client's own committed lockfile.
       - name: Install locked client dependencies
+        id: dependencies
         env:
           CLIENT_PATH: ${{ steps.client.outputs.path }}
         run: |
@@ -52,15 +53,28 @@ jobs:
           yarn --cwd "$RUNNER_TEMP/client-deps" install --frozen-lockfile --non-interactive
           ln -s "$RUNNER_TEMP/client-deps/node_modules" "$CLIENT_PATH/node_modules"
 
-      - name: Install Chromium and system dependencies
+      - name: Install Chromium headless shell and system dependencies
+        id: chromium
         working-directory: ${{ steps.client.outputs.path }}
-        run: npm exec --no -- playwright install --with-deps chromium
+        run: npm run test:browser:install -- --with-deps
 
-      - name: Run all client regression tests
+      - name: Run Node regression tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         working-directory: ${{ steps.client.outputs.path }}
-        run: npm run test:ci
+        run: npm run test:node
+
+      - name: Run React unit and integration tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        working-directory: ${{ steps.client.outputs.path }}
+        run: npm run test:unit
+
+      - name: Run headless Chromium tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' && steps.chromium.outcome == 'success' }}
+        working-directory: ${{ steps.client.outputs.path }}
+        run: npm run test:browser
 
       - name: Verify production build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         working-directory: ${{ steps.client.outputs.path }}
         run: npm run build
 

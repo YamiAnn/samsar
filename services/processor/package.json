@@ -10,10 +10,12 @@
     "repair:published-media": "node scripts/repair_published_media.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:credits-security": "node --test src/routes/api/credits.security.test.js src/models/Payment.security.test.js src/models/external/User.ownership.test.js src/models/external/User.billingMode.test.js",
+    "test:assets-security": "node --test src/utils/PrivateAssetAccess.test.js src/utils/PrivateAssetAccess.auth.test.js src/utils/PrivateAssetResponse.test.js src/utils/PrivateProviderUrlClient.test.js src/utils/SupportedFontSamples.test.js src/models/PrivateAssetOwnership.test.js src/models/VideoSession.mediaDelivery.test.js src/models/QuickSession.mediaDelivery.test.js",
+    "test:security": "npm run test:credits-security && npm run test:assets-security",
     "test:outro-footer-layout": "node --test src/test_cases/outro_footer_layout/*.test.js",
     "google:auth:check": "node scripts/check_google_adc.js",
     "generate:font-samples": "node src/utils/SupportedFontSamples.js --generate",
-    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/models/VideoSession.frameDrift.test.js src/models/video/FrameDrift.test.js"
+    "test:frame-drift": "node --test src/utils/FrameClock.test.js src/models/VideoSession.frameDrift.test.js src/models/video/FrameDrift.test.js src/models/video/SourceFrameRate.f2p.test.js"
   },
   "engines": {
     "node": ">=24 <25"

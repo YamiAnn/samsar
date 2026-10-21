@@ -1,6 +1,6 @@
 /* Example CSS */
 /* Adjust the container to smoothly transition height */
-.relative {
+.studio-panel-height-transition {
   transition: height 0.3s ease;
 }
 

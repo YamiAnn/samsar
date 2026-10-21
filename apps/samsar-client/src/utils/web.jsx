@@ -16,15 +16,20 @@ const getCurrentAuthCookiePolicy = () =>
 
 const getAuthCookie = () => {
   if (typeof document === 'undefined') return null;
-  const cookies = document.cookie ? document.cookie.split(';') : [];
-  const prefix = `${getCurrentAuthCookiePolicy().cookieName}=`;
+  try {
+    const cookieValue = document.cookie;
+    const cookies = cookieValue ? cookieValue.split(';') : [];
+    const prefix = `${getCurrentAuthCookiePolicy().cookieName}=`;
 
-  for (const cookie of cookies) {
-    const trimmed = cookie.trim();
-    if (trimmed.startsWith(prefix)) {
-      const value = trimmed.slice(prefix.length);
-      return value ? decodeURIComponent(value) : null;
+    for (const cookie of cookies) {
+      const trimmed = cookie.trim();
+      if (trimmed.startsWith(prefix)) {
+        const value = trimmed.slice(prefix.length);
+        return value ? decodeURIComponent(value) : null;
+      }
     }
+  } catch {
+    // Malformed or inaccessible cookies must not interrupt authentication.
   }
 
   return null;
@@ -44,7 +49,11 @@ const setAuthCookie = (token) => {
 const expireAuthCookie = (cookieName, domain) => {
   if (typeof document === 'undefined') return;
   const domainAttr = domain ? ` Domain=${domain};` : '';
-  document.cookie = `${cookieName}=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/;${domainAttr}`;
+  try {
+    document.cookie = `${cookieName}=; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/;${domainAttr}`;
+  } catch {
+    // Browser cookie restrictions must not prevent clearing local credentials.
+  }
 };
 
 function clearAuthCookies() {
@@ -160,9 +169,7 @@ export function persistAuthToken(token) {
   }
 
   inMemoryAuthToken = token;
-  if (hasAcceptedCookies()) {
-    setAuthCookie(token);
-  }
+  ensureAuthCookie(token);
 }
 
 export function clearAuthData() {

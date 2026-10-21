@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import { FaChevronDown, FaPlus } from 'react-icons/fa';
 import { useColorMode } from '../../../contexts/ColorMode';
+import FloatingPanel from '../../common/FloatingPanel';
 
 function DropdownButton(props) {
   const {
@@ -18,6 +19,7 @@ function DropdownButton(props) {
   const [isOpen, setIsOpen] = useState(false);
   const [defaultSubOption, setDefaultSubOption] = useState(null); // default sub-option
   const rootRef = useRef(null);
+  const menuRef = useRef(null);
   const menuId = useId();
 
   const { colorMode } = useColorMode();
@@ -53,11 +55,7 @@ function DropdownButton(props) {
   const iconClassName = iconOnly
     ? (compact ? 'text-[11px]' : 'text-sm')
     : (compact ? 'shrink-0 text-[11px]' : 'shrink-0 text-sm');
-  const menuAlignmentClassName = menuAlign === 'left'
-    ? 'left-0 origin-top-left'
-    : 'right-0 origin-top-right';
   const rootWidthClassName = fullWidth ? 'w-full' : '';
-  const menuWidthClassName = fitMenuToTrigger ? 'w-full min-w-0' : 'w-[220px]';
 
   const addOptions = [
     { value: 'below', label: 'Below current' },
@@ -80,7 +78,7 @@ function DropdownButton(props) {
     }
 
     const handleClickOutside = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
+      if (rootRef.current && !rootRef.current.contains(event.target) && !menuRef.current?.contains(event.target)) {
         setIsOpen(false);
       }
     };
@@ -144,8 +142,9 @@ function DropdownButton(props) {
 
       {/* MAIN DROPDOWN MENU */}
       {isOpen && (
-        <div
-          className={`absolute ${menuAlignmentClassName} z-[320] mt-2 rounded-2xl p-1.5 ${menuWidthClassName} ${menuSurfaceClassName}`}
+        <FloatingPanel
+          anchorRef={rootRef} panelRef={menuRef} align={menuAlign} fitToAnchor={fitMenuToTrigger}
+          className={`rounded-2xl p-1.5 ${menuSurfaceClassName}`}
         >
           <div id={menuId} className="space-y-2" role="menu" aria-orientation="vertical" aria-label={`${buttonLabel} actions`}>
             <div className="px-2 pt-0.5" role="presentation">
@@ -197,7 +196,7 @@ function DropdownButton(props) {
               </button>
             </div>
           </div>
-        </div>
+        </FloatingPanel>
       )}
     </div>
   );

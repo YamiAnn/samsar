@@ -1,5 +1,6 @@
+import { getStudioMediaIdentity } from './util/studioMediaIdentity.mjs';
 import { useStudioFrameRate } from './StudioFrameRateContext.jsx';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   buildResolvedPreviewAudioVolumeAutomationPoints,
   buildMusicDuckingWindows,
@@ -33,7 +34,7 @@ function markPreviewAudioFailed(audioEntry, reason = 'media_error') {
   if (typeof console !== 'undefined') {
     console.warn('[PreviewPlayback] skipping failed audio source', {
       reason,
-      url: audioEntry.url,
+      source: getStudioMediaIdentity(audioEntry.url),
       errorCode: audioEntry.audio?.error?.code,
       errorMessage: audioEntry.audio?.error?.message,
     });
@@ -55,6 +56,8 @@ export default function PreviewPlaybackController(props) {
     currentLayerSeek,
     framesPerSecond,
     isVideoPreviewPlaying,
+    isVisualReady = true,
+    onMediaError,
     onPlaybackActiveChange,
     setCurrentLayerSeek,
     setIsVideoPreviewPlaying,
@@ -62,6 +65,22 @@ export default function PreviewPlaybackController(props) {
     totalDuration,
   } = props;
 
+  const failedAudioSourceRef = useRef(new Set());
+  const visualReadyRef = useRef(isVisualReady);
+  useEffect(() => { visualReadyRef.current = isVisualReady; }, [isVisualReady]);
+  const audioSignature = JSON.stringify((Array.isArray(audioLayers) ? audioLayers : []).map(layer => {
+    const clone = { ...layer };
+    for (const key of ['isSelected', 'isDisplaySelected', 'isDirty', 'isSaving', 'saveError', 'title', 'prompt']) delete clone[key];
+    const failedIdentities = new Set([...failedAudioSourceRef.current].map(getStudioMediaIdentity));
+    for (const key of ['url', 'audioUrl', 'selectedLocalAudioLink', 'selectedRemoteAudioLink']) {
+      if (clone[key] && !failedIdentities.has(getStudioMediaIdentity(clone[key]))) clone[key] = getStudioMediaIdentity(clone[key]);
+    }
+    for (const key of ['localAudioLinks', 'remoteAudioLinks']) {
+      if (Array.isArray(clone[key])) clone[key] = clone[key].map(getStudioMediaIdentity);
+    }
+    return clone;
+  }));
+  const resourceAudioLayers = useMemo(() => audioLayers, [audioSignature]);
   const audioRefs = useRef([]);
   const audioContextRef = useRef(null);
   const playbackAnimationFrameRef = useRef(null);
@@ -69,7 +88,6 @@ export default function PreviewPlaybackController(props) {
   const emittedSeekValuesRef = useRef([]);
   const pendingExternalSeekRef = useRef(null);
   const isPlaybackClockActiveRef = useRef(false);
-  const failedAudioSourceRef = useRef(new Set());
 
   useEffect(() => {
     const resolvedSeek = Number(currentLayerSeek);
@@ -104,6 +122,7 @@ export default function PreviewPlaybackController(props) {
     }
 
     const resolvedBaseGain = Math.max(0, Number(baseGain) || 0);
+    audioEntry.currentBaseGain = resolvedBaseGain;
     if (audioEntry.baseGainNode) {
       audioEntry.baseGainNode.gain.value = resolvedBaseGain;
       return;
@@ -123,7 +142,9 @@ export default function PreviewPlaybackController(props) {
       return;
     }
 
-    audioEntry.audio.volume = clampAudioValue(audioEntry.baseVolume * resolvedDuckGain);
+    audioEntry.audio.volume = clampAudioValue(
+      (audioEntry.currentBaseGain ?? audioEntry.baseVolume) * resolvedDuckGain
+    );
   }, []);
 
   const resetPreviewAudioLevels = useCallback(() => {
@@ -299,8 +320,8 @@ export default function PreviewPlaybackController(props) {
   }, [primePreviewAudioWindow, syncPreviewAudioLevels]);
 
   useEffect(() => {
-    const renderableAudioLayers = !suspendAudioPreview && Array.isArray(audioLayers)
-      ? audioLayers.filter(isRenderablePreviewAudioLayer)
+    const renderableAudioLayers = !suspendAudioPreview && Array.isArray(resourceAudioLayers)
+      ? resourceAudioLayers.filter(isRenderablePreviewAudioLayer)
       : [];
     const shouldBuildPreviewAudioGraph = Boolean(
       renderableAudioLayers.length > 0
@@ -372,6 +393,7 @@ export default function PreviewPlaybackController(props) {
 
         audioEl.addEventListener('error', () => {
           markPreviewAudioFailed(audioEntry, 'media_error');
+          onMediaError?.(resolvedAudioUrl);
         });
 
         if (audioContext) {
@@ -458,10 +480,11 @@ export default function PreviewPlaybackController(props) {
       }
     };
   }, [
-    audioLayers,
+    resourceAudioLayers,
     applyAudioDucking,
     resetPreviewAudioLevels,
     suspendAudioPreview,
+    onMediaError,
   ]);
 
   useEffect(() => {
@@ -516,10 +539,11 @@ export default function PreviewPlaybackController(props) {
         return;
       }
 
-      syncPreviewAudioPlayback(initialPreviewTime, true);
+      syncPreviewAudioPlayback(initialPreviewTime, visualReadyRef.current);
       clearPlaybackAnimationFrame();
       isPlaybackClockActiveRef.current = true;
-      onPlaybackActiveChange?.(true);
+      onPlaybackActiveChange?.(visualReadyRef.current);
+      let waitingForVisual = !visualReadyRef.current;
 
       let clockOriginFrame = initialFrame;
       let clockOriginTime = performance.now();
@@ -548,7 +572,26 @@ export default function PreviewPlaybackController(props) {
           lastRenderedFrame = clockOriginFrame;
           currentLayerSeekRef.current = clockOriginFrame;
           pendingExternalSeekRef.current = null;
-          syncPreviewAudioPlayback(clockOriginFrame / DISPLAY_FRAMES_PER_SECOND, true);
+          syncPreviewAudioPlayback(clockOriginFrame / DISPLAY_FRAMES_PER_SECOND, visualReadyRef.current);
+        }
+
+        if (!visualReadyRef.current) {
+          if (!waitingForVisual) {
+            waitingForVisual = true;
+            onPlaybackActiveChange?.(false);
+            audioRefs.current.forEach(({ audio }) => audio.pause());
+          }
+          clockOriginFrame = lastRenderedFrame;
+          clockOriginTime = now;
+          playbackAnimationFrameRef.current = requestAnimationFrame(updatePlayback);
+          return;
+        }
+        if (waitingForVisual) {
+          waitingForVisual = false;
+          clockOriginFrame = lastRenderedFrame;
+          clockOriginTime = now;
+          onPlaybackActiveChange?.(true);
+          syncPreviewAudioPlayback(lastRenderedFrame / DISPLAY_FRAMES_PER_SECOND, true);
         }
 
         const elapsedProjectFrames = Math.floor(

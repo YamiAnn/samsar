@@ -31,6 +31,8 @@ jobs:
 
       - name: Install UI test dependencies
         run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
           mkdir -p "$RUNNER_TEMP/samsar-client-deps"
           cp apps/samsar-client/package.json apps/samsar-client/yarn.lock "$RUNNER_TEMP/samsar-client-deps/"
           yarn --cwd "$RUNNER_TEMP/samsar-client-deps" install --frozen-lockfile --non-interactive

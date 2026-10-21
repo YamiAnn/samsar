@@ -7,6 +7,7 @@
 **/build/
 **/.next/
 **/coverage/
+!apps/samsar-client/test/coverage/
 **/.cache/
 **/.pytest_cache/
 **/__pycache__/
@@ -149,6 +150,10 @@ apps/samsar-client/public/*
 # local tool output
 .turbo/
 .nx/
+
+# Local package-manager and session recovery artifacts
+/package-lock.json
+/services/generator/scripts/recovery/vision-*.json
 
 # local-only agent instructions
 AGENTS.md

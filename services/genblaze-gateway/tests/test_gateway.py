@@ -1734,6 +1734,12 @@ def test_managed_media_rewriter_covers_video_to_video_urls_without_touching_exte
             "gmicloud_submit_rejected",
         ),
         (
+            "GMICloud submit failed (500): 1004: token is unusable",
+            "server_error",
+            503,
+            "gmicloud_token_unusable",
+        ),
+        (
             "GMICloud submit failed (500): Backend error (503). Please try again.",
             "server_error",
             502,
@@ -1800,6 +1806,13 @@ def test_non_video_provider_errors_keep_the_existing_server_error_mapping():
 
     assert error.status_code == 502
     assert error.code == "server_error"
+
+    token_error = GatewayError.from_provider(FakeProviderError(
+        "GMICloud submit failed (500): 1004: token is unusable",
+        error_code="server_error",
+    ))
+    assert token_error.status_code == 502
+    assert token_error.code == "server_error"
 
 
 def test_video_input_contracts_enforce_exact_required_frame_counts(

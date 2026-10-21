@@ -37,8 +37,11 @@ export default function OverflowContainer(props) {
 
   const isMobile = useMediaQuery({ maxWidth: 767 });
 
+  // This shell grows with its content, so the document owns page scrolling.
+  // workspace-scroll contains overscroll for bounded panels and would trap
+  // wheel/touch input here even though the shell has no internal scroll range.
   return (
-    <div className='min-h-[100vh] overflow-y-auto pb-8' >
+    <div className='workspace-page min-h-[100dvh] pb-8' >
       {isMobile ? (
         <MobileTopNav
           resetCurrentSession={resetCurrentSession}

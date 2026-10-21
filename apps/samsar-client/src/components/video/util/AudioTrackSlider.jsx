@@ -88,6 +88,7 @@ const AudioTrackSlider = (props) => {
   const [isDraggingRange, setIsDraggingRange] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [sliderHeight, setSliderHeight] = useState(0);
+  const dragBaselineRef = useRef(null);
 
   const trackRef = useRef(null);
   const sliderContainerRef = useRef(null);
@@ -230,6 +231,11 @@ const AudioTrackSlider = (props) => {
     }
     setIsDraggingRange(true);
     setDragStartY(e.clientY);
+    dragBaselineRef.current = {
+      startFrame: sliderValueToFrame(sliderValues[0]),
+      endFrame: sliderValueToFrame(sliderValues[1]),
+      startValue: sliderValues[0],
+    };
   };
 
   useEffect(() => {
@@ -243,30 +249,27 @@ const AudioTrackSlider = (props) => {
       const sliderRange = max - min;
       const deltaValue = (deltaY / sliderHeight) * sliderRange;
 
-      setSliderValues(([start, end]) => {
-        let newStart = start + deltaValue;
-        let newEnd = end + deltaValue;
-
-        // Clamp values within min and max
-        newStart = Math.max(min, Math.min(max - (end - start), newStart));
-        newEnd = newStart + (end - start);
-
-        setDragStartY(e.clientY);
-
-        const newStartFrame = sliderValueToFrame(newStart);
-        const newEndFrame = sliderValueToFrame(newEnd);
+      const baseline = dragBaselineRef.current;
+      if (!baseline) return;
+      const durationFrames = baseline.endFrame - baseline.startFrame;
+      const minimumFrame = sliderValueToFrame(min);
+      const maximumFrame = sliderValueToFrame(max);
+      const newStartFrame = Math.max(minimumFrame, Math.min(
+        maximumFrame - durationFrames,
+        sliderValueToFrame(baseline.startValue + deltaValue),
+      ));
+      const newEndFrame = newStartFrame + durationFrames;
+      setSliderValues([frameToSliderValue(newStartFrame), frameToSliderValue(newEndFrame)]);
         const newStartTime = newStartFrame / DISPLAY_FRAMES_PER_SECOND;
         const newEndTime = newEndFrame / DISPLAY_FRAMES_PER_SECOND;
         const newDuration = newEndTime - newStartTime;
         const trackId = audioTrack._id || audioTrack.id;
         onUpdate(trackId, newStartTime, newEndTime, newDuration);
-
-        return [newStart, newEnd];
-      });
     };
 
     const handleMouseUp = () => {
       setIsDraggingRange(false);
+      dragBaselineRef.current = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -285,6 +288,9 @@ const AudioTrackSlider = (props) => {
     onUpdate,
     audioTrack._id,
     audioTrack.id,
+    sliderValueToFrame,
+    frameToSliderValue,
+    DISPLAY_FRAMES_PER_SECOND,
   ]);
 
   const audioRangeSliderClicked = () => {
@@ -413,6 +419,8 @@ const AudioTrackSlider = (props) => {
           >
             <AudioTrackWaveformOverlay
               audioUrl={resolvedAudioUrl}
+              viewportGeometry={viewportGeometry}
+              trackStartTimeSeconds={resolvedTrackStartTime}
               visualizationMode={visualizationMode}
               manualVolumeAdjustmentEnabled={manualVolumeAdjustmentEnabled}
               volumeAutomationPoints={volumeAutomationPoints}

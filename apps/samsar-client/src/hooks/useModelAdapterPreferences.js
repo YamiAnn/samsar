@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 
 import { IS_STANDALONE_DEPLOYMENT } from "../utils/environment.jsx";
@@ -36,8 +36,23 @@ export function useModelAdapterPreferences({ enabled = false } = {}) {
   const [isLoading, setIsLoading] = useState(enabled);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+  const loadRevisionRef = useRef(0);
+  const saveRevisionRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadRevisionRef.current += 1;
+      saveRevisionRef.current += 1;
+    };
+  }, []);
 
   const loadPreferences = useCallback(async ({ signal } = {}) => {
+    const revision = ++loadRevisionRef.current;
+    const isCurrentRequest = () => mountedRef.current &&
+      loadRevisionRef.current === revision && !signal?.aborted;
     if (!enabled) {
       setData(EMPTY_MODEL_ADAPTER_DATA);
       setIsLoading(false);
@@ -53,15 +68,15 @@ export function useModelAdapterPreferences({ enabled = false } = {}) {
         getRequestConfig(signal ? { signal } : {}),
       );
       const normalizedData = normalizeModelAdapterResponse(response.data);
-      setData(normalizedData);
+      if (isCurrentRequest()) setData(normalizedData);
       return normalizedData;
     } catch (requestError) {
-      if (!isCancelledRequest(requestError)) {
+      if (isCurrentRequest() && !isCancelledRequest(requestError)) {
         setError(requestError);
       }
       throw requestError;
     } finally {
-      if (!signal?.aborted) {
+      if (isCurrentRequest()) {
         setIsLoading(false);
       }
     }
@@ -84,6 +99,8 @@ export function useModelAdapterPreferences({ enabled = false } = {}) {
     });
 
     return () => {
+      loadRevisionRef.current += 1;
+      saveRevisionRef.current += 1;
       controller.abort();
     };
   }, [enabled, loadPreferences]);
@@ -93,6 +110,11 @@ export function useModelAdapterPreferences({ enabled = false } = {}) {
       throw new Error("Model adapter settings are unavailable.");
     }
 
+    const revision = ++saveRevisionRef.current;
+    const isCurrentRequest = () => mountedRef.current && saveRevisionRef.current === revision;
+    // A read started before this save must not restore the previous preferences.
+    loadRevisionRef.current += 1;
+    setIsLoading(false);
     setIsSaving(true);
     setError(null);
     try {
@@ -104,16 +126,16 @@ export function useModelAdapterPreferences({ enabled = false } = {}) {
         getRequestConfig(),
       );
       const normalizedData = normalizeModelAdapterResponse(response.data);
-      setData(normalizedData);
-      if (IS_STANDALONE_DEPLOYMENT) {
+      if (isCurrentRequest()) setData(normalizedData);
+      if (isCurrentRequest() && IS_STANDALONE_DEPLOYMENT) {
         await refreshModelAvailabilityCaches();
       }
       return normalizedData;
     } catch (requestError) {
-      setError(requestError);
+      if (isCurrentRequest()) setError(requestError);
       throw requestError;
     } finally {
-      setIsSaving(false);
+      if (isCurrentRequest()) setIsSaving(false);
     }
   }, [enabled]);
 

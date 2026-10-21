@@ -3175,6 +3175,35 @@ async function updateImageInSessionLayer(imageData, payload) {
   await processImageGenerationSuccess(imageData, payload, imageScore);
 }
 
+// Recovery entry point for a generated image whose provider result survived a
+// failed vision call. Keep this narrow: the normal scoring, refilter, and
+// success handlers below still own every subsequent state transition.
+export async function resumeSavedImageAtVision(requestId, imageReference, expected = {}) {
+  await getDBConnectionString();
+  const request = await ImageGeneration.findById(requestId);
+  if (!request || request.rowLocked !== true ||
+      request.visionRecoveryId !== expected.recoveryId ||
+      request.videoSessionId !== expected.videoSessionId ||
+      request.layerId !== expected.layerId ||
+      request.operationType !== 'GENERATE' ||
+      request.imageFilterScoreRequired !== true ||
+      isTerminalImageRequestStatus(request.generationStatus)) {
+    throw new Error('Saved-image vision recovery request is missing or no longer locked to this layer.');
+  }
+  const expectedPrefix = `assets_v2/generations/${expected.videoSessionId}/`;
+  const normalizedReference = normalizeLocalGenerationReference(imageReference);
+  if (!normalizedReference?.startsWith(expectedPrefix) ||
+      path.posix.basename(normalizedReference) !== normalizedReference.slice(expectedPrefix.length)) {
+    throw new Error('Saved-image vision recovery reference is outside the session generation directory.');
+  }
+  const localPath = path.join(getProcessorAssetsRoot('assets_v2'),
+    'generations', expected.videoSessionId, path.posix.basename(normalizedReference));
+  if (!fs.existsSync(localPath) || !fs.statSync(localPath).isFile()) {
+    throw new Error('Saved-image vision recovery file is missing.');
+  }
+  await updateImageInSessionLayer({ image: `/${normalizedReference}` }, request);
+}
+
 function isAvatarVoiceoverImageRequest(payload = {}) {
   return payload?.requestType === 'AVATAR_VOICEOVER' && Boolean(payload?.avatarVoiceoverTaskId);
 }

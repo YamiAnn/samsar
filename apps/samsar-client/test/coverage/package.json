@@ -1,0 +1,11 @@
+{
+  "name": "samsar-client-coverage-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-instrument": "5.2.1",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.1.7"
+  }
+}

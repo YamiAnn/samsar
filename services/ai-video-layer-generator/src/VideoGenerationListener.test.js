@@ -97,13 +97,20 @@ test('pending AI video requests remain pinned to their submitted adapter', () =>
   }), 'gmicloud');
 });
 
-test('video submission adapter is derived from the actual dispatch path', () => {
+test('video submission adapter is derived from the actual dispatch path', (t) => {
+  const previousEdition = process.env.SAMSAR_DEPLOYMENT_EDITION;
+  process.env.SAMSAR_DEPLOYMENT_EDITION = 'standalone';
+  t.after(() => {
+    if (previousEdition === undefined) delete process.env.SAMSAR_DEPLOYMENT_EDITION;
+    else process.env.SAMSAR_DEPLOYMENT_EDITION = previousEdition;
+  });
   assert.equal(resolveVideoSubmissionAdapter('SEEDANCE2.0I2V', {
     model: 'SEEDANCE2.0I2V',
     dockerVideoProvider: 'fal',
   }), 'fal');
   assert.equal(resolveVideoSubmissionAdapter('RUNWAYML', {
     model: 'RUNWAYML',
+    dockerVideoProvider: 'runway',
   }), 'runway');
 });
 
@@ -520,6 +527,36 @@ test('image-to-video submit 503 is not safe to resubmit because acceptance is am
   assert.equal(isSafeProviderSubmissionRetry(error), false);
 });
 
+test('explicit GMICloud unusable-token rejection retries the same request only within the bounded submit budget', () => {
+  const error = {
+    code: 'gmicloud_token_unusable',
+    message: 'GMICloud submit failed (500): 1004: token is unusable',
+    response: { status: 503, headers: {} },
+  };
+  const request = {
+    model: 'SEEDANCE2.0I2V',
+    dockerVideoProvider: 'gmicloud',
+    status: 'INIT',
+    transientProviderErrorCount: 0,
+  };
+
+  assert.equal(isSafeProviderSubmissionRetry(error), true);
+  assert.equal(isSafeProviderSubmissionRetry({ ...error, response: { status: 502 } }), false);
+  const firstRejection = buildTransientProviderErrorUpdate(request, error, 'submit');
+  assert.equal(firstRejection.set.status, 'INIT');
+  assert.equal(firstRejection.set.lastProviderFailureMessage, error.message);
+  assert.equal(firstRejection.set.submissionOutcomeUnknown, false);
+
+  const thirdRejection = buildTransientProviderErrorUpdate({
+    ...request,
+    transientProviderErrorCount: 2,
+  }, error, 'submit');
+  assert.equal(thirdRejection.set.status, 'FAILED');
+  assert.equal(thirdRejection.set.retryOnFail, false);
+  assert.equal(thirdRejection.set.providerFailureDefinitive, true);
+  assert.equal(thirdRejection.set.submissionOutcomeUnknown, false);
+});
+
 test('only an explicit GMICloud submit rejection with another scored image can retry', () => {
   const request = {
     model: 'SEEDANCE2.0I2V',
@@ -847,13 +884,18 @@ test('stale base provider polling transient errors are promoted to FAILED', () =
 });
 
 test('hosted Happy Horse uses native Alibaba when adapter routing is configured', () => {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'samsar-hosted-video-routing-'));
   const originalCurrentEnv = process.env.CURRENT_ENV;
+  const originalEdition = process.env.SAMSAR_DEPLOYMENT_EDITION;
   const originalDockerRouting = process.env.SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED;
+  const originalAvailableModelsPath = process.env.SAMSAR_AVAILABLE_MODELS_PATH;
   const originalAlibabaApiKey = process.env.ALIBABA_API_KEY;
   const originalFalApiKey = process.env.FAL_API_KEY;
   try {
     process.env.CURRENT_ENV = 'production';
+    process.env.SAMSAR_DEPLOYMENT_EDITION = 'production';
     process.env.SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED = 'true';
+    process.env.SAMSAR_AVAILABLE_MODELS_PATH = path.join(temporaryDirectory, 'unconfigured-available-models.json');
     process.env.ALIBABA_API_KEY = 'alibaba-key';
     process.env.FAL_API_KEY = 'fal-key';
 
@@ -863,12 +905,17 @@ test('hosted Happy Horse uses native Alibaba when adapter routing is configured'
   } finally {
     if (originalCurrentEnv === undefined) delete process.env.CURRENT_ENV;
     else process.env.CURRENT_ENV = originalCurrentEnv;
+    if (originalEdition === undefined) delete process.env.SAMSAR_DEPLOYMENT_EDITION;
+    else process.env.SAMSAR_DEPLOYMENT_EDITION = originalEdition;
     if (originalDockerRouting === undefined) delete process.env.SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED;
     else process.env.SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED = originalDockerRouting;
+    if (originalAvailableModelsPath === undefined) delete process.env.SAMSAR_AVAILABLE_MODELS_PATH;
+    else process.env.SAMSAR_AVAILABLE_MODELS_PATH = originalAvailableModelsPath;
     if (originalAlibabaApiKey === undefined) delete process.env.ALIBABA_API_KEY;
     else process.env.ALIBABA_API_KEY = originalAlibabaApiKey;
     if (originalFalApiKey === undefined) delete process.env.FAL_API_KEY;
     else process.env.FAL_API_KEY = originalFalApiKey;
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
 

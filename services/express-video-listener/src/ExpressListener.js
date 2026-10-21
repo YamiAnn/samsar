@@ -111,7 +111,16 @@ async function completeExpressStageForBillingAndStep(
         stepSession?.expressStepGeneration?.requiresUserAction ||
         stepSession?.expressStepGeneration?.requires_user_action,
       );
-      return { ok: true, paused: isWaitingForProcessNext, alreadyPaused: isWaitingForProcessNext };
+      const isWaitingForEarlierStep = Boolean(
+        currentStep && currentStep !== stepStageKey &&
+        !isStepStageBeforeCurrent(stepStageKey, currentStep),
+      );
+      return {
+        ok: true,
+        paused: isWaitingForProcessNext || isWaitingForEarlierStep,
+        deferred: isWaitingForEarlierStep,
+        alreadyPaused: isWaitingForProcessNext,
+      };
     }
     if (currentStep && currentStep !== stepStageKey) {
       return {
@@ -141,6 +150,23 @@ async function completeExpressStageForBillingAndStep(
   });
   await processSessionCompletionFailure(sessionId);
   return { ok: false, paused: false };
+}
+
+async function completeNarratorAvatarStage(
+  sessionId,
+  { required = false, skipped = false, completeStage = completeExpressStageForBillingAndStep } = {},
+) {
+  return completeStage(
+    sessionId,
+    EXPRESS_VIDEO_BILLING_STAGES.NARRATOR_AVATAR_GENERATION,
+    { skipBilling: !required || skipped },
+  );
+}
+
+function canFinalizeExpressPipelineAfterStage(stageResult) {
+  return stageResult?.ok === true &&
+    stageResult.paused !== true &&
+    stageResult.deferred !== true;
 }
 
 const TERMINAL_GENERATION_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
@@ -1629,25 +1655,24 @@ async function checkVideoRenderStatus(session) {
         }
       }
 
-      if (currentGenerationStatus.narrator_avatar_generation === 'COMPLETED') {
-        const refreshedAvatarSession = await VideoSession.findById(sessionId)
-          .select('narratorAvatarGenerationSkipped')
-          .lean();
-        if (refreshedAvatarSession?.narratorAvatarGenerationSkipped !== true) {
-          const narratorAvatarStageResult = await completeExpressStageForBillingAndStep(
-            sessionId,
-            EXPRESS_VIDEO_BILLING_STAGES.NARRATOR_AVATAR_GENERATION,
-          );
-          if (!narratorAvatarStageResult.ok || narratorAvatarStageResult.paused) {
-            return;
-          }
-        }
-      }
     } else if (currentGenerationStatus.narrator_avatar_generation !== 'COMPLETED') {
       currentGenerationStatus.narrator_avatar_generation = 'COMPLETED';
       await VideoSession.updateOne({ _id: sessionId }, {
         expressGenerationStatus: currentGenerationStatus,
       }, { new: true });
+    }
+
+    if (currentGenerationStatus.narrator_avatar_generation === 'COMPLETED') {
+      const refreshedAvatarSession = await VideoSession.findById(sessionId)
+        .select('narratorAvatarGenerationSkipped')
+        .lean();
+      const narratorAvatarStageResult = await completeNarratorAvatarStage(sessionId, {
+        required: requiresNarratorAvatarGeneration,
+        skipped: refreshedAvatarSession?.narratorAvatarGenerationSkipped === true,
+      });
+      if (!narratorAvatarStageResult.ok || narratorAvatarStageResult.paused) {
+        return;
+      }
     }
   }
 
@@ -1841,7 +1866,7 @@ async function checkVideoRenderStatus(session) {
       sessionId,
       EXPRESS_VIDEO_BILLING_STAGES.PIPELINE,
     );
-    if (!pipelineStageResult.ok) {
+    if (!canFinalizeExpressPipelineAfterStage(pipelineStageResult)) {
       return;
     }
 
@@ -2223,4 +2248,6 @@ export const __testOnly__ = {
   isFailedAiVideoLayerQueuedForDeleteReflow,
   shouldRemoveLayerDuringDeleteReflow,
   applyTranscriptGenerationResultToStatus,
+  completeNarratorAvatarStage,
+  canFinalizeExpressPipelineAfterStage,
 };

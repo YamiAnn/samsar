@@ -8,6 +8,7 @@
 .modern-vertical-slider-seek {
   /* Base container for the vertical slider */
   width: 20px;
+  height: calc(100% + 16px);
   background-color: #18181b; /* neutral-950 */
   border-radius: 4px;
   position: relative;

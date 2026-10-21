@@ -116,7 +116,7 @@ function buildReviewScenes(sessionPreview) {
           id: getItemId(item, `item_${itemIndex}`),
           itemId: getItemId(item, `item_${itemIndex}`),
           prompt: getItemPrompt(item, fallbackPrompt),
-          url: normalizeString(item.url),
+          url: normalizeString(item.url) || getItemRawUrl(item),
           isPrimary: item.isPrimary === true || item.is_base_image === true || item.role === 'primary',
         }))
         .filter((item) => item.url || getItemRawUrl(item));

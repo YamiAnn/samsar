@@ -48,6 +48,7 @@ import {
   validateExternalStorageConfig,
 } from './storageConfig.mjs';
 import { validateBackblazeStorageCredentials } from './backblazeValidation.mjs';
+import { runComposeWithContainerRecovery } from './composeRecovery.mjs';
 
 const PORT = Number.parseInt(process.env.PORT || '80', 10);
 const STATIC_DIR = process.env.SETUP_WIZARD_STATIC_DIR || path.resolve('dist');
@@ -172,6 +173,7 @@ const MAINTENANCE_STEPS = [
 
 const runs = new Map();
 const maintenanceRuns = new Map();
+let setupValidationPending = false;
 const alibabaProviderValidations = new Map();
 const openrouterProviderValidations = createOpenRouterValidationRegistry();
 const gmiCloudProviderValidations = createGmiCloudValidationRegistry();
@@ -266,7 +268,7 @@ function runCommand(command, args, options = {}) {
     });
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
-      stderr += text;
+      stderr = (stderr + text).slice(-64_000);
       options.onOutput?.(text);
     });
     child.on('error', reject);
@@ -278,7 +280,9 @@ function runCommand(command, args, options = {}) {
         resolve();
         return;
       }
-      reject(new Error(`${command} ${args.join(' ')} failed with exit code ${code}${stderr ? `: ${stderr.slice(-800)}` : ''}`));
+      const error = new Error(`${command} ${args.join(' ')} failed with exit code ${code}${stderr ? `: ${stderr.slice(-800)}` : ''}`);
+      error.stderr = stderr;
+      reject(error);
     });
   });
 }
@@ -316,6 +320,23 @@ function getComposeArgs(...args) {
   return ['compose', '--env-file', ROOT_ENV_PATH, '-f', COMPOSE_FILE, ...args];
 }
 
+function runComposeStartup(run, args, options = {}) {
+  const commandOptions = {
+    cwd: ROOT_DIR,
+    env: { COMPOSE_BAKE: 'false' },
+    run,
+    onOutput: (text) => run && appendLog(run, text.trim()),
+    ...options,
+  };
+  return runComposeWithContainerRecovery(getComposeArgs(...args), {
+    rootDir: ROOT_DIR,
+    runCommand: (command, commandArgs) => runCommand(command, commandArgs, commandOptions),
+    captureCommand: (command, commandArgs) => runCommandCapture(command, commandArgs, commandOptions),
+    onRecovery: (message) => run && appendLog(run, message),
+    shouldRecover: () => !run?.cancelled,
+  });
+}
+
 async function prepareLocalMongoAuthentication(run, profiles = []) {
   if (!profiles.includes('local-mongo')) {
     return;
@@ -333,15 +354,11 @@ async function prepareLocalMongoAuthentication(run, profiles = []) {
     run,
     onOutput: (text) => appendLog(run, text.trim()),
   });
-  await runCommand('docker', getComposeArgs(
+  await runComposeStartup(run, [
     '--profile', 'local-mongo',
-    'up', '--no-deps', '--abort-on-container-exit',
+    'up', '--force-recreate', '--no-deps', '--abort-on-container-exit',
     '--exit-code-from', 'mongo-auth-bootstrap', 'mongo-auth-bootstrap',
-  ), {
-    cwd: ROOT_DIR,
-    run,
-    onOutput: (text) => appendLog(run, text.trim()),
-  });
+  ]);
 }
 
 async function synchronizeGrafanaAdminPassword(run, profiles = []) {
@@ -2357,7 +2374,7 @@ async function publishLocalMediaGateway(run, profileArgs, options = {}) {
   }
 
   setStepStatus(run, 'media', 'running', 'Publishing local media gateway for external Samsar adapter requests.');
-  await runCommand('docker', getComposeArgs(
+  await runComposeStartup(run, [
     ...profileArgs,
     'up',
     '-d',
@@ -2365,11 +2382,7 @@ async function publishLocalMediaGateway(run, profileArgs, options = {}) {
     '--force-recreate',
     'media-gateway',
     MEDIA_TUNNEL_CONTROLLER_SERVICE,
-  ), {
-    cwd: ROOT_DIR,
-    run,
-    onOutput: (text) => appendLog(run, text.trim()),
-  });
+  ]);
   setStepStatus(run, 'media', 'running', 'Waiting for the Compose media tunnel controller to publish a healthy URL.');
   await waitForComposeManagedMediaTunnel();
   setStepStatus(run, 'media', 'complete', 'Local media gateway published.');
@@ -2633,7 +2646,7 @@ async function bootstrapExistingDockerAdmin(admin) {
   await runCommand('node', [path.join(ROOT_DIR, 'scripts', 'generate-runtime-config.mjs')], {
     cwd: ROOT_DIR,
   });
-  await runCommand('docker', getComposeArgs(
+  await runComposeStartup(null, [
     '--profile',
     'core',
     'up',
@@ -2641,10 +2654,7 @@ async function bootstrapExistingDockerAdmin(admin) {
     '--no-deps',
     '--force-recreate',
     'processor',
-  ), {
-    cwd: ROOT_DIR,
-    env: { COMPOSE_BAKE: 'false' },
-  });
+  ]);
   await waitForHttp(PROCESSOR_READY_URL, { timeoutMs: 180000 });
   return requestLocalLoginUrl(admin, setupSecret);
 }
@@ -3566,14 +3576,9 @@ async function ensureReverseProxy(run, profileArgs, reverseProxy = {}) {
     }
   }
 
-  await runCommand('docker', [
-    ...getComposeArgs(...profileArgs, 'up', '-d', '--no-deps', '--force-recreate', 'reverse-proxy'),
-  ], {
-    cwd: ROOT_DIR,
-    env: { COMPOSE_BAKE: 'false' },
-    run,
-    onOutput: (text) => appendLog(run, text.trim()),
-  });
+  await runComposeStartup(run, [
+    ...profileArgs, 'up', '-d', '--no-deps', '--force-recreate', 'reverse-proxy',
+  ]);
 
   setStepStatus(run, 'proxy', 'running', 'Validating configured reverse proxy URLs.');
   let reverseProxyValidation = { warning: '' };
@@ -3714,24 +3719,17 @@ async function runSetup(run, payload) {
     validateDockerBuildInputs(profiles);
     await prepareLocalMongoAuthentication(run, profiles);
     setStepStatus(run, 'compose', 'running', `Starting Docker Compose profiles: ${nonGenBlazeProfiles.join(', ')}`);
-    await runCommand('docker', getComposeArgs(...nonGenBlazeProfileArgs, 'up', '-d', '--build'), {
-      cwd: ROOT_DIR,
-      env: { COMPOSE_BAKE: 'false' },
-      run,
-      onOutput: (text) => appendLog(run, text.trim()),
-    });
+    await runComposeStartup(run, [
+      ...nonGenBlazeProfileArgs, 'up', '-d', '--build', '--force-recreate', '--remove-orphans',
+    ]);
     if (genBlazeComposePlan.enabled) {
       setStepStatus(run, 'compose', 'running', 'Building and starting the validated GenBlaze gateway as the final Compose stage.');
-      await runCommand('docker', getComposeArgs(
+      await runComposeStartup(run, [
         '--profile',
         'genblaze',
         ...GENBLAZE_FINAL_UP_ARGS,
-      ), {
-        cwd: ROOT_DIR,
-        env: { COMPOSE_BAKE: 'false' },
-        run,
-        onOutput: (text) => appendLog(run, text.trim()),
-      });
+        '--force-recreate',
+      ]);
       setStepStatus(run, 'compose', 'running', 'Waiting for the GenBlaze gateway to become healthy.');
       await waitForComposeServiceHealthy('genblaze');
     }
@@ -3824,24 +3822,17 @@ async function runDockerMaintenance(run) {
     validateDockerBuildInputs(profiles);
     await prepareLocalMongoAuthentication(run, profiles);
     setStepStatus(run, 'compose', 'running', 'Rebuilding and restarting Docker containers.');
-    await runCommand('docker', getComposeArgs(...nonGenBlazeProfileArgs, 'up', '-d', '--build', '--remove-orphans'), {
-      cwd: ROOT_DIR,
-      env: composeEnv,
-      run,
-      onOutput: (text) => appendLog(run, text.trim()),
-    });
+    await runComposeStartup(run, [
+      ...nonGenBlazeProfileArgs, 'up', '-d', '--build', '--force-recreate', '--remove-orphans',
+    ]);
     if (genBlazeComposePlan.enabled) {
       setStepStatus(run, 'compose', 'running', 'Building and starting the validated GenBlaze gateway as the final Compose stage.');
-      await runCommand('docker', getComposeArgs(
+      await runComposeStartup(run, [
         '--profile',
         'genblaze',
         ...GENBLAZE_FINAL_UP_ARGS,
-      ), {
-        cwd: ROOT_DIR,
-        env: composeEnv,
-        run,
-        onOutput: (text) => appendLog(run, text.trim()),
-      });
+        '--force-recreate',
+      ]);
       setStepStatus(run, 'compose', 'running', 'Waiting for the GenBlaze gateway to become healthy.');
       await waitForComposeServiceHealthy('genblaze');
     }
@@ -4381,12 +4372,17 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === 'POST' && pathname === '/api/setup/start') {
     let payload = await readRequestBody(req);
+    if (setupValidationPending || [...maintenanceRuns.values()].some((run) => run.status === 'running')) {
+      sendJson(res, 409, { message: 'Docker setup or maintenance is already in progress. Wait for it to finish before starting setup.' });
+      return true;
+    }
     const runningRun = [...runs.values()].find((run) => run.status === 'running');
     if (runningRun) {
       sendJson(res, 200, cloneRun(runningRun));
       return true;
     }
 
+    setupValidationPending = true;
     try {
       if (normalizeString(payload.credentialSource).toLowerCase() === 'environment') {
         const references = payload.credentials || {};
@@ -4438,6 +4434,8 @@ async function handleApi(req, res, pathname) {
     } catch (error) {
       sendJson(res, 400, { message: error?.message || 'Setup validation failed.' });
       return true;
+    } finally {
+      setupValidationPending = false;
     }
 
     const run = {
@@ -4477,6 +4475,10 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === 'POST' && pathname === '/api/setup/maintenance/update-restart') {
+    if (setupValidationPending || [...runs.values()].some((run) => run.status === 'running')) {
+      sendJson(res, 409, { message: 'Docker setup is already in progress. Wait for it to finish before updating containers.' });
+      return true;
+    }
     const runningRun = [...maintenanceRuns.values()].find((run) => run.status === 'running');
     if (runningRun) {
       sendJson(res, 200, cloneRun(runningRun));

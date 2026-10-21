@@ -13,16 +13,22 @@ Konva.Filters.CustomGlitch = function(imageData) {
   // Apply glitch effect by shifting random horizontal slices
   for (let y = 0; y < height; y += sliceHeight) {
     if (Math.random() < 0.1) { // 10% chance to glitch this slice
-      const shift = (Math.random() - 0.5) * 2 * shiftAmount;
-      for (let x = 0; x < width; x++) {
-        const sourceIndex = (y * width + x) * 4;
-        const shiftedX = x + shift;
-        if (shiftedX >= 0 && shiftedX < width) {
-          const destIndex = (y * width + shiftedX) * 4;
-          data[destIndex] = data[sourceIndex];
-          data[destIndex + 1] = data[sourceIndex + 1];
-          data[destIndex + 2] = data[sourceIndex + 2];
-          data[destIndex + 3] = data[sourceIndex + 3];
+      const shift = Math.round((Math.random() - 0.5) * 2 * shiftAmount);
+      const sliceEnd = Math.min(y + sliceHeight, height);
+      // Keep the source intact while writing overlapping destinations. Copy
+      // only this slice so large canvases do not require a second full image.
+      const sourceData = data.slice(y * width * 4, sliceEnd * width * 4);
+      for (let row = y; row < sliceEnd; row++) {
+        for (let x = 0; x < width; x++) {
+          const sourceIndex = ((row - y) * width + x) * 4;
+          const shiftedX = x + shift;
+          if (shiftedX >= 0 && shiftedX < width) {
+            const destIndex = (row * width + shiftedX) * 4;
+            data[destIndex] = sourceData[sourceIndex];
+            data[destIndex + 1] = sourceData[sourceIndex + 1];
+            data[destIndex + 2] = sourceData[sourceIndex + 2];
+            data[destIndex + 3] = sourceData[sourceIndex + 3];
+          }
         }
       }
     }

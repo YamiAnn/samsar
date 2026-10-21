@@ -1,4 +1,4 @@
-// Keep this frame-clock contract identical across independently deployed workers.
+// Keep the default frame-clock contract compatible with independently deployed workers.
 // Seconds are an interchange value; only integer frame boundaries are rounded.
 export function secondsToFrameCount(seconds, framesPerSecond = 24) {
   const value = Number(seconds);
@@ -24,9 +24,11 @@ export function getLayerFrameRange(layer = {}, framesPerSecond = 24) {
   return { startFrame, endFrame, frameCount: endFrame - startFrame };
 }
 
-export function buildFrameExtractionFilter(framesPerSecond, scaleFilter) {
+export function buildFrameExtractionFilter(framesPerSecond, scaleFilter, { roundEndTimestamp = false } = {}) {
   const rate = Number(framesPerSecond);
   if (!Number.isFinite(rate) || rate <= 0) throw new RangeError('A positive frame rate is required');
-  // Reset source timestamps once; preserve the last frame and avoid a second output resample.
-  return `setpts=PTS-STARTPTS,fps=${rate}:start_time=0:round=near:eof_action=pass,${scaleFilter}`;
+  // API imports opt into the same nearest-frame end boundary as the client.
+  // Preserve the legacy default for callers with their own final-frame budget.
+  const eofAction = roundEndTimestamp ? 'round' : 'pass';
+  return `setpts=PTS-STARTPTS,fps=${rate}:start_time=0:round=near:eof_action=${eofAction},${scaleFilter}`;
 }

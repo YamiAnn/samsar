@@ -7,6 +7,20 @@
 @custom-variant dark (&:where(.theme-dark, .theme-dark *));
 
 :root {
+  --app-nav-height: 56px;
+  --workspace-inset: 16px;
+  --studio-left-width: clamp(196px, 14vw, 224px);
+  --studio-right-width: clamp(148px, 11vw, 168px);
+  --panel-background: #f3f6fb;
+  --panel-raised: #e6ebf5;
+  --panel-border: #cbd6e6;
+  --panel-text: #0f172a;
+  --panel-muted: #475569;
+  --panel-field: #ffffff;
+  --panel-focus: #0369a1;
+  --status-success: #047857;
+  --status-error: #be123c;
+  --status-warning: #92400e;
   --dark-canvas: #0c0d12;
   --dark-canvas-soft: #12141c;
   --dark-surface: #181b24;
@@ -73,10 +87,35 @@ body {
 }
 
 body.theme-dark {
+  --panel-background: #181b24;
+  --panel-raised: #20232e;
+  --panel-border: #3a4050;
+  --panel-text: #f4f6fb;
+  --panel-muted: #b6bfd0;
+  --panel-field: #12141c;
+  --panel-focus: #f6c453;
+  --status-success: #6ee7b7;
+  --status-error: #fda4af;
+  --status-warning: #fcd34d;
   color: var(--dark-text);
   background: linear-gradient(180deg, #15171f 0%, var(--dark-canvas-soft) 44%, var(--dark-canvas) 100%);
   scrollbar-color: var(--dark-border-strong) var(--dark-canvas-soft);
 }
+
+.workspace-page { color: var(--panel-text); }
+.workspace-scroll { min-width: 0; min-height: 0; overscroll-behavior: contain; }
+.app-panel { color: var(--panel-text); background-color: var(--panel-background); border-color: var(--panel-border); }
+.app-panel-header { color: var(--panel-text); background-color: var(--panel-raised); border-color: var(--panel-border); }
+.app-panel-body { min-width: 0; min-height: 0; overscroll-behavior: contain; }
+.app-panel-header-scroll { max-height: min(40dvh, 360px); overflow: auto; overscroll-behavior: contain; }
+.app-field { color: var(--panel-text); background-color: var(--panel-field); border-color: var(--panel-border); }
+.app-field:focus-visible { outline: 2px solid var(--panel-focus); outline-offset: 2px; }
+.status-success { color: var(--status-success); }
+.status-error { color: var(--status-error); }
+.status-warning { color: var(--status-warning); }
+.status-muted { color: var(--panel-muted); }
+.app-action-secondary { color: var(--panel-text); background-color: var(--panel-raised); border-color: var(--panel-border); }
+.app-action-secondary:disabled { color: var(--panel-muted); background-color: var(--panel-raised); }
 
 body.theme-dark ::selection {
   background: rgba(var(--accent-primary-rgb), 0.32);

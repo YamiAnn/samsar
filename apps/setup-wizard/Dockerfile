@@ -34,6 +34,7 @@ COPY falCredentialValidation.mjs ./falCredentialValidation.mjs
 COPY openrouterValidation.mjs ./openrouterValidation.mjs
 COPY gmiCloudValidation.mjs ./gmiCloudValidation.mjs
 COPY genblazeCompose.mjs ./genblazeCompose.mjs
+COPY composeRecovery.mjs ./composeRecovery.mjs
 COPY storageConfig.mjs ./storageConfig.mjs
 COPY backblazeValidation.mjs ./backblazeValidation.mjs
 COPY src/constants/providerEnvironment.js ./src/constants/providerEnvironment.js

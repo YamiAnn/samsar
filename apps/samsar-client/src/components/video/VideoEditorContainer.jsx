@@ -139,6 +139,8 @@ export default function VideoEditorContainer(props) {
     isUpdateLayerPending,
     isVideoPreviewPlaying,
     isPreviewPlaybackActive = isVideoPreviewPlaying,
+    onVideoError,
+    onVideoReadyChange,
     setIsVideoPreviewPlaying,
     onRecordSpeechRecordingChange,
     isRenderPending,
@@ -191,6 +193,8 @@ export default function VideoEditorContainer(props) {
   const currentLayerRef = useRef(currentLayer);
   const layersRef = useRef(layers);
   const generationPollIntervalRef = useRef(null);
+  const imageGenerationRequestVersionRef = useRef(0);
+  const aiVideoRequestVersionRef = useRef(0);
   const outpaintPollIntervalRef = useRef(null);
   const audioGenerationPollIntervalRef = useRef(null);
   const maskGenerationPollIntervalRef = useRef(null);
@@ -204,6 +208,19 @@ export default function VideoEditorContainer(props) {
   useEffect(() => {
     layersRef.current = layers;
   }, [layers]);
+
+  useEffect(() => {
+    setIsGenerationPending(false);
+    setGenerationError(null);
+    return () => {
+      // A response belongs to the scene/request that started it, even if the
+      // user switches away and returns to that scene before it completes.
+      imageGenerationRequestVersionRef.current += 1;
+      aiVideoRequestVersionRef.current += 1;
+      clearTimeout(generationPollIntervalRef.current);
+      generationPollIntervalRef.current = null;
+    };
+  }, [id, currentLayer?._id?.toString()]);
 
 
   const [aiVideoPollType, setAiVideoPollType] = useState(null);
@@ -389,7 +406,6 @@ export default function VideoEditorContainer(props) {
     setCurrentLayerDefaultPrompt(currentDefaultPrompt);
 
     return () => {
-      if (generationPollIntervalRef.current) clearInterval(generationPollIntervalRef.current);
       if (outpaintPollIntervalRef.current) clearInterval(outpaintPollIntervalRef.current);
       if (maskGenerationPollIntervalRef.current) clearInterval(maskGenerationPollIntervalRef.current);
       if (aiVideoGenerationPollIntervalRef.current) clearInterval(aiVideoGenerationPollIntervalRef.current);
@@ -855,25 +871,29 @@ export default function VideoEditorContainer(props) {
 
   // Submit new generation request
   const submitGenerateRequest = async (payload) => {
-    setIsGenerationPending(true);
-    setGenerationError(null);
-
-    payload.aspectRatio = aspectRatio;
-
     const headers = getHeaders();
     if (!headers) {
       showLoginDialog();
       return null;
     }
+    const requestVersion = ++imageGenerationRequestVersionRef.current;
+    clearTimeout(generationPollIntervalRef.current);
+    generationPollIntervalRef.current = null;
+    setIsGenerationPending(true);
+    setGenerationError(null);
+
+    payload.aspectRatio = aspectRatio;
+
     axios
       .post(`${PROCESSOR_API_URL}/video_sessions/request_generate`, payload, headers)
       .then((resData) => {
+        if (requestVersion !== imageGenerationRequestVersionRef.current) return;
         const response = resData.data;
         const updatedPrompt = response.prompt;
         if (payload.isRecreateRequest) {
           setCurrentLayerDefaultPrompt(updatedPrompt);
         }
-        startGenerationPoll();
+        startGenerationPoll(requestVersion);
         toast.success(
           <div>
             <FaCheck className='inline-flex mr-2' /> {t("studio.notifications.generationRequestSubmitted")}
@@ -885,6 +905,7 @@ export default function VideoEditorContainer(props) {
         );
       })
       .catch((error) => {
+        if (requestVersion !== imageGenerationRequestVersionRef.current) return;
         setIsGenerationPending(false);
         setGenerationError(error.message);
         toast.error(
@@ -1162,17 +1183,28 @@ export default function VideoEditorContainer(props) {
   const submitNanoBananaOutpaintRequest = () => {};
 
   // Poll for generation status
-  async function startGenerationPoll() {
+  async function startGenerationPoll(requestVersion) {
+    if (requestVersion !== imageGenerationRequestVersionRef.current) return;
     const selectedLayerId = currentLayer._id.toString();
     const headers = getHeaders();
     if (!headers) {
+      setIsGenerationPending(false);
       showLoginDialog();
       return;
     }
-    const pollStatusData = await axios.get(
-      `${PROCESSOR_API_URL}/video_sessions/generate_status?id=${id}&layerId=${selectedLayerId}`,
-      headers
-    );
+    let pollStatusData;
+    try {
+      pollStatusData = await axios.get(
+        `${PROCESSOR_API_URL}/video_sessions/generate_status?id=${id}&layerId=${selectedLayerId}`,
+        headers
+      );
+    } catch (error) {
+      if (requestVersion !== imageGenerationRequestVersionRef.current) return;
+      setIsGenerationPending(false);
+      setGenerationError(error.message);
+      return;
+    }
+    if (requestVersion !== imageGenerationRequestVersionRef.current) return;
     const pollStatus = pollStatusData.data;
 
     if (pollStatus.status === 'COMPLETED') {
@@ -1194,8 +1226,7 @@ export default function VideoEditorContainer(props) {
         setGenerationImages(generationImages);
       }
       const generatedImageUrlName = imageSession.activeGeneratedImage;
-      const timestamp = Date.now();
-      const generatedURL = `/generations/${generatedImageUrlName}?${timestamp}`;
+      const generatedURL = getRenderableImageUrl(generatedImageUrlName, PROCESSOR_API_URL, { legacyGenerationFilename: true });
 
       // Append the new generated image
       const item_id = `item_${activeItemList.length}`;
@@ -1248,7 +1279,7 @@ export default function VideoEditorContainer(props) {
       return;
     } else {
       generationPollIntervalRef.current = setTimeout(() => {
-        startGenerationPoll();
+        startGenerationPoll(requestVersion);
       }, 1000);
     }
   }
@@ -2758,6 +2789,7 @@ export default function VideoEditorContainer(props) {
 
   // Submit new AI video request
   const submitGenerateNewAIVideoRequest = (requestConfig) => {
+    if (!currentLayer) return;
     if (layerHasAnyVideoArtefact(currentLayer)) {
       toast.error(
         <div>
@@ -2770,6 +2802,12 @@ export default function VideoEditorContainer(props) {
       );
       return;
     }
+    const headers = getHeaders();
+    if (!headers) {
+      showLoginDialog();
+      return;
+    }
+    const requestVersion = ++aiVideoRequestVersionRef.current;
     setIsAIVideoGenerationPending(true);
     const payload = {
       model: selectedVideoGenerationModel,
@@ -2781,17 +2819,13 @@ export default function VideoEditorContainer(props) {
     };
     setGenerationError(null);
 
-    const headers = getHeaders();
-    if (!headers) {
-      showLoginDialog();
-      return;
-    }
     setAiVideoPollType(null);
 
 
     axios
       .post(`${PROCESSOR_API_URL}/video_sessions/request_generate_custom_video`, payload, headers)
       .then((resData) => {
+        if (requestVersion !== aiVideoRequestVersionRef.current) return;
         const response = resData.data;
 
         setAiVideoPollType('ai_video');
@@ -2813,6 +2847,8 @@ export default function VideoEditorContainer(props) {
         );
       })
       .catch((error) => {
+        if (requestVersion !== aiVideoRequestVersionRef.current) return;
+        setIsAIVideoGenerationPending(false);
         setGenerationError(error.message);
         toast.error(
           <div>
@@ -2986,6 +3022,8 @@ export default function VideoEditorContainer(props) {
               exportAnimationFrames={() => { }}
               currentLayerSeek={currentLayerSeek}
               isVideoPreviewPlaying={isPreviewPlaybackActive}
+              onVideoError={onVideoError}
+              onVideoReadyChange={onVideoReadyChange}
               currentLayer={currentLayer}
               updateSessionActiveItemList={updateSessionLayerActiveItemList}
               selectedLayerSelectShape={selectedLayerSelectShape}

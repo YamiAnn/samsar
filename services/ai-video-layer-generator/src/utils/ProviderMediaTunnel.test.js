@@ -7,6 +7,7 @@ import test from 'node:test';
 import { resolveFreshManagedProviderMediaUrl } from './ProviderMediaTunnel.js';
 
 const originalFetch = globalThis.fetch;
+const originalInternalSecret = process.env.INTERNAL_SECRET;
 const ENV_KEYS = [
   'SAMSAR_MEDIA_TUNNEL_REFRESH_WAIT_MS',
   'SAMSAR_MEDIA_TUNNEL_REFRESH_POLL_MS',
@@ -24,8 +25,16 @@ function restoreEnv(snapshot) {
   }
 }
 
+test.beforeEach(() => {
+  // These cases exercise the anonymous tunnel path. Private signer behavior has
+  // separate tests and must not depend on the container's real credentials.
+  delete process.env.INTERNAL_SECRET;
+});
+
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalInternalSecret === undefined) delete process.env.INTERNAL_SECRET;
+  else process.env.INTERNAL_SECRET = originalInternalSecret;
 });
 
 test('requests a replacement and returns only the refreshed exact asset URL', async () => {

@@ -25,13 +25,13 @@ export default function SelectedVisualTrackDisplay(props) {
   let statusClassName = 'text-neutral-400';
   if (selectedVisualTrack.isSaving) {
     statusLabel = 'Saving...';
-    statusClassName = 'text-blue-300';
+    statusClassName = 'status-muted';
   } else if (selectedVisualTrack.saveError) {
     statusLabel = 'Save failed';
-    statusClassName = 'text-red-300';
+    statusClassName = 'status-error';
   } else if (selectedVisualTrack.isDirty) {
     statusLabel = 'Unsaved';
-    statusClassName = 'text-amber-300';
+    statusClassName = 'status-warning';
   }
 
   const metaChipClassName = colorMode === 'dark'
@@ -49,7 +49,7 @@ export default function SelectedVisualTrackDisplay(props) {
   return (
     <div className="flex w-full flex-wrap items-center gap-2 text-xs">
       <div className="flex min-w-[132px] flex-col justify-center">
-        <span className="uppercase font-bold tracking-[0.12em] text-emerald-300 text-[10px]">
+        <span className="uppercase font-bold tracking-[0.12em] status-success text-[10px]">
           {selectedVisualTrack.assetLabel}
         </span>
         <span className={`font-medium ${headingClassName}`}>

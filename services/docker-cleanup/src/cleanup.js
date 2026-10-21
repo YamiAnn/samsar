@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ASSETS_V2_ROOT = '/assets_v2';
-const DEFAULT_MIN_AGE_HOURS = 24;
+const DEFAULT_MIN_AGE_HOURS = 168;
 
 const VIDEO_FILE_EXTENSIONS = new Set([
   '.avi',
@@ -361,7 +361,7 @@ async function cleanupOldFiles(directoryPath, rootPath, cutoffTimeMs, counters, 
 
     if (entry.isDirectory()) {
       await cleanupOldFiles(entryPath, rootPath, cutoffTimeMs, counters, dryRun, isEligibleFile);
-      await removeEmptyDirectoryIfPossible(entryPath, rootPath);
+      if (!dryRun) await removeEmptyDirectoryIfPossible(entryPath, rootPath);
       continue;
     }
 
@@ -405,6 +405,11 @@ export async function cleanupAssetsV2(options = {}) {
     allowNonAssetsV2Root,
   );
   const targets = resolveTargets(options.targets ?? env.CLEANUP_TARGETS);
+  // A missing mount must be reported as a failure, not a successful empty sweep.
+  const rootStats = await fs.stat(assetsV2Root);
+  if (!rootStats.isDirectory()) {
+    throw new Error(`Cleanup root is not a directory: ${assetsV2Root}`);
+  }
   const nowMs = options.nowMs ?? Date.now();
   const cutoffTimeMs = nowMs - minAgeHours * 60 * 60 * 1000;
   const counters = createCounters();

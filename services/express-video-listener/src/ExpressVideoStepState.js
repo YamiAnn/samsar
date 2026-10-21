@@ -80,6 +80,30 @@ export function getNextIncompleteExpressStepStage(stageKey, expressGenerationSta
   return null;
 }
 
+export function getNextExpressStepStageToRecord(
+  stageKey,
+  expressGenerationStatus = {},
+  completedSteps = {},
+) {
+  const nextIncompleteStep = getNextIncompleteExpressStepStage(stageKey, expressGenerationStatus);
+  if (nextIncompleteStep) {
+    return nextIncompleteStep;
+  }
+
+  // Rendering can finish before the express listener records the final step.
+  // Keep that completed render reachable so its billing and step receipt can
+  // be finalized without sending another video generation request.
+  if (
+    normalizeExpressStepStage(stageKey) === 'narrator_avatar_generation' &&
+    expressGenerationStatus?.video_generation === 'COMPLETED' &&
+    completedSteps?.video_generation?.status !== 'COMPLETED'
+  ) {
+    return 'video_generation';
+  }
+
+  return null;
+}
+
 export async function pauseExpressStepAfterCompletedStage(sessionId, stageKey, {
   pause = undefined,
 } = {}) {
@@ -104,7 +128,13 @@ export async function pauseExpressStepAfterCompletedStage(sessionId, stageKey, {
   );
   const now = new Date();
   const sequentialNextStep = getNextExpressStepStage(normalizedStage);
-  const nextStep = getNextIncompleteExpressStepStage(normalizedStage, expressGenerationStatus);
+  const nextStep = getNextExpressStepStageToRecord(
+    normalizedStage,
+    expressGenerationStatus,
+    sessionData?.expressStepGeneration?.completedSteps ||
+      sessionData?.expressStepGeneration?.completed_steps ||
+      {},
+  );
   const label = EXPRESS_STEP_VIDEO_STAGE_LABELS[normalizedStage] || normalizedStage;
   const nextLabel = nextStep ? EXPRESS_STEP_VIDEO_STAGE_LABELS[nextStep] || nextStep : null;
   const shouldPauseForNextStep = Boolean(pause !== false && nextStep && manualStepStages.includes(nextStep));

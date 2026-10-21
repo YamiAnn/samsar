@@ -1381,6 +1381,7 @@ export function isTransientProviderError(error) {
 export function isSafeProviderSubmissionRetry(error) {
   return (
     getProviderErrorStatus(error) === 429 ||
+    (error?.code === 'gmicloud_token_unusable' && getProviderErrorStatus(error) === 503) ||
     error?.code === 'SAMSAR_MEDIA_TUNNEL_UNREACHABLE'
   );
 }
@@ -1478,6 +1479,9 @@ export function buildTransientProviderErrorUpdate(request = {}, error, phase = '
           lastProviderFailureMessage: `GMICloud status checks exhausted: ${error?.message || String(error)}`,
         } : {}),
       ...(shouldFailRequest && phase === 'submit' ? { retryOnFail: false } : {}),
+      ...(phase === 'submit' && error?.code === 'gmicloud_token_unusable' ? {
+        lastProviderFailureMessage: error.message,
+      } : {}),
       providerFailureDefinitive:
         shouldFailRequest &&
         phase === 'submit' &&
@@ -3931,8 +3935,11 @@ async function processBaseGenerationFailed(payload) {
       payload.lastProviderFailureMessage,
       genDoc.lastProviderFailureMessage,
     );
+    const submitTries = genDoc.transientProviderErrorPhase === 'submit'
+      ? Math.max(0, Number(genDoc.transientProviderErrorCount || 0) - 1)
+      : 0;
     const failureMessage = buildBaseGenerationFailureMessage({
-      tries,
+      tries: Math.max(tries, submitTries),
       providerFailureMessage,
       retryPreparationFailureMessage,
     });

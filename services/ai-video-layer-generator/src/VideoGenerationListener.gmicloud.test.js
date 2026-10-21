@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import mongoose from 'mongoose';
 import VideoSession from './schema/VideoSession.js';
 import AIVideoLayerGeneration from './schema/AIVideoLayerGeneration.js';
@@ -73,6 +76,43 @@ function fixture(t, model) {
     };
   });
   return { job, layer, completed, row, calls, respond: value => { reply = value; } };
+}
+
+function configureHostedGmiRouting(t, models) {
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'samsar-gmi-routing-'));
+  const catalogPath = path.join(temporaryDirectory, 'genblaze-model-catalog.json');
+  fs.writeFileSync(catalogPath, JSON.stringify({
+    version: 1,
+    provider: 'gmicloud',
+    models: Object.fromEntries(models.map(model => [model, {
+      video: {
+        modelId: model === 'SEEDANCE2.0I2V' ? 'seedance-2-0-260128' : `test-${model.toLowerCase()}`,
+        operation: 'video.generate',
+      },
+    }])),
+  }));
+  const envOverrides = {
+    CURRENT_ENV: 'production',
+    SAMSAR_DEPLOYMENT_EDITION: 'production',
+    SAMSAR_DOCKER_ADAPTER_ROUTING_ENABLED: 'true',
+    SAMSAR_EXTERNAL_PROVIDERS_ENABLED: 'false',
+    SAMSAR_HOSTED_GENBLAZE_VIDEO_ENABLED: 'true',
+    SAMSAR_GENBLAZE_MODEL_CATALOG_PATH: catalogPath,
+    // Docker's persisted available-models file can override hosted priorities.
+    // These tests need the catalog above to select the intended GMI route.
+    SAMSAR_AVAILABLE_MODELS_PATH: path.join(temporaryDirectory, 'unconfigured-available-models.json'),
+  };
+  const previousEnv = Object.fromEntries(
+    Object.keys(envOverrides).map(name => [name, process.env[name]]),
+  );
+  Object.assign(process.env, envOverrides);
+  t.after(() => {
+    for (const [name, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  });
 }
 
 for (const model of ['SEEDANCE2.0I2V', 'VEO3.1', 'VEO3.1FAST', 'HAILUOPRO']) {
@@ -162,6 +202,49 @@ for (const status of [403, 429, 502, 503]) {
   });
 }
 
+test('Seedance 2.0 retries explicit GMICloud 1004 submissions and accepts the next successful job', async t => {
+  const fixtureState = fixture(t, 'SEEDANCE2.0I2V');
+  configureHostedGmiRouting(t, ['SEEDANCE2.0I2V']);
+  Object.assign(fixtureState.job, {
+    status: 'INIT',
+    generationId: null,
+    dockerVideoProvider: 'gmicloud',
+    framesPerSecond: 24,
+    numRetries: 0,
+    startImage: 'https://static.example/start.png',
+  });
+  let submissions = 0;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(options.method, 'POST');
+    assert.ok(url.endsWith('/media/requests'));
+    assert.equal(JSON.parse(options.body).model, 'SEEDANCE2.0I2V');
+    submissions++;
+    return {
+      ok: submissions > 1,
+      status: submissions > 1 ? 202 : 503,
+      headers: {},
+      text: async () => JSON.stringify(submissions > 1
+        ? { request_id: 'recovered-job', status: 'pending' }
+        : { error: {
+          code: 'gmicloud_token_unusable',
+          message: 'GMICloud submit failed (500): 1004: token is unusable',
+        } }),
+    };
+  });
+
+  await generatePendingAiVideoLayerRequests();
+  assert.equal(submissions, 1);
+  assert.equal(fixtureState.job.status, 'INIT');
+  assert.equal(fixtureState.job.transientProviderErrorCount, 1);
+  assert.equal(fixtureState.job.submissionOutcomeUnknown, false);
+  fixtureState.job.nextAttemptAfter = null;
+  await generatePendingAiVideoLayerRequests();
+  assert.equal(submissions, 2);
+  assert.equal(fixtureState.job.status, 'PENDING');
+  assert.equal(fixtureState.job.generationId, 'genblaze-video:recovered-job');
+  assert.equal(fixtureState.job.transientProviderErrorCount, 0);
+});
+
 for (const body of ['', 'null', '[]', '"unexpected"']) {
   test(`invalid successful envelope ${JSON.stringify(body)} is retryable`, async () => {
     await assert.rejects(requestGenBlazeVideo('/media/requests/job', {
@@ -174,6 +257,7 @@ for (const body of ['', 'null', '[]', '"unexpected"']) {
 for (const model of ['VEO3.1', 'VEO3.1FAST', 'HAILUOPRO']) {
   test(`${model}: wrapped submit 403 does not resubmit or enter Google fallback`, async t => {
     const f = fixture(t, model);
+    configureHostedGmiRouting(t, [model]);
     Object.assign(f.job, { status: 'INIT', generationId: null, dockerVideoProvider: 'gmicloud', framesPerSecond: 24, numRetries: 0 });
     let submissions = 0;
     t.mock.method(globalThis, 'fetch', async (url, options) => {

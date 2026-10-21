@@ -420,6 +420,7 @@
 }
 
 .text-track-container {
+  overscroll-behavior: contain;
   display: inline-flex;
   flex: 1 1 0%;
   min-width: 0;
@@ -428,14 +429,16 @@
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
+  height: calc(100% + 16px);
 }
 
 .audio-track-rail {
+  overscroll-behavior: contain;
   position: relative;
   display: inline-flex;
   flex: 1 1 0%;
   min-width: 0;
-  height: 100%;
+  height: calc(100% + 16px);
   min-height: 0;
   align-items: stretch;
   overflow: hidden;
@@ -542,7 +545,7 @@
 
 .timeline-layer-range-surface .timeline-layer-trim-handle {
   width: 24px !important;
-  height: 16px !important;
+  height: 10px !important;
   padding: 0 !important;
   color: transparent !important;
   background: transparent !important;
@@ -751,3 +754,5 @@ body.theme-light .timeline-layer-range-shell--selected {
   --timeline-layer-handle-border: rgba(14, 165, 233, 0.72);
   --timeline-layer-handle-shadow: 0 0 0 1px rgba(14, 165, 233, 0.18), 0 0 12px rgba(14, 165, 233, 0.16);
 }
+
+.timeline-lane-content { display: inline-flex; min-width: max-content; align-items: stretch; flex: 1 0 auto; }

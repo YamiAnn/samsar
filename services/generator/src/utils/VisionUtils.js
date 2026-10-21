@@ -328,14 +328,14 @@ Provide an information-dense, condensed and thorough description in 3000 charact
 
   if (videoMode === 'grounded') {
     userPrompt = `
-    Describe the image and all the artifacts in the image in detail.
-    Describe the visual medium/style, such as anime/cel-shaded illustration, photorealistic photo, CGI, black-and-white, or other obvious theme/style.
+    Describe the image in detail, including all visible subjects, objects, and visual defects.
+    Identify the visual medium, artistic style, and color treatment.
     Describe the scene and the objects in the scene including any text, illustrations, diagrams as well as general theme of the image.
     Thoroughly describe what context the image describes and any actors in the image, including their identity, gender, appearance, clothing, actions and position relative to the camera.
-    Describe any imperfections in the image, such as incorrect anatomy, extra hands/fingers, improper physics, out-of-place characters or objects, rotated/sideways/upside-down output, content turned 90 degrees relative to the requested aspect ratio/orientation, or other visual issues.
-    Describe any out-of-place objects such as extra hands, extra fingers, live fish swimming outside water etc.
+    Inspect recognizable objects for malformed geometry, incorrect component counts or placement, and contextually incorrect alignment or facing directions relative to nearby objects.
+    Describe any imperfections, including incorrect anatomy, extra hands/fingers, improper physics, or contextually misplaced characters or objects.
     Describe gender and clothing of characters including if there is partial nudity.
-    Check if the image fully covers the canvas. Note any black borders, letterboxing, empty space, rotated/sideways/upside-down output, content turned 90 degrees relative to the requested aspect ratio/orientation, or clipping where it fails to extend edge-to-edge.
+    Check if the image fully covers the canvas. Note any black borders, letterboxing, empty space, or clipping where it fails to extend edge-to-edge.
     If expected visual theme/style context is provided, state whether the image matches it or instead appears to use a different visual medium/style.
     Begin with a brief orientation audit sentence that states if the image content is upright, rotated, sideways, upside down, or appears like a landscape scene turned into a portrait canvas.
     For technical images, explicitly mention rotated labels/text and garbled or unreadable labels, equations, charts, axes, or UI text.

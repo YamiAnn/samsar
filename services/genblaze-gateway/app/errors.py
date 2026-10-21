@@ -23,6 +23,10 @@ _EXPLICIT_GMI_SUBMIT_REJECTION = re.compile(
     r"^GMICloud submit failed \(5\d\d\):\s*Backend error \(400\)(?:[.:\s]|$)",
     re.IGNORECASE,
 )
+_EXPLICIT_GMI_UNUSABLE_TOKEN = re.compile(
+    r"^GMICloud submit failed \(5\d\d\):\s*1004:\s*token is unusable(?:[.\s]|$)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -63,6 +67,17 @@ class GatewayError(Exception):
         message = str(exc) or "GMICloud request failed"
         if secret:
             message = message.replace(secret, "[redacted]")
+        if (
+            explicit_video_submit_rejection
+            and code in {"server_error", "unknown"}
+            and _EXPLICIT_GMI_UNUSABLE_TOKEN.match(message)
+        ):
+            return cls(
+                message=message,
+                status_code=503,
+                code="gmicloud_token_unusable",
+                error_type="provider_error",
+            )
         if (
             explicit_video_submit_rejection
             and code in {"server_error", "unknown"}

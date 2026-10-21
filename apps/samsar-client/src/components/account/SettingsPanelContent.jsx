@@ -297,10 +297,10 @@ export default function SettingsPanelContent(props) {
   const location = useLocation();
 
   const textColor = colorMode === "dark" ? "text-slate-100" : "text-slate-900";
-  const cardBgColor = colorMode === "dark" ? "bg-[#181b24]" : "bg-white";
+  const cardBgColor = "app-panel";
   const secondaryTextColor = colorMode === "dark" ? "text-slate-400" : "text-slate-600";
   const borderColor = colorMode === "dark" ? "border-[#3a4050]" : "border-slate-200";
-  const inputBgColor = colorMode === "dark" ? "bg-[#151720]" : "bg-white";
+  const inputBgColor = "app-field";
   const mutedBg = colorMode === "dark" ? "bg-[#20232e]" : "bg-slate-50";
   const PROCESSOR_SERVER = import.meta.env.VITE_PROCESSOR_API;
 

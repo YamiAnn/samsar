@@ -43,6 +43,9 @@ function applyAnimationsToNode(node, item, elapsedTime, duration, durationOffset
 
   item.animations.forEach(animation => {
     const { type, params, frameDuration, frameOffset } = animation;
+    const configuredRate = Number(animation.frameRate || animation.framesPerSecond);
+    const animationFramesPerSecond = configuredRate > 0 ? configuredRate : sessionFramesPerSecond;
+    const quantizedLayerStart = Math.round(durationOffset * sessionFramesPerSecond) / sessionFramesPerSecond;
 
     if (!params || !type) return;
 
@@ -50,12 +53,12 @@ function applyAnimationsToNode(node, item, elapsedTime, duration, durationOffset
     let startTime, endTime;
 
     if (frameOffset !== undefined && frameDuration !== undefined) {
-      const durationOffsetEffective = durationOffset * 1000;
-      startTime = durationOffsetEffective + (frameOffset * (1000 / sessionFramesPerSecond));
-      endTime = startTime + (frameDuration * (1000 / sessionFramesPerSecond));
+      const durationOffsetEffective = quantizedLayerStart * 1000;
+      startTime = durationOffsetEffective + (frameOffset * (1000 / animationFramesPerSecond));
+      endTime = startTime + (frameDuration * (1000 / animationFramesPerSecond));
     } else {
       // Use default layer duration
-      startTime = durationOffset * 1000;
+      startTime = quantizedLayerStart * 1000;
       endTime = startTime + totalLayerDuration;
     }
 

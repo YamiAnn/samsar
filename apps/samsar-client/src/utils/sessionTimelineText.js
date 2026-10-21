@@ -32,9 +32,9 @@ function getAudioLayerId(audioLayer) {
 
 function getAudioLayerSpeaker(audioLayer = {}) {
   return (
-    audioLayer.speakerCharacterName ||
-    audioLayer.speaker ||
-    audioLayer.actor ||
+    audioLayer?.speakerCharacterName ||
+    audioLayer?.speaker ||
+    audioLayer?.actor ||
     ''
   );
 }
@@ -111,8 +111,10 @@ function buildSubtitleTranscriptRows(sessionDetails = {}) {
 
       const frameOffset = toFiniteNumber(item?.config?.frameOffset, 0);
       const frameDuration = Math.max(1, toFiniteNumber(item?.config?.frameDuration, 1));
-      const startTime = layerStartTime + frameOffset / framesPerSecond;
-      const endTime = startTime + frameDuration / framesPerSecond;
+      const itemFramesPerSecond = Number(item?.config?.frameRate || item?.config?.framesPerSecond) > 0
+        ? Number(item.config.frameRate || item.config.framesPerSecond) : framesPerSecond;
+      const startTime = layerStartTime + frameOffset / itemFramesPerSecond;
+      const endTime = startTime + frameDuration / itemFramesPerSecond;
       const audioLayerId = item.audioLayerId?.toString?.() || item.audioLayerId || null;
       const audioLayer = audioLayerId ? audioLayerMap.get(audioLayerId.toString()) : null;
 

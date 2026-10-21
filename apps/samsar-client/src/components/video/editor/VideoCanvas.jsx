@@ -189,7 +189,8 @@ const VideoCanvas = forwardRef((props, ref) => {
   const handleVideoReadyChange = useCallback((source, isReady) => {
     const normalizedSource = typeof source === 'string' ? source.trim() : '';
     setReadyVideoLayerSrc(isReady && normalizedSource ? normalizedSource : '');
-  }, []);
+    props.onVideoReadyChange?.(currentLayer?._id?.toString?.() || currentLayer?._id, source, isReady);
+  }, [currentLayer?._id, props.onVideoReadyChange]);
 
 
 
@@ -792,7 +793,7 @@ const VideoCanvas = forwardRef((props, ref) => {
 
   // let canvasVideoUnderlay = <span />;
 
-  const currentRelativeFrame = currentLayerSeek - (durationOffset * FPS);
+  const currentRelativeFrame = currentLayerSeek - Math.round(durationOffset * FPS);
 
   const currentRelateiveTimeStamp = currentRelativeFrame ? currentRelativeFrame / FPS : 0;
 
@@ -806,6 +807,7 @@ const VideoCanvas = forwardRef((props, ref) => {
         nextAiVideoLayer={nextAiVideoLayer}
         nextAiVideoLayerType={nextAiVideoLayerType}
         isVideoPreviewPlaying={isVideoPreviewPlaying}
+        onVideoError={props.onVideoError}
         onVideoReadyChange={handleVideoReadyChange} />
     </div>
   )

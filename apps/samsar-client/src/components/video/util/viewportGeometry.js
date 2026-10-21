@@ -34,7 +34,9 @@ export function frameToViewportValue(frame, geometry) {
   const safeFrame = clampNumber(frame, geometryStartFrame, geometryEndFrame);
 
   if (segments.length === 0) {
-    return safeFrame - geometryStartFrame;
+    const totalPixels = Math.max(1, Number(geometry?.totalPixels) || 1);
+    const progress = (safeFrame - geometryStartFrame) / Math.max(1, geometryEndFrame - geometryStartFrame);
+    return progress * totalPixels;
   }
 
   for (let index = 0; index < segments.length; index += 1) {
@@ -88,4 +90,24 @@ export function viewportValueToFrame(viewportValue, geometry) {
 
   const lastSegment = segments[segments.length - 1];
   return Math.max(0, Number(lastSegment?.frameEnd) || 0);
+}
+
+export function createTrackViewportMapping(geometry, fps, trackStartTime, visibleStart, visibleDuration) {
+  const hasGeometry = geometry?.segments?.length > 0;
+  const startPixel = frameToViewportValue((trackStartTime + visibleStart) * fps, geometry);
+  const endPixel = frameToViewportValue((trackStartTime + visibleStart + visibleDuration) * fps, geometry);
+  const pixelSpan = Math.max(0.0001, endPixel - startPixel);
+  return {
+    timeToProgress(time) {
+      return hasGeometry
+        ? (frameToViewportValue((trackStartTime + time) * fps, geometry) - startPixel) / pixelSpan
+        : (time - visibleStart) / Math.max(0.0001, visibleDuration);
+    },
+    progressToTime(progress) {
+      const safeProgress = clampNumber(progress, 0, 1);
+      return hasGeometry
+        ? viewportValueToFrame(startPixel + safeProgress * pixelSpan, geometry) / fps - trackStartTime
+        : visibleStart + safeProgress * visibleDuration;
+    },
+  };
 }

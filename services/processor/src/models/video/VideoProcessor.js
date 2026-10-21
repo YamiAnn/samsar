@@ -718,7 +718,7 @@ function extractFrames(
       newFrameWidth,
       newFrameHeight,
       preserveAspectRatio
-    ));
+    ), { roundEndTimestamp: true });
 
     const outputOptions = [
       '-start_number', '0',

@@ -457,6 +457,37 @@ test('hosted provider resolution preserves an external Docker tunnel asset URL',
   assert.equal(fetchCount, 0);
 });
 
+test('hosted provider resolution never forwards owned media when CDN delivery fails', async () => {
+  process.env.CURRENT_ENV = 'production';
+  process.env.SAMSAR_MEDIA_DELIVERY_MODE = 's3-cloudfront';
+  process.env.MEDIA_DELIVERY_MODE = 's3-cloudfront';
+  let fetchCount = 0;
+  globalThis.fetch = async (url) => {
+    fetchCount += 1;
+    assert.equal(String(url), 'https://cdn.example.com/assets_v2/generations/session/frame.png');
+    return buildFetchResponse(String(url), { status: 403 });
+  };
+
+  const { getAccessibleProviderMediaUrl } = await loadVisionMediaUrl();
+  await assert.rejects(() => getAccessibleProviderMediaUrl(
+    'http://localhost:3002/assets_v2/generations/session/frame.png',
+    { mediaKind: 'image' },
+  ), /CDN cache prime returned status 403/);
+  assert.equal(fetchCount, 3);
+});
+
+test('hosted provider resolution rejects local media without public delivery', async () => {
+  process.env.CURRENT_ENV = 'production';
+  const { getAccessibleProviderMediaUrl } = await loadVisionMediaUrl();
+
+  for (const reference of ['/tmp/private-frame.png', 'http://127.0.0.1:7777/private.png']) {
+    await assert.rejects(
+      () => getAccessibleProviderMediaUrl(reference, { mediaKind: 'image' }),
+      (error) => error?.code === 'SAMSAR_VISION_MEDIA_REFERENCE_INVALID',
+    );
+  }
+});
+
 test('Docker with external S3 publishing maps owned local references to configured CDN delivery', async () => {
   process.env.SAMSAR_MEDIA_DELIVERY_MODE = 's3-cloudfront';
   process.env.MEDIA_DELIVERY_MODE = 's3-cloudfront';

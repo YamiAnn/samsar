@@ -208,8 +208,9 @@ export default function ResetPasswordPage() {
           )}
 
           <div className="mb-4">
-            <label className="block text-sm mb-1">{copy.language}</label>
+            <label htmlFor="reset-password-language" className="block text-sm mb-1">{copy.language}</label>
             <select
+              id="reset-password-language"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               className={fieldClass}
@@ -230,9 +231,11 @@ export default function ResetPasswordPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email field (pre‑filled but editable) */}
               <div>
-                <label className="block mb-1 text-sm">{copy.emailLabel}</label>
+                <label htmlFor="reset-password-email" className="block mb-1 text-sm">{copy.emailLabel}</label>
                 <input
+                  id="reset-password-email"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className={fieldClass}
@@ -241,9 +244,11 @@ export default function ResetPasswordPage() {
 
               {/* New password */}
               <div>
-                <label className="block mb-1 text-sm">{copy.passwordLabel}</label>
+                <label htmlFor="reset-password-new" className="block mb-1 text-sm">{copy.passwordLabel}</label>
                 <input
+                  id="reset-password-new"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className={fieldClass}
@@ -252,9 +257,11 @@ export default function ResetPasswordPage() {
 
               {/* Confirm */}
               <div>
-                <label className="block mb-1 text-sm">{copy.confirmPasswordLabel}</label>
+                <label htmlFor="reset-password-confirm" className="block mb-1 text-sm">{copy.confirmPasswordLabel}</label>
                 <input
+                  id="reset-password-confirm"
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   className={fieldClass}

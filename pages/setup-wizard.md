@@ -37,6 +37,36 @@ The Linux values are functional compatibility floors; keep Docker on a
 current, vendor-supported patch release.
 `npm run setup-wizard` remains an optional developer alias.
 
+With Node.js and npm available on the host, `npm run deploy` or
+`npm run docker:up` starts this same wizard before application image builds.
+`npm run docker:restart` also starts the wizard first, and `npm run sync:restart`
+syncs sibling projects before following that sequence. On a fresh install, finish
+configuration and deployment in the wizard. With an existing
+`runtime/config/samsar.config.json`, the command continues into the application
+deployment once the wizard responds on port `8089`. Wizard startup failures stop
+the command; application build failures leave the wizard available for recovery.
+
+Container startup recreates existing services and removes Compose orphans while
+preserving data volumes. If Docker reports a container-name conflict, the deployer
+checks the conflicting container's Compose project, service, and checkout path,
+then removes that container and retries with the already-built images. This covers
+every conflicting container in the stack, including containers whose Compose
+working directory is `deploy/compose`. Each conflicting name is recovered once;
+a repeated conflict stops the operation so concurrent deployments cannot keep
+replacing each other's containers. The same recovery applies to the media gateway,
+reverse proxy, and processor restart during account recovery. The wizard also
+prevents setup and update/restart operations from running at the same time. Other
+deployment errors remain visible in the setup log.
+
+Local MongoDB uses `mongo:27017` between containers and an automatically allocated
+loopback port for host access. This lets setup coexist with a host MongoDB already
+listening on port `27017`. To find the allocated host port, run
+`docker compose --env-file runtime/secrets/root.env -f deploy/compose/docker-compose.yml --profile local-mongo port mongo 27017`.
+Set `MONGO_PORT` explicitly when invoking Compose if you require a fixed host port;
+that port must be available. The setup wizard and deploy script read this shared
+Compose configuration, so the automatic host-port allocation also applies when
+retrying setup with an existing wizard container.
+
 The command creates a protected bootstrap token, binds the setup wizard to
 loopback, waits for it to respond, and opens an authenticated URL on
 `http://localhost:8089`. The token is retained under `runtime/secrets` and
@@ -159,5 +189,8 @@ npm run config:render
 npm run docker:setup-assets
 npm run docker:up
 ```
+
+The final command starts the setup wizard before deploying the manually saved
+configuration, so port `8089` is available during the application build.
 
 `npm run docker:setup-assets` is the one-time Docker host preparation step. It installs render/subtitle fonts into `runtime/fonts`, copies them into any running Samsar service containers, and refreshes Loki/Promtail/Grafana only when the logger service is enabled.

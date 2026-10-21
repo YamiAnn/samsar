@@ -540,7 +540,9 @@ Contributions and pull requests are welcome. If you are new to the codebase, sta
 
 ## Regression tests
 
-The client has existing Node regression tests, Vitest React tests, and Chromium
-component tests. Run `yarn test:browser:install` once, then `yarn test:ci`.
+The client has existing Node regression tests, Vitest React tests, and headless
+Chromium component tests. Run `yarn test:browser:install` once, then `yarn test:ci`.
+The installer downloads only the Chromium headless shell. Browser watch mode,
+coverage, and CI use that shell without installing or launching desktop Chrome.
 See [Testing](docs/TESTING.md) for local commands, scope, and the source-owned
 GitHub Actions template for Samsar monorepo and sync integration.
