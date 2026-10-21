@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
+// Run with installed service dependencies: npm run test:argon-migration.
+// The dependency-light root CI suite runs separately from service integrations.
 const root = process.env.SAMSAR_SOURCE_ROOT || fileURLToPath(new URL('..', import.meta.url));
 const services = [
   ['processor', 'src/consts/InferenceModels.js', 'src/inference/GoogleGemini.js'],
