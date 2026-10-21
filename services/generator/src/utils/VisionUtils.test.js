@@ -492,12 +492,33 @@ function mockClaudeScoring(t, responses) {
   return { payloads, delays, errors };
 }
 
-function scoreWithClaude() {
+function scoreWithClaude(videoMode = 'grounded') {
   return assignScoreForTheImage(
     'An upright anime frame', 'Existing detailed image description.',
-    'grounded', 'claude-opus-5.5', '16:9', '', '', 'native',
+    videoMode, 'claude-opus-5.5', '16:9', '', '', 'native',
   );
 }
+
+test('image scoring sends mode-specific structural and orientation rules to the judge', async (t) => {
+  const { payloads } = mockClaudeScoring(t, [{ text: '{"score":88}' }]);
+
+  assert.equal(await scoreWithClaude('grounded'), 88);
+  assert.equal(await scoreWithClaude('cinematic'), 88);
+  assert.equal(payloads.length, 2);
+
+  const groundedPrompt = payloads[0].system[0].text;
+  assert.match(groundedPrompt, /structural defects, distorted proportions, incorrect part counts, misplaced components/);
+  assert.match(groundedPrompt, /contextually incorrect placement, orientation, or interactions/);
+  assert.match(groundedPrompt, /Hands or body parts are detached without contextual justification\. Apply a severe deduction\./);
+  assert.match(groundedPrompt, /scene content is incorrectly rotated\. Apply a severe deduction and return a score from 0 to 5\./);
+  assert.doesNotMatch(groundedPrompt, /Minors are depicted prominently/);
+
+  const cinematicPrompt = payloads[1].system[0].text;
+  assert.match(cinematicPrompt, /central subject is spatially misaligned, imbalanced, or unnaturally positioned/);
+  assert.match(cinematicPrompt, /Heavily penalize contextless detached hands or body parts/);
+  assert.match(cinematicPrompt, /rotated, sideways, upside down, turned 90 degrees/);
+  assert.doesNotMatch(cinematicPrompt, /incorrect part counts, misplaced components/);
+});
 
 test('Claude scoring enforces a Zod schema and retries the same description three times', async (t) => {
   const { payloads, delays, errors } = mockClaudeScoring(t, [

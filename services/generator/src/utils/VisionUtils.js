@@ -441,8 +441,7 @@ export async function assignScoreForTheImage(
 `
     : '';
   const groundedDeductionRules = videoMode === 'grounded'
-    ? `- Minors are depicted prominently.
-- The image has exact resemblance to real individuals or copyrighted characters.
+    ? `- The image has exact resemblance to real individuals or copyrighted characters.
 `
     : '';
   const contextDetails = videoMode === 'grounded'
@@ -455,15 +454,21 @@ export async function assignScoreForTheImage(
     ? 'Human characters have biologically implausible anatomy, extra or missing hands/fingers/limbs, partial bodies, distorted faces, or other visible defects'
     : 'Characters or central objects have visible defects such as incorrect anatomy, extra or missing limbs/fingers, partial bodies, distorted faces, malformed objects, or broken rendering';
   const spatialPlacementDefects = videoMode === 'grounded'
-    ? 'Objects, creatures, or characters are unnaturally placed, spatially misaligned or imbalanced, physically inconsistent, incorrectly interacting with one another or their environment, or contextually wrong for the scene'
+    ? 'Subjects and objects have structural defects, distorted proportions, incorrect part counts, misplaced components, or contextually incorrect placement, orientation, or interactions with one another or their environment'
     : 'Objects, creatures, or characters are unnaturally placed, physically inconsistent, incorrectly interacting with the environment, or contextually wrong for the scene';
   const centralSubjectRule = videoMode === 'grounded'
     ? ''
     : '- The central subject is spatially misaligned, imbalanced, or unnaturally positioned relative to the scene.\n';
+  const detachedBodyPartsRule = videoMode === 'grounded'
+    ? '- Hands or body parts are detached without contextual justification. Apply a severe deduction.'
+    : '- Heavily penalize contextless detached hands or body parts.';
   const styleMismatchRules = videoMode === 'grounded'
     ? '- The described visual medium, style, or theme conflicts with the input prompt, expected visual scene context, or Theme. Apply a severe deduction and return a score from 0 to 10.'
     : `- The image visual medium/style/theme does not match the requested prompt, expected visual scene context, or Theme. Apply a severe deduction when the description says or clearly implies a different medium/style or conflicts with the provided Theme; for example, if anime, animated, cel-shaded, manga, cartoon, or illustrated style is requested but the description says photorealistic, photographic, live-action, real-world photo, or not anime/cel-shaded, return a score from 0 to 10.
 - If description style conflicts with Theme, score near zero.`;
+  const rotationRule = videoMode === 'grounded'
+    ? '- The described scene content is incorrectly rotated. Apply a severe deduction and return a score from 0 to 5.'
+    : '- The image description says or clearly implies the visual content is rotated, sideways, upside down, turned 90 degrees, or only upright after rotating the image. Apply a severe deduction for this issue and return a score from 0 to 5.';
 
   const systemPrompt =
 `You are an image-scoring assistant. Score whether the generated image is appropriate as the frame layer image for the current ${sceneTypeLabel}.
@@ -479,10 +484,10 @@ Deduct points when:
 - Text visible in the image has spelling, grammar, content, or placement errors relative to the prompt.
 - For technical or diagram images, labels, equations, charts, axes, or UI text are rotated, garbled, unreadable, or incorrectly oriented relative to the image.
 ${groundedDeductionRules}- The image contains partial nudity or NSFW content.
-${centralSubjectRule}- Heavily penalize contextless detached hands or body parts.
+${centralSubjectRule}${detachedBodyPartsRule}
 ${styleMismatchRules}
 - The image does not visually cover the canvas because of black borders, empty margins, or letterboxing.
-- The image description says or clearly implies the visual content is rotated, sideways, upside down, turned 90 degrees, or only upright after rotating the image. Apply a severe deduction for this issue and return a score from 0 to 5.
+${rotationRule}
 Return only a JSON object containing "score", a single integer between 0 and 100.`;
 
   const messages = [
