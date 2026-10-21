@@ -20,6 +20,8 @@ const MEDIA_BUCKET_NAME = process.env.MEDIA_BUCKET_NAME || process.env.STATIC_CD
 
 const STATIC_CDN_URL = process.env.STATIC_CDN_URL || 'https://static.samsar.one/';
 const CDN_PRIME_RETRY_DELAY_MS = 500;
+const AUDIO_UPLOAD_MAX_RETRIES = 3;
+const AUDIO_UPLOAD_RETRY_BASE_DELAY_MS = 500;
 const SECURE_ASSET_PREFIX = (process.env.SECURE_ASSET_PREFIX || 'assets_v2').replace(/^\/+|\/+$/g, '');
 const DEFAULT_CLOUDFRONT_SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const configuredCloudFrontSignedUrlTtlSeconds = Number(process.env.CLOUDFRONT_SIGNED_URL_TTL_SECONDS);
@@ -449,6 +451,30 @@ function getS3Client() {
   return s3Client;
 }
 
+async function putAudioObjectWithRetry(absolutePath, uploadParams, {
+  send = (command) => getS3Client().send(command),
+  wait = delay,
+  createStream = (filePath) => fs.createReadStream(filePath),
+} = {}) {
+  for (let attempt = 1; attempt <= AUDIO_UPLOAD_MAX_RETRIES + 1; attempt++) {
+    const fileStream = createStream(absolutePath);
+    try {
+      await send(new PutObjectCommand({ ...uploadParams, Body: fileStream }));
+      return;
+    } catch (error) {
+      fileStream.destroy();
+      if (attempt > AUDIO_UPLOAD_MAX_RETRIES) {
+        throw error;
+      }
+      const retryDelayMs = AUDIO_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.warn(`Audio upload attempt ${attempt} failed; retrying in ${retryDelayMs}ms.`, error);
+      await wait(retryDelayMs);
+    } finally {
+      fileStream.destroy();
+    }
+  }
+}
+
 export async function uploadFrameLayerImageToCDN(absolutePath, remoteFileName) {
   const bucketName = MEDIA_BUCKET_NAME;
   const folderName = 'temp_images';
@@ -508,37 +534,21 @@ export async function uploadMusicToCDN(absolutePath, remoteFileName) {
 
   assertConfiguredDockerExternalS3Delivery();
 
-  // Create a read stream for the file
-  const fileStream = fs.createReadStream(absolutePath);
-  const extension = path.extname(remoteFileName || absolutePath).toLowerCase();
-  const contentTypeByExtension = {
-    '.aac': 'audio/aac',
-    '.flac': 'audio/flac',
-    '.m4a': 'audio/mp4',
-    '.mp3': 'audio/mpeg',
-    '.ogg': 'audio/ogg',
-    '.wav': 'audio/wav',
-  };
-
-  // Define the S3 upload parameters
   const uploadParams = {
     Bucket: bucketName,
     Key: uploadKey,
-    Body: fileStream,
-    ContentType: contentTypeByExtension[extension] || 'audio/mpeg',
+    ContentType: getAudioContentType(remoteFileName || absolutePath),
   };
 
   try {
-    // Upload the file to S3
-    const s3 = getS3Client();
-    await s3.send(new PutObjectCommand(uploadParams));
+    await putAudioObjectWithRetry(absolutePath, uploadParams);
 
     const cdnUrl = buildMediaDeliveryUrl(uploadKey);
     await primeCDNCache(cdnUrl, { requireSuccess: true });
     return cdnUrl;
   } catch (error) {
     console.error('Error uploading file:', error);
-    throw new Error('Failed to upload image to CDN');
+    throw new Error('Failed to upload music to CDN', { cause: error });
   }
 }
 
@@ -557,24 +567,21 @@ export async function uploadAudioAssetToCDN(absolutePath, remoteFileName) {
 
   assertConfiguredDockerExternalS3Delivery();
 
-  const fileStream = fs.createReadStream(absolutePath);
   const uploadParams = {
     Bucket: bucketName,
     Key: uploadKey,
-    Body: fileStream,
     ContentType: getAudioContentType(remoteFileName || absolutePath),
   };
 
   try {
-    const s3 = getS3Client();
-    await s3.send(new PutObjectCommand(uploadParams));
+    await putAudioObjectWithRetry(absolutePath, uploadParams);
 
     const cdnUrl = buildMediaDeliveryUrl(uploadKey);
     await primeCDNCache(cdnUrl, { requireSuccess: true });
     return cdnUrl;
   } catch (error) {
     console.error('Error uploading audio file:', error);
-    throw new Error('Failed to upload audio to CDN');
+    throw new Error('Failed to upload audio to CDN', { cause: error });
   }
 }
 
@@ -646,8 +653,6 @@ export async function generateS3UrlsFromLocalFile(sessionId, filePath) {
 
   assertConfiguredDockerExternalS3Delivery();
 
-  const fileStream = fs.createReadStream(filePath);
-
   // Determine content type based on file extension
   // For .mp3 files, 'audio/mpeg' is a suitable content type.
   let contentType = 'application/octet-stream';
@@ -661,14 +666,11 @@ export async function generateS3UrlsFromLocalFile(sessionId, filePath) {
   const uploadParams = {
     Bucket: bucketName,
     Key: uploadKey,
-    Body: fileStream,
     ContentType: contentType,
   };
 
   try {
-    // Upload the file to S3
-    const s3 = getS3Client();
-    await s3.send(new PutObjectCommand(uploadParams));
+    await putAudioObjectWithRetry(filePath, uploadParams);
 
     const url = buildMediaDeliveryUrl(uploadKey);
     await primeCDNCache(url, { requireSuccess: true });
@@ -678,11 +680,12 @@ export async function generateS3UrlsFromLocalFile(sessionId, filePath) {
     return [url];
   } catch (error) {
     console.error('Error uploading file:', error);
-    throw new Error('Failed to upload file to CDN');
+    throw new Error('Failed to upload file to CDN', { cause: error });
   }
 }
 
 export const __testOnly__ = {
   getCloudFrontSignedUrlExpirationSeconds,
+  putAudioObjectWithRetry,
   resolveCloudFrontSignedUrlRefreshIntervalSeconds,
 };

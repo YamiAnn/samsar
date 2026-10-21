@@ -151,6 +151,59 @@ test('Docker-local upload persists a stable mounted reference without S3 configu
   );
 });
 
+test('audio uploads retry three failed streaming requests with fresh streams and exponential backoff', async (t) => {
+  const { sourcePath } = createAudioFixture(t);
+  const { __testOnly__ } = await importAwsModule();
+  const streams = [];
+  const retryDelays = [];
+
+  await __testOnly__.putAudioObjectWithRetry(sourcePath, {
+    Bucket: 'media',
+    Key: 'speech.wav',
+    ContentType: 'audio/wav',
+  }, {
+    send: async (command) => {
+      assert.equal(command.input.Bucket, 'media');
+      assert.equal(command.input.Key, 'speech.wav');
+      assert.equal(command.input.ContentType, 'audio/wav');
+      streams.push(command.input.Body);
+      const chunks = [];
+      for await (const chunk of command.input.Body) chunks.push(chunk);
+      assert.equal(Buffer.concat(chunks).toString(), 'wave-data');
+      if (streams.length < 4) throw new Error('socket hang up');
+    },
+    wait: async (delayMs) => retryDelays.push(delayMs),
+  });
+
+  assert.equal(streams.length, 4);
+  assert.equal(new Set(streams).size, 4);
+  assert.deepEqual(retryDelays, [500, 1000, 2000]);
+  assert.ok(streams.every((stream) => stream.destroyed));
+});
+
+test('audio uploads stop after three retries and preserve the terminal error', async (t) => {
+  const { sourcePath } = createAudioFixture(t);
+  const { __testOnly__ } = await importAwsModule();
+  const terminalError = new Error('upload still unavailable');
+  let attempts = 0;
+  const retryDelays = [];
+
+  await assert.rejects(
+    __testOnly__.putAudioObjectWithRetry(sourcePath, { Bucket: 'media', Key: 'speech.wav' }, {
+      send: async (command) => {
+        attempts++;
+        for await (const chunk of command.input.Body) void chunk;
+        throw terminalError;
+      },
+      wait: async (delayMs) => retryDelays.push(delayMs),
+    }),
+    (error) => error === terminalError,
+  );
+
+  assert.equal(attempts, 4);
+  assert.deepEqual(retryDelays, [500, 1000, 2000]);
+});
+
 test('CloudFront signing caps the refresh bucket below a short configured TTL', async (t) => {
   const snapshot = snapshotEnvironment();
   t.after(() => restoreEnvironment(snapshot));
