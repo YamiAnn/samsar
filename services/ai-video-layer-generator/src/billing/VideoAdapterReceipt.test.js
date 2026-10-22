@@ -47,6 +47,44 @@ test('Hummingbird fallback takes the originally requested duration', async () =>
   assert.equal(receipt.requestedSeconds, 7);
 });
 
+test('saved legacy Mirelo result uses its queue duration and old two-sample default', async () => {
+  const receipt = await resolveVideoAdapterReceipt(
+    { adapter: 'fal', model: 'MIRELOAI', providerRequestId: 'completed-request' },
+    { requestId: 'original-queue', result: { remoteUrl: 'https://provider.example/result.mp4' } },
+    { lookupGeneration: async id => { assert.equal(id, 'original-queue'); return { duration: 5 }; },
+      probeDuration: async () => assert.fail('Saved queue duration is available'),
+      fetchImpl: async () => assert.fail('Neither provider result nor billing GET is needed') },
+  );
+  assert.equal(receipt.requestedSeconds, 5);
+  assert.equal(receipt.sampleCount, 2);
+  assert.equal(receipt.sampleCountSource, 'legacy_default');
+  assert.equal(receipt.durationSource, 'legacy_queue');
+});
+
+test('orphaned legacy Mirelo receipt recovers from its saved output without provider GET', async () => {
+  const receipt = await resolveVideoAdapterReceipt(
+    { adapter: 'fal', model: 'MIRELOAI' },
+    { requestId: 'removed-queue', result: { localVideoLink: '/saved/first.mp4' } },
+    { lookupGeneration: async () => null,
+      probeDuration: async path => { assert.equal(path, '/saved/first.mp4'); return 5; },
+      fetchImpl: async () => assert.fail('No provider GET') },
+  );
+  assert.equal(receipt.requestedSeconds, 5);
+  assert.equal(receipt.sampleCount, 2);
+  assert.equal(receipt.durationSource, 'legacy_measured_output');
+});
+
+test('MMAudio existing default and current native sound receipts need no billing GET', async () => {
+  const legacy = await resolveVideoAdapterReceipt({ adapter: 'fal', model: 'MMAUDIOV2' }, {},
+    { fetchImpl: async () => assert.fail('No billing lookup') });
+  assert.equal(legacy.requestedSeconds, 8);
+  assert.equal(legacy.sampleCount, 1);
+  const current = await resolveVideoAdapterReceipt({ adapter: 'fal', model: 'MIRELOAI',
+    requestedSeconds: 5, sampleCount: 1, sampleCountSource: 'provider_result' }, {},
+  { lookupGeneration: async () => assert.fail('No queue lookup') });
+  assert.equal(current.sampleCount, 1);
+});
+
 test('recovers the confirmed GMICloud charge for a saved video without submitting again', async () => {
   const calls = [];
   const receipt = await resolveVideoAdapterReceipt(
