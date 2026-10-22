@@ -43,6 +43,15 @@ export function hasReusableBaseAiVideo(layer = {}) {
   );
 }
 
+export function hasUsableBaseAiVideo(layer = {}) {
+  const status = normalizeStatus(layer?.aiVideoGenerationStatus);
+  return layer?.hasAiVideoLayer === true
+    && layer?.aiVideoGenerationPending !== true
+    && status !== 'FAILED'
+    && status !== 'PENDING'
+    && Boolean(normalizeString(layer?.aiVideoLayer));
+}
+
 export function hasLipSyncOutput(layer = {}) {
   return Boolean(
     layer?.hasLipSyncVideoLayer
@@ -89,14 +98,13 @@ function isTrackedLipSyncLayer(layer = {}, connectedSpeechAudioLayer = null) {
   if (
     !isCharacterLipSyncLayer(layer)
     || !connectedSpeechAudioLayer
-    || !hasReusableBaseAiVideo(layer)
   ) {
     return false;
   }
 
   const status = normalizeStatus(layer?.lipSyncVideoGenerationStatus);
   return Boolean(
-    connectedSpeechAudioLayer
+    hasReusableBaseAiVideo(layer)
     || layer?.lipSyncGenerationPending
     || hasLipSyncOutput(layer)
     || (status && status !== 'INIT')
@@ -164,6 +172,37 @@ export function assessLipSyncStage(layers = [], audioLayers = []) {
     pending,
     completed,
   };
+}
+
+export function assessLipSyncFallback(stageAssessment = {}, {
+  missingRequestTimedOut = false,
+} = {}) {
+  const failed = stageAssessment.failed || [];
+  const incomplete = stageAssessment.incomplete || [];
+  const pending = stageAssessment.pending || [];
+  const unresolved = incomplete.filter((assessment) =>
+    assessment?.status !== 'COMPLETED'
+  );
+
+  // A failed layer must not end the stage while another layer can still
+  // produce a lip-sync output. INIT can also be the enqueue window.
+  if (pending.length || (unresolved.length && !missingRequestTimedOut)) {
+    return { state: 'WAIT', assessment: pending[0] || unresolved[0] };
+  }
+
+  const missing = [...failed, ...incomplete];
+  if (!missing.length) {
+    return { state: 'COMPLETE', assessment: null };
+  }
+
+  const withoutBase = missing.find((assessment) =>
+    !hasUsableBaseAiVideo(assessment?.layer)
+  );
+  if (withoutBase) {
+    return { state: 'NO_BASE_VIDEO', assessment: withoutBase };
+  }
+
+  return { state: 'FALLBACK', assessment: missing[0] };
 }
 
 export function getLipSyncFailureMessage(assessment = {}) {

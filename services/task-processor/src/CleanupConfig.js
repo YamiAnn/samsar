@@ -5,6 +5,13 @@ import { fileURLToPath } from 'node:url';
 const PROJECT_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const CONTAINER_RUNTIMES = new Set(['docker', 'container', 'compose', 'kubernetes', 'k8s']);
 export const DEFAULT_CLEANUP_MIN_AGE_HOURS = 168;
+export const DEFAULT_STALE_SESSION_FRAME_CLEANUP_HOURS = 24;
+export const DEFAULT_INTERMEDIATE_MEDIA_CLEANUP_HOURS = 48;
+
+const STAGE_RETENTION_DEFAULTS = Object.freeze({
+  STALE_SESSION_FRAME_CLEANUP_HOURS: DEFAULT_STALE_SESSION_FRAME_CLEANUP_HOURS,
+  INTERMEDIATE_MEDIA_CLEANUP_HOURS: DEFAULT_INTERMEDIATE_MEDIA_CLEANUP_HOURS,
+});
 
 export function isContainerRuntime(env = process.env, dockerMarkerPresent = fs.existsSync('/.dockerenv')) {
   return dockerMarkerPresent || [env.SAMSAR_RUNTIME, env.CURRENT_ENV].some(
@@ -32,8 +39,15 @@ export function getProcessorAssetsRoot(folderName, {
 }
 
 export function getCleanupMinAgeHours(stageSetting, env = process.env) {
-  const setting = env[stageSetting] ? stageSetting : 'CLEANUP_MIN_AGE_HOURS';
-  const rawValue = env[setting];
+  const configuredStageValue = env[stageSetting];
+  const hasStageOverride = configuredStageValue !== undefined && configuredStageValue !== '';
+  const hasStageDefault = Object.hasOwn(STAGE_RETENTION_DEFAULTS, stageSetting);
+  const setting = hasStageOverride || hasStageDefault ? stageSetting : 'CLEANUP_MIN_AGE_HOURS';
+  const rawValue = hasStageOverride
+    ? configuredStageValue
+    : hasStageDefault
+      ? STAGE_RETENTION_DEFAULTS[stageSetting]
+      : env.CLEANUP_MIN_AGE_HOURS;
   if (rawValue === undefined || rawValue === '') return DEFAULT_CLEANUP_MIN_AGE_HOURS;
   const hours = Number(rawValue);
   if (!Number.isFinite(hours) || hours <= 0) {

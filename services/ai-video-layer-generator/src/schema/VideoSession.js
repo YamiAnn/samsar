@@ -98,6 +98,7 @@ const layerSchema = new Schema({
     aiVideoGenerationStartedAt: Date,
     aiVideoGenerationError: String,
     lipSyncVideoGenerationStatus: { type: String, default: "INIT" },
+    lipSyncVideoGenerationError: String,
     soundEffectVideoGenerationStatus: { type: String, default: "INIT" },
   
     aiVideoRemoteLink: String,

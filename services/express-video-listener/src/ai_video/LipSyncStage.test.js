@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  assessLipSyncFallback,
   assessLipSyncStage,
   findConnectedSpeechAudioLayer,
+  hasUsableBaseAiVideo,
   hasLipSyncOutput,
   isCharacterLipSyncLayer,
 } from './LipSyncStage.js';
@@ -15,11 +17,81 @@ function characterLayer(id, overrides = {}) {
     layerBaseAiImageType: 'character',
     hasAiVideoLayer: true,
     aiVideoLayer: `/assets_v2/ai_video/${id}.mp4`,
+    aiVideoGenerationStatus: 'COMPLETED',
     lipSyncGenerationPending: true,
     lipSyncVideoGenerationStatus: 'INIT',
     ...overrides,
   };
 }
+
+test('lip sync falls back only to a usable local base video', () => {
+  const base = characterLayer('base');
+  assert.equal(hasUsableBaseAiVideo(base), true);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoLayer: '', aiVideoRemoteLink: '' }), false);
+  assert.equal(hasUsableBaseAiVideo({ ...base, hasAiVideoLayer: false }), false);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoGenerationStatus: 'FAILED' }), false);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoGenerationStatus: 'PENDING' }), false);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoGenerationPending: true }), false);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoGenerationStatus: 'INIT' }), true);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoGenerationStatus: undefined }), true);
+  assert.equal(hasUsableBaseAiVideo({ ...base, aiVideoLayer: '', aiVideoRemoteLink: 'https://cdn.example/base.mp4' }), false);
+});
+
+test('terminal lip-sync failure uses the base video after all other layers finish', () => {
+  const failed = characterLayer('failed', {
+    lipSyncGenerationPending: false,
+    lipSyncVideoGenerationStatus: 'FAILED',
+  });
+  const pending = characterLayer('pending', {
+    lipSyncVideoGenerationStatus: 'PENDING',
+  });
+  const audio = [
+    speechLayer('speech-failed', 'failed', 0),
+    speechLayer('speech-pending', 'pending', 1),
+  ];
+
+  assert.equal(assessLipSyncFallback(assessLipSyncStage([failed, pending], audio)).state, 'WAIT');
+  const allFinished = assessLipSyncStage([
+    failed,
+    { ...pending, lipSyncGenerationPending: false, lipSyncVideoGenerationStatus: 'COMPLETED',
+      hasLipSyncVideoLayer: true, lipSyncVideoLayer: '/lip/pending.mp4' },
+  ], audio);
+  assert.equal(assessLipSyncFallback(allFinished).state, 'FALLBACK');
+  assert.equal(assessLipSyncFallback(allFinished).assessment.layerId, 'failed');
+  assert.equal(assessLipSyncFallback(assessLipSyncStage([
+    { ...failed, aiVideoLayer: '', aiVideoRemoteLink: '' },
+  ], [audio[0]])).state, 'NO_BASE_VIDEO');
+  const failedWithoutBase = {
+    ...failed,
+    hasAiVideoLayer: false,
+    aiVideoLayer: '',
+    aiVideoRemoteLink: '',
+  };
+  const missingBaseAssessment = assessLipSyncStage([failedWithoutBase], [audio[0]]);
+  assert.equal(missingBaseAssessment.required.length, 1);
+  assert.equal(assessLipSyncFallback(missingBaseAssessment).state, 'NO_BASE_VIDEO');
+});
+
+test('missing lip-sync output waits through enqueue window and falls back after request is gone', () => {
+  const init = characterLayer('missing', { lipSyncGenerationPending: false });
+  const completedWithoutOutput = characterLayer('empty', {
+    lipSyncGenerationPending: false,
+    lipSyncVideoGenerationStatus: 'COMPLETED',
+    hasLipSyncVideoLayer: false,
+  });
+  const initAssessment = assessLipSyncStage([init], [speechLayer('speech-init', 'missing', 0)]);
+  const emptyAssessment = assessLipSyncStage([completedWithoutOutput], [speechLayer('speech-empty', 'empty', 0)]);
+
+  assert.equal(assessLipSyncFallback(initAssessment).state, 'WAIT');
+  assert.equal(assessLipSyncFallback(initAssessment, { missingRequestTimedOut: true }).state, 'FALLBACK');
+  assert.equal(assessLipSyncFallback(emptyAssessment).state, 'FALLBACK');
+});
+
+test('a stage with no character speech layers has no required lip-sync work', () => {
+  const assessment = assessLipSyncStage([], []);
+  assert.equal(assessment.state, 'NOT_REQUIRED');
+  assert.equal(assessLipSyncFallback(assessment).state, 'COMPLETE');
+});
 
 function speechLayer(id, connectedLayerId, connectedLayerIndex) {
   return {

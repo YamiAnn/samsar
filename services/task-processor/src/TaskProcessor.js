@@ -120,6 +120,55 @@ function removeDirectoryIfExists(folderPath) {
   return true;
 }
 
+async function isFrameDirectoryOlderThan(directoryPath, cutoffTimeMs) {
+  let stats;
+  try {
+    stats = await fs.promises.lstat(directoryPath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  if (!stats.isDirectory() || stats.isSymbolicLink() || stats.mtimeMs > cutoffTimeMs) {
+    return false;
+  }
+
+  let entries;
+  try {
+    entries = await fs.promises.readdir(directoryPath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  for (const entryName of entries) {
+    const entryPath = path.join(directoryPath, entryName);
+    let entryStats;
+    try {
+      entryStats = await fs.promises.lstat(entryPath);
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+    if (entryStats.isDirectory()) {
+      if (!(await isFrameDirectoryOlderThan(entryPath, cutoffTimeMs))) return false;
+    } else if (!entryStats.isFile() || entryStats.mtimeMs > cutoffTimeMs) {
+      // Keep the whole session if a file is recent or the tree has a symlink
+      // or another unexpected entry type.
+      return false;
+    }
+  }
+  return true;
+}
+
+async function findEligibleFramePaths(framePaths, cutoffTimeMs) {
+  const eligiblePaths = [];
+  for (const folderPath of framePaths) {
+    if (await isFrameDirectoryOlderThan(folderPath, cutoffTimeMs)) {
+      eligiblePaths.push(folderPath);
+    }
+  }
+  return eligiblePaths;
+}
+
 function isMediaFile(filePath) {
   return MEDIA_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
@@ -192,6 +241,36 @@ async function deleteOldMediaFiles(directoryPath, rootPath, cutoffTimeMs, counte
     counters.deletedFiles += 1;
     counters.deletedBytes += stats.size;
   }
+}
+
+async function getSafeTemporaryRenderRoot(assetsRoot, expectedRootName) {
+  const resolvedRoot = path.resolve(assetsRoot);
+  if (path.basename(resolvedRoot) !== expectedRootName) {
+    throw new Error(`Refusing ${expectedRootName} cleanup for unexpected root: ${assetsRoot}`);
+  }
+
+  const temporaryRenderRoot = path.join(resolvedRoot, 'ai_video', 'temp');
+  for (const directoryPath of [
+    resolvedRoot,
+    path.join(resolvedRoot, 'ai_video'),
+    temporaryRenderRoot,
+  ]) {
+    let stats;
+    try {
+      stats = await fs.promises.lstat(directoryPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      if (directoryPath === resolvedRoot) {
+        throw new Error(`${expectedRootName} cleanup root does not exist: ${assetsRoot}`);
+      }
+      return null;
+    }
+    if (!stats.isDirectory() || stats.isSymbolicLink()) {
+      throw new Error(`Refusing ${expectedRootName} cleanup through a non-directory or symlink: ${directoryPath}`);
+    }
+  }
+
+  return temporaryRenderRoot;
 }
 
 function createStaleVideoSessionCursor(
@@ -269,23 +348,26 @@ export async function deleteFramesForStaleSessions() {
           path.join(legacyAssetsRoot, 'ai_video', 'frames', sessionId),
           path.join(assetsV2Root, 'ai_video', 'frames', sessionId),
         ];
-        const existingFramePaths = framePaths.filter((folderPath) => fs.existsSync(folderPath));
+        // Session updatedAt alone cannot establish the age of frames written
+        // later, so require every entry in each directory to pass the cutoff.
+        const eligibleFramePaths = await findEligibleFramePaths(framePaths, staleBefore.getTime());
+        const eligibleAiVideoFramePaths = await findEligibleFramePaths(aiVideoFramePaths, staleBefore.getTime());
 
-        if (existingFramePaths.length > 0 && generationSideEffectsEnabled) {
+        if (eligibleFramePaths.length > 0 && generationSideEffectsEnabled) {
           // Persist regeneration intent before deleting files. If the process
           // exits between these operations, the next run can safely retry the
           // still-present directory without losing the database signal.
           await markSessionFramesForRegeneration(videoSession._id);
         }
 
-        for (const folderPath of existingFramePaths) {
+        for (const folderPath of eligibleFramePaths) {
           if (removeDirectoryIfExists(folderPath)) {
             deletedFrameFolderCount += 1;
           }
         }
 
         // Delete AI frames
-        for (const aiVideoFramePath of aiVideoFramePaths) {
+        for (const aiVideoFramePath of eligibleAiVideoFramePaths) {
           if (removeDirectoryIfExists(aiVideoFramePath)) {
             deletedFrameFolderCount += 1;
           }
@@ -303,14 +385,13 @@ export async function deleteFramesForStaleSessions() {
 }
 
 export async function cleanupOldLocalAssetsV2Media() {
-  const assetsV2Root = getProcessorAssetsRoot('assets_v2');
-  const resolvedAssetsV2Root = path.resolve(assetsV2Root);
-  if (path.basename(resolvedAssetsV2Root) !== 'assets_v2') {
-    throw new Error(`Refusing assets_v2 cleanup for unexpected root: ${assetsV2Root}`);
-  }
-
-  if (!fs.existsSync(assetsV2Root)) {
-    throw new Error(`assets_v2 cleanup root does not exist: ${assetsV2Root}`);
+  const temporaryRenderRoots = [];
+  for (const rootName of ['assets_v2', 'assets']) {
+    const temporaryRenderRoot = await getSafeTemporaryRenderRoot(
+      getProcessorAssetsRoot(rootName),
+      rootName,
+    );
+    if (temporaryRenderRoot) temporaryRenderRoots.push(temporaryRenderRoot);
   }
 
   const cleanupHours = getCleanupMinAgeHours(
@@ -318,20 +399,20 @@ export async function cleanupOldLocalAssetsV2Media() {
   );
   const cutoffTimeMs = Date.now() - cleanupHours * 60 * 60 * 1000;
   const counters = { deletedFiles: 0, deletedBytes: 0 };
-  const temporaryRenderRoot = path.join(resolvedAssetsV2Root, 'ai_video', 'temp');
 
-  // Never sweep assets_v2 itself. That tree contains final renders and user
-  // resources. Only the known temporary render path is eligible here; session
-  // frame directories are handled separately by deleteFramesForStaleSessions.
-  await deleteOldMediaFiles(
-    temporaryRenderRoot,
-    temporaryRenderRoot,
-    cutoffTimeMs,
-    counters,
-  );
+  // Never sweep either assets root itself. Both contain final renders and user
+  // resources; only their ai_video/temp paths are eligible here.
+  for (const temporaryRenderRoot of temporaryRenderRoots) {
+    await deleteOldMediaFiles(
+      temporaryRenderRoot,
+      temporaryRenderRoot,
+      cutoffTimeMs,
+      counters,
+    );
+  }
 
   logInfo(
-    `Intermediate media cleanup deleted ${counters.deletedFiles} file(s), ${counters.deletedBytes} byte(s), older than ${cleanupHours} hour(s) from ${temporaryRenderRoot}.`,
+    `Intermediate media cleanup deleted ${counters.deletedFiles} file(s), ${counters.deletedBytes} byte(s), older than ${cleanupHours} hour(s) from ${temporaryRenderRoots.join(', ')}.`,
   );
 
   return counters;
@@ -485,6 +566,7 @@ export async function runScheduledTasks() {
 
 export const __testOnly__ = {
   createStaleVideoSessionCursor,
+  findEligibleFramePaths,
   markSessionFramesForRegeneration,
   runFileCleanupTasksIfEnabled,
 };

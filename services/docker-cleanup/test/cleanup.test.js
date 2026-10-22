@@ -63,6 +63,7 @@ test('cleanup removes stale frame transformations and preserves protected assets
     assetsV2Root,
     minAgeHours: 24,
     nowMs,
+    env: {},
   });
 
   await assert.rejects(fs.stat(path.join(assetsV2Root, 'video/frames/old-session')), { code: 'ENOENT' });
@@ -118,6 +119,68 @@ test('default retention preserves recent media and dry-run leaves empty director
   assert.equal(result.deletedFiles, 1);
   await assert.rejects(fs.stat(oldFile), { code: 'ENOENT' });
   await fs.stat(recentFile);
+});
+
+test('frame and temp overrides apply independently without touching final media', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-cleanup-'));
+  t.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  const assetsV2Root = path.join(tempRoot, 'assets_v2');
+  const nowMs = Date.parse('2026-10-22T00:00:00.000Z');
+  const frameRoots = [
+    'video/frames',
+    'ai_video/frames',
+    'video/narrator_avatar/frames',
+    'video/narrator_avatar/joined_frames',
+  ];
+
+  for (const frameRoot of frameRoots) {
+    for (const [sessionId, hours] of [['old-session', 25], ['recent-session', 23]]) {
+      const sessionPath = path.join(assetsV2Root, frameRoot, sessionId);
+      await writeFileWithAge(path.join(sessionPath, '0.png'), 'frame', nowMs - hours * 3600000);
+      await setTreeMtime(sessionPath, nowMs - hours * 3600000);
+    }
+  }
+  const oldTempFile = path.join(assetsV2Root, 'ai_video/temp/old.png');
+  const recentTempFile = path.join(assetsV2Root, 'ai_video/temp/recent.png');
+  const finalFile = path.join(assetsV2Root, 'video/output/old-session/final.mp4');
+  await writeFileWithAge(oldTempFile, 'temp', nowMs - 49 * 3600000);
+  await writeFileWithAge(recentTempFile, 'temp', nowMs - 47 * 3600000);
+  await writeFileWithAge(finalFile, 'final', nowMs - 200 * 3600000);
+
+  const counters = await cleanupAssetsV2({
+    assetsV2Root,
+    nowMs,
+    env: {
+      CLEANUP_MIN_AGE_HOURS: '168',
+      CLEANUP_FRAME_MIN_AGE_HOURS: '24',
+      CLEANUP_TEMP_MIN_AGE_HOURS: '48',
+    },
+  });
+
+  for (const frameRoot of frameRoots) {
+    await assert.rejects(fs.stat(path.join(assetsV2Root, frameRoot, 'old-session')), { code: 'ENOENT' });
+    await fs.stat(path.join(assetsV2Root, frameRoot, 'recent-session', '0.png'));
+  }
+  await assert.rejects(fs.stat(oldTempFile), { code: 'ENOENT' });
+  await fs.stat(recentTempFile);
+  await fs.stat(finalFile);
+  assert.equal(counters.deletedDirectories, 4);
+  assert.equal(counters.deletedFiles, 5);
+  assert.deepEqual(counters.errors, []);
+});
+
+test('invalid per-target retention fails before cleanup', async () => {
+  for (const [name, value] of [
+    ['CLEANUP_FRAME_MIN_AGE_HOURS', '0'],
+    ['CLEANUP_FRAME_MIN_AGE_HOURS', 'abc'],
+    ['CLEANUP_TEMP_MIN_AGE_HOURS', '-1'],
+    ['CLEANUP_TEMP_MIN_AGE_HOURS', 'Infinity'],
+  ]) {
+    await assert.rejects(
+      cleanupAssetsV2({ env: { [name]: value } }),
+      new RegExp(`${name} must be a positive number`),
+    );
+  }
 });
 
 test('missing media mounts fail instead of reporting a successful empty cleanup', async (t) => {

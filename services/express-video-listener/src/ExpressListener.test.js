@@ -148,3 +148,58 @@ test('pipeline finalizer waits when its step charge is deferred or paused', () =
   assert.equal(__testOnly__.canFinalizeExpressPipelineAfterStage({ ok: false }), false);
   assert.equal(__testOnly__.canFinalizeExpressPipelineAfterStage({ ok: true, paused: false }), true);
 });
+
+test('skipped lip sync advances the step without charging its stage', async () => {
+  const calls = [];
+  const completeStage = async (...args) => {
+    calls.push(args);
+    return { ok: true, paused: false };
+  };
+
+  await __testOnly__.completeLipSyncStage('session-id', { skipped: true, completeStage });
+  await __testOnly__.completeLipSyncStage('session-id', { skipped: false, completeStage });
+  await __testOnly__.completeLipSyncStage('session-id', { requiredCount: 0, completeStage });
+
+  assert.deepEqual(calls, [
+    ['session-id', 'lip_sync_generation', { skipBilling: true }],
+    ['session-id', 'lip_sync_generation', { skipBilling: false }],
+    ['session-id', 'lip_sync_generation', { skipBilling: true }],
+  ]);
+  assert.equal(__testOnly__.isLipSyncStageReadyToComplete('FAILED', 'COMPLETE'), true);
+  assert.equal(__testOnly__.isLipSyncStageReadyToComplete('FAILED', 'WAIT'), false);
+});
+
+test('lip-sync skip stores one reason without changing character or audio layers', async () => {
+  let skipped = false;
+  let recordedUpdate;
+  const updateSession = async (query, update) => {
+    assert.deepEqual(query, { _id: 'session-id', lipSyncGenerationSkipped: { $ne: true } });
+    if (skipped) return { modifiedCount: 0 };
+    skipped = true;
+    recordedUpdate = update;
+    return { modifiedCount: 1 };
+  };
+  const failedAssessment = {
+    layerId: 'character-1',
+    status: 'FAILED',
+    audioLayer: { _id: 'speech-1' },
+    layer: { _id: 'character-1', lipSyncVideoGenerationError: 'Provider rejected audio.' },
+  };
+
+  await __testOnly__.skipLipSyncGenerationStage(
+    'session-id', { lip_sync_generation: 'PENDING', sound_effect_generation: 'INIT' },
+    failedAssessment, { updateSession },
+  );
+  await __testOnly__.skipLipSyncGenerationStage(
+    'session-id', { lip_sync_generation: 'PENDING', sound_effect_generation: 'INIT' },
+    failedAssessment, { updateSession },
+  );
+
+  assert.equal(recordedUpdate.$set.expressGenerationStatus.lip_sync_generation, 'COMPLETED');
+  assert.equal(recordedUpdate.$set.expressGenerationStatus.sound_effect_generation, 'INIT');
+  assert.equal(recordedUpdate.$set.lipSyncGenerationSkipped, true);
+  assert.equal(recordedUpdate.$set.lipSyncGenerationSkipReason, 'Provider rejected audio.');
+  assert.equal(recordedUpdate.$set.lipSyncGenerationPending, false);
+  assert.equal(recordedUpdate.$set.layers, undefined);
+  assert.equal(recordedUpdate.$set.audioLayers, undefined);
+});

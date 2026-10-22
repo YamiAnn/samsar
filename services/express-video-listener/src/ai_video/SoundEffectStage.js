@@ -16,10 +16,13 @@ function normalizeId(value) {
 }
 
 export function isSoundEffectLayer(layer = {}) {
-  // Terminal failures historically rewrite layerAiVideoType to `ai_video`.
-  // The base type retains the layer's original sound-effect intent.
+  // Terminal failures rewrite layerAiVideoType to `ai_video`. A saved failed
+  // status keeps the optional sound-effect stage visible even on older layers
+  // without layerBaseAiImageType.
   return normalizeType(layer?.layerBaseAiImageType) === 'sound_effect'
-    || normalizeType(layer?.layerAiVideoType) === 'sound_effect';
+    || normalizeType(layer?.layerAiVideoType) === 'sound_effect'
+    || normalizeStatus(layer?.soundEffectVideoGenerationStatus) === 'FAILED'
+    || layer?.soundEffectGenerationPending === true;
 }
 
 export function shouldRequestAudioVideoLayer(layer = {}, model, audioVideoModels = []) {
@@ -32,6 +35,15 @@ export function hasReusableBaseAiVideo(layer = {}) {
     || normalizeString(layer?.aiVideoLayer)
     || normalizeString(layer?.aiVideoRemoteLink)
   );
+}
+
+export function hasRenderReadyBaseAiVideo(layer = {}) {
+  const status = normalizeStatus(layer?.aiVideoGenerationStatus);
+  return layer?.hasAiVideoLayer === true
+    && layer?.aiVideoGenerationPending !== true
+    && status !== 'FAILED'
+    && status !== 'PENDING'
+    && Boolean(normalizeString(layer?.aiVideoLayer));
 }
 
 export function hasSoundEffectOutput(layer = {}) {
@@ -83,9 +95,14 @@ export function assessSoundEffectStage(layers = []) {
   const incomplete = assessments.filter((assessment) => assessment.state === 'INCOMPLETE');
   const pending = assessments.filter((assessment) => assessment.state === 'PENDING');
   const completed = assessments.filter((assessment) => assessment.state === 'COMPLETED');
+  const missingBase = [...skipped, ...incomplete].find((assessment) =>
+    !hasRenderReadyBaseAiVideo(assessment.layer)
+  );
   let state = 'NOT_REQUIRED';
   if (pending.length) {
     state = 'PENDING';
+  } else if (missingBase) {
+    state = 'NO_BASE_VIDEO';
   } else if (skipped.length || incomplete.length) {
     // Sound effects are optional. Once no requests remain pending, any
     // terminal/missing output falls back to the already generated base video.
@@ -102,6 +119,7 @@ export function assessSoundEffectStage(layers = []) {
     incomplete,
     pending,
     completed,
+    missingBase,
   };
 }
 
