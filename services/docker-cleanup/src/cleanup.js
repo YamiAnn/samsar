@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeCleanupStatus } from './status.js';
 
 const DEFAULT_ASSETS_V2_ROOT = '/assets_v2';
 const DEFAULT_MIN_AGE_HOURS = 168;
@@ -398,6 +399,16 @@ export async function cleanupAssetsV2(options = {}) {
     DEFAULT_MIN_AGE_HOURS,
     'CLEANUP_MIN_AGE_HOURS',
   );
+  const frameMinAgeHours = parsePositiveNumber(
+    options.frameMinAgeHours ?? env.CLEANUP_FRAME_MIN_AGE_HOURS,
+    minAgeHours,
+    'CLEANUP_FRAME_MIN_AGE_HOURS',
+  );
+  const tempMinAgeHours = parsePositiveNumber(
+    options.tempMinAgeHours ?? env.CLEANUP_TEMP_MIN_AGE_HOURS,
+    minAgeHours,
+    'CLEANUP_TEMP_MIN_AGE_HOURS',
+  );
   const dryRun = options.dryRun ?? parseBoolean(env.CLEANUP_DRY_RUN, false);
   const allowNonAssetsV2Root = options.allowNonAssetsV2Root ?? parseBoolean(env.ALLOW_NON_ASSETS_V2_ROOT, false);
   const assetsV2Root = resolveAssetsV2Root(
@@ -411,13 +422,17 @@ export async function cleanupAssetsV2(options = {}) {
     throw new Error(`Cleanup root is not a directory: ${assetsV2Root}`);
   }
   const nowMs = options.nowMs ?? Date.now();
-  const cutoffTimeMs = nowMs - minAgeHours * 60 * 60 * 1000;
+  const frameCutoffTimeMs = nowMs - frameMinAgeHours * 60 * 60 * 1000;
+  const tempCutoffTimeMs = nowMs - tempMinAgeHours * 60 * 60 * 1000;
   const counters = createCounters();
 
   log('assets_v2 cleanup started', {
     assetsV2Root,
     minAgeHours,
-    cutoff: new Date(cutoffTimeMs).toISOString(),
+    frameMinAgeHours,
+    frameCutoff: new Date(frameCutoffTimeMs).toISOString(),
+    tempMinAgeHours,
+    tempCutoff: new Date(tempCutoffTimeMs).toISOString(),
     dryRun,
     targets: targets.map((target) => target.relativePath),
   });
@@ -427,17 +442,17 @@ export async function cleanupAssetsV2(options = {}) {
     counters.scannedTargets += 1;
 
     if (target.mode === 'session-directories') {
-      await cleanupSessionDirectories(targetRoot, cutoffTimeMs, counters, dryRun);
+      await cleanupSessionDirectories(targetRoot, frameCutoffTimeMs, counters, dryRun);
       continue;
     }
 
     if (target.mode === 'old-media-files') {
-      await cleanupOldFiles(targetRoot, targetRoot, cutoffTimeMs, counters, dryRun, isMediaFile);
+      await cleanupOldFiles(targetRoot, targetRoot, tempCutoffTimeMs, counters, dryRun, isMediaFile);
       continue;
     }
 
     if (target.mode === 'old-video-files') {
-      await cleanupOldFiles(targetRoot, targetRoot, cutoffTimeMs, counters, dryRun, isVideoFile);
+      await cleanupOldFiles(targetRoot, targetRoot, tempCutoffTimeMs, counters, dryRun, isVideoFile);
       continue;
     }
 
@@ -449,15 +464,43 @@ export async function cleanupAssetsV2(options = {}) {
 }
 
 async function main() {
+  const startedAt = new Date().toISOString();
+  // A preview must not replace the last result of a real maintenance run.
+  const recordStatus = !parseBoolean(process.env.CLEANUP_DRY_RUN, false);
+  let failed = false;
+  let errorCount = 0;
+  if (recordStatus) {
+    try {
+      await writeCleanupStatus({ state: 'running', startedAt });
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Could not record cleanup start: ${error.message}`);
+    }
+  }
+
   try {
     const counters = await cleanupAssetsV2();
-    if (counters.errors.length > 0) {
-      process.exitCode = 1;
-    }
+    errorCount = counters.errors.length;
+    failed = errorCount > 0;
   } catch (error) {
     console.error(`[${new Date().toISOString()}] assets_v2 cleanup failed: ${error.stack || error.message}`);
-    process.exitCode = 1;
+    failed = true;
+    errorCount = 1;
   }
+
+  if (recordStatus) {
+    try {
+      await writeCleanupStatus({
+        state: failed ? 'failure' : 'success',
+        startedAt,
+        completedAt: new Date().toISOString(),
+        errorCount,
+      });
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Could not record cleanup result: ${error.message}`);
+      failed = true;
+    }
+  }
+  if (failed) process.exitCode = 1;
 }
 
 const currentFilePath = fileURLToPath(import.meta.url);

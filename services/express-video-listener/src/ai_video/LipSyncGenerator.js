@@ -1,7 +1,6 @@
 import { getDBConnectionString } from "../DBString.js";
 import AIVideoLayerGeneration from "../schema/AIVideoLayerGeneration.js";
 import VideoSession from "../schema/VideoSession.js";
-import { processSessionCompletionFailure } from '../ExpressSessionStateUpdater.js';
 
 import fs from 'fs';
 import path from 'path';
@@ -123,74 +122,49 @@ export async function generateLipSyncForSession(sessionId) {
   const sessionLayers = Array.isArray(sessionData.layers) ? sessionData.layers : [];
   const sessionAudioLayers = Array.isArray(sessionData.audioLayers) ? sessionData.audioLayers : [];
 
+  await enqueueLipSyncLayers(sessionId, sessionLayers, sessionAudioLayers);
+}
 
+async function enqueueLipSyncLayers(
+  sessionId,
+  sessionLayers,
+  sessionAudioLayers,
+  {
+    generateLayer = generateLipSyncForLayer,
+    markFailed = markLipSyncLayerFailed,
+    log = (...args) => console.warn(...args),
+  } = {},
+) {
+  for (let i = 0; i < sessionLayers.length; i++) {
+    const currentLayer = sessionLayers[i];
 
-  try {
-    for (let i = 0; i < sessionLayers.length; i++) {
-      const currentLayer = sessionLayers[i];
+    const hasBaseAiVideo = hasReusableBaseAiVideo(currentLayer);
 
-      const hasBaseAiVideo = hasReusableBaseAiVideo(currentLayer);
-
-      if (!isCharacterLipSyncLayer(currentLayer) || !hasBaseAiVideo || hasLipSyncOutput(currentLayer)) {
-        continue;
-      }
-
-      const connectedAudioLayer = findConnectedSpeechAudioLayer(
-        sessionAudioLayers,
-        currentLayer,
-        i,
-      );
-
-      // A character scene without connected speech never enters lip sync.
-      if (!connectedAudioLayer) {
-        continue;
-      }
-
-      try {
-        await generateLipSyncForLayer(sessionId, currentLayer, connectedAudioLayer);
-      } catch (error) {
-        await markLipSyncLayerFailed(sessionId, currentLayer._id, error);
-        throw error;
-      }
+    if (!isCharacterLipSyncLayer(currentLayer) || !hasBaseAiVideo || hasLipSyncOutput(currentLayer)) {
+      continue;
     }
 
-  } catch (error) {
-    const message = error?.message || 'Lip sync generation request failed.';
-    const now = new Date();
-    console.error('[lip_sync][request_enqueue] failed to create lip sync generation request', {
-      sessionId,
-      error: message,
-      stack: error?.stack,
-    });
-    await VideoSession.updateOne(
-      { _id: sessionId },
-      {
-        $set: {
-          'expressGenerationStatus.lip_sync_generation': 'FAILED',
-          'expressGenerationStatus.status': 'FAILED',
-          expressGenerationPending: false,
-          expressGenerationFailed: true,
-          expressGenerationError: message,
-          lastLipSyncGenerationError: message,
-          'expressStepGeneration.status': 'FAILED',
-          'expressStepGeneration.currentStep': 'lip_sync_generation',
-          'expressStepGeneration.current_step': 'lip_sync_generation',
-          'expressStepGeneration.currentStepLabel': 'Lip sync',
-          'expressStepGeneration.current_step_label': 'Lip sync',
-          'expressStepGeneration.error': message,
-          'expressStepGeneration.waiting': false,
-          'expressStepGeneration.waitingForProcessNext': false,
-          'expressStepGeneration.waiting_for_process_next': false,
-          'expressStepGeneration.requiresUserAction': false,
-          'expressStepGeneration.requires_user_action': false,
-          'expressStepGeneration.canProcessNext': false,
-          'expressStepGeneration.can_process_next': false,
-          'expressStepGeneration.updatedAt': now,
-          'expressStepGeneration.updated_at': now,
-        },
-      }
+    const connectedAudioLayer = findConnectedSpeechAudioLayer(
+      sessionAudioLayers,
+      currentLayer,
+      i,
     );
-    await processSessionCompletionFailure(sessionId);
+
+    // A character scene without connected speech never enters lip sync.
+    if (!connectedAudioLayer) {
+      continue;
+    }
+
+    try {
+      await generateLayer(sessionId, currentLayer, connectedAudioLayer);
+    } catch (error) {
+      await markFailed(sessionId, currentLayer._id, error);
+      log('[lip_sync][request_enqueue] keeping base AI video after lip-sync setup failure', {
+        sessionId,
+        layerId: normalizeStringId(currentLayer._id),
+        error: error?.message || String(error),
+      });
+    }
   }
 
 }
@@ -568,4 +542,5 @@ export const __testOnly__ = {
   getUploadedAudioReference,
   hasReusableBaseAiVideo,
   shouldRetryLipSyncFailure,
+  enqueueLipSyncLayers,
 };

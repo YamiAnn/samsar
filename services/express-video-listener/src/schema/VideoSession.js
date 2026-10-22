@@ -101,6 +101,7 @@ const layerSchema = new Schema({
   aiVideoGenerationStartedAt: Date,
   aiVideoGenerationError: String,
   lipSyncVideoGenerationStatus: { type: String, default: "INIT" },
+  lipSyncVideoGenerationError: String,
   soundEffectVideoGenerationStatus: { type: String, default: "INIT" },
   userVideoGenerationStatus: { type: String, default: "INIT" },
 
@@ -313,6 +314,10 @@ const videoSessionSchema = new Schema({
     type: Object,
     default: InitExpressGenerationStatus,
   },
+  lipSyncGenerationStartedAt: Date,
+  lipSyncGenerationSkipped: { type: Boolean, default: false },
+  lipSyncGenerationSkippedAt: Date,
+  lipSyncGenerationSkipReason: String,
   expressGenerationAnimation: { type: String, default: null },
   expressGenerationType: { type: String, default: null },
   expressGenerationError: { type: String, default: null },

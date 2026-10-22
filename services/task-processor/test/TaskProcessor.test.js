@@ -227,42 +227,134 @@ test('frame regeneration flags are updated in place without replacing layers', a
   );
 });
 
+test('old sessions keep frame directories containing recent files or directories', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-frame-age-'));
+  t.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  const nowMs = Date.parse('2026-10-22T00:00:00.000Z');
+  const cutoffTimeMs = nowMs - 24 * 3600000;
+  const oldTime = new Date(nowMs - 25 * 3600000);
+  const recentTime = new Date(nowMs - 23 * 3600000);
+  const cases = [
+    ['old', oldTime, oldTime, oldTime],
+    ['recent-file', oldTime, oldTime, recentTime],
+    ['recent-nested-directory', oldTime, recentTime, oldTime],
+    ['recent-session-directory', recentTime, oldTime, oldTime],
+  ];
+  for (const [name, sessionTime, layerTime, fileTime] of cases) {
+    const sessionPath = path.join(tempRoot, name);
+    const layerPath = path.join(sessionPath, 'layer');
+    const framePath = path.join(layerPath, '0.png');
+    await fs.mkdir(layerPath, { recursive: true });
+    await fs.writeFile(framePath, 'frame');
+    await fs.utimes(framePath, fileTime, fileTime);
+    await fs.utimes(layerPath, layerTime, layerTime);
+    await fs.utimes(sessionPath, sessionTime, sessionTime);
+  }
+  const symlinkedSession = path.join(tempRoot, 'symlinked-session');
+  await fs.mkdir(symlinkedSession);
+  await fs.symlink(path.join(tempRoot, 'old/layer/0.png'), path.join(symlinkedSession, '0.png'));
+  await fs.utimes(symlinkedSession, oldTime, oldTime);
+  const missingSession = path.join(tempRoot, 'missing-session');
+
+  assert.deepEqual(
+    await __testOnly__.findEligibleFramePaths(
+      cases.map(([name]) => path.join(tempRoot, name)).concat(symlinkedSession, missingSession),
+      cutoffTimeMs,
+    ),
+    [path.join(tempRoot, 'old')],
+  );
+  await fs.stat(path.join(tempRoot, 'recent-file/layer/0.png'));
+});
+
 test('intermediate media cleanup never sweeps final or user resources', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-task-cleanup-'));
   const assetsV2Root = path.join(tempRoot, 'assets_v2');
+  const assetsRoot = path.join(tempRoot, 'assets');
   const temporaryRender = path.join(assetsV2Root, 'ai_video', 'temp', 'old.png');
+  const legacyTemporaryRender = path.join(assetsRoot, 'ai_video', 'temp', 'old.png');
   const finalRender = path.join(assetsV2Root, 'video', 'output', 'session', 'final.mp4');
+  const legacyFinalRender = path.join(assetsRoot, 'video', 'output', 'session', 'final.mp4');
+  const linkedFinalRender = path.join(assetsRoot, 'ai_video', 'temp', 'final-link.mp4');
   const userResource = path.join(assetsV2Root, 'user_resources', 'user', 'video.mp4');
+  const legacyUserResource = path.join(assetsRoot, 'user_resources', 'user', 'video.mp4');
   const oldTime = new Date(Date.now() - 5 * 60 * 60 * 1000);
   const previousRoot = process.env.SAMSAR_ASSETS_V2_ROOT;
+  const previousLegacyRoot = process.env.SAMSAR_ASSETS_ROOT;
   const previousCleanupHours = process.env.INTERMEDIATE_MEDIA_CLEANUP_HOURS;
   const previousCronLogPath = process.env.TASK_PROCESSOR_CRON_LOG_PATH;
 
   try {
-    for (const filePath of [temporaryRender, finalRender, userResource]) {
+    for (const filePath of [
+      temporaryRender, legacyTemporaryRender,
+      finalRender, legacyFinalRender,
+      userResource, legacyUserResource,
+    ]) {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, 'media');
       await fs.utimes(filePath, oldTime, oldTime);
     }
+    await fs.symlink(legacyFinalRender, linkedFinalRender);
 
     process.env.SAMSAR_ASSETS_V2_ROOT = assetsV2Root;
+    process.env.SAMSAR_ASSETS_ROOT = assetsRoot;
     process.env.INTERMEDIATE_MEDIA_CLEANUP_HOURS = '4';
     process.env.TASK_PROCESSOR_CRON_LOG_PATH = path.join(tempRoot, 'cronTabs.log');
     const counters = await cleanupOldLocalAssetsV2Media();
 
     await assert.rejects(fs.stat(temporaryRender), { code: 'ENOENT' });
+    await assert.rejects(fs.stat(legacyTemporaryRender), { code: 'ENOENT' });
     await fs.stat(finalRender);
+    await fs.stat(legacyFinalRender);
+    assert.equal((await fs.lstat(linkedFinalRender)).isSymbolicLink(), true);
     await fs.stat(userResource);
-    assert.equal(counters.deletedFiles, 1);
+    await fs.stat(legacyUserResource);
+    assert.equal(counters.deletedFiles, 2);
   } finally {
     if (previousRoot === undefined) delete process.env.SAMSAR_ASSETS_V2_ROOT;
     else process.env.SAMSAR_ASSETS_V2_ROOT = previousRoot;
+    if (previousLegacyRoot === undefined) delete process.env.SAMSAR_ASSETS_ROOT;
+    else process.env.SAMSAR_ASSETS_ROOT = previousLegacyRoot;
     if (previousCleanupHours === undefined) delete process.env.INTERMEDIATE_MEDIA_CLEANUP_HOURS;
     else process.env.INTERMEDIATE_MEDIA_CLEANUP_HOURS = previousCleanupHours;
     if (previousCronLogPath === undefined) delete process.env.TASK_PROCESSOR_CRON_LOG_PATH;
     else process.env.TASK_PROCESSOR_CRON_LOG_PATH = previousCronLogPath;
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test('intermediate media cleanup refuses a symlinked legacy temp root before deleting files', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-task-cleanup-'));
+  const assetsV2Root = path.join(tempRoot, 'assets_v2');
+  const assetsRoot = path.join(tempRoot, 'assets');
+  const v2OldFile = path.join(assetsV2Root, 'ai_video/temp/old.png');
+  const protectedFile = path.join(assetsRoot, 'user_resources/user/old.png');
+  const settings = {
+    SAMSAR_ASSETS_V2_ROOT: assetsV2Root,
+    SAMSAR_ASSETS_ROOT: assetsRoot,
+    INTERMEDIATE_MEDIA_CLEANUP_HOURS: '4',
+  };
+  const previous = Object.fromEntries(Object.keys(settings).map((name) => [name, process.env[name]]));
+  Object.assign(process.env, settings);
+  t.after(async () => {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  });
+
+  for (const filePath of [v2OldFile, protectedFile]) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, 'media');
+    const oldTime = new Date(Date.now() - 5 * 3600000);
+    await fs.utimes(filePath, oldTime, oldTime);
+  }
+  await fs.mkdir(path.join(assetsRoot, 'ai_video'));
+  await fs.symlink(path.join(assetsRoot, 'user_resources'), path.join(assetsRoot, 'ai_video/temp'));
+
+  await assert.rejects(cleanupOldLocalAssetsV2Media(), /symlink/);
+  await fs.stat(v2OldFile);
+  await fs.stat(protectedFile);
 });
 
 test('task processor remains one shot outside Docker and recurs every three hours in Docker', () => {
@@ -295,11 +387,13 @@ test('task processor remains one shot outside Docker and recurs every three hour
   );
 });
 
-test('worker honors shared seven-day retention and reports missing media mounts', async (t) => {
+test('worker applies 48-hour temp-media retention despite the legacy global setting', async (t) => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'samsar-task-cleanup-'));
   const root = path.join(tempRoot, 'assets_v2');
+  const legacyRoot = path.join(tempRoot, 'assets');
   const settings = {
     SAMSAR_ASSETS_V2_ROOT: root,
+    SAMSAR_ASSETS_ROOT: legacyRoot,
     CLEANUP_MIN_AGE_HOURS: '168',
     INTERMEDIATE_MEDIA_CLEANUP_HOURS: '',
     TASK_PROCESSOR_CRON_LOG_PATH: path.join(tempRoot, 'cronTabs.log'),
@@ -315,18 +409,22 @@ test('worker honors shared seven-day retention and reports missing media mounts'
   });
 
   await assert.rejects(cleanupOldLocalAssetsV2Media(), /root does not exist/);
-  const oldFile = path.join(root, 'ai_video/temp/old.png');
-  const recentFile = path.join(root, 'ai_video/temp/recent.png');
-  await fs.mkdir(path.dirname(oldFile), { recursive: true });
-  for (const [file, hours] of [[oldFile, 169], [recentFile, 167]]) {
-    await fs.writeFile(file, 'media');
-    const mtime = new Date(Date.now() - hours * 3600000);
-    await fs.utimes(file, mtime, mtime);
+  for (const mediaRoot of [root, legacyRoot]) {
+    const oldFile = path.join(mediaRoot, 'ai_video/temp/old.png');
+    const recentFile = path.join(mediaRoot, 'ai_video/temp/recent.png');
+    await fs.mkdir(path.dirname(oldFile), { recursive: true });
+    for (const [file, hours] of [[oldFile, 49], [recentFile, 47]]) {
+      await fs.writeFile(file, 'media');
+      const mtime = new Date(Date.now() - hours * 3600000);
+      await fs.utimes(file, mtime, mtime);
+    }
   }
   const counters = await cleanupOldLocalAssetsV2Media();
-  assert.equal(counters.deletedFiles, 1);
-  await assert.rejects(fs.stat(oldFile), { code: 'ENOENT' });
-  await fs.stat(recentFile);
+  assert.equal(counters.deletedFiles, 2);
+  for (const mediaRoot of [root, legacyRoot]) {
+    await assert.rejects(fs.stat(path.join(mediaRoot, 'ai_video/temp/old.png')), { code: 'ENOENT' });
+    await fs.stat(path.join(mediaRoot, 'ai_video/temp/recent.png'));
+  }
 });
 
 test('file cleanup errors propagate to the scheduler for failure reporting and retry', async () => {

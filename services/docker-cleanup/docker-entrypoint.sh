@@ -21,6 +21,7 @@ write_cron_file() {
 }
 
 write_cron_file
+node /app/src/status.js
 run_startup_cleanup
 
 echo "[docker-cleanup] Scheduled assets_v2 cleanup with cron: ${CLEANUP_CRON_SCHEDULE:-17 */3 * * *}"

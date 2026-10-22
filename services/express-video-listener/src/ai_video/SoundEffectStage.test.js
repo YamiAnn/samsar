@@ -56,6 +56,18 @@ test('sound-effect aggregate detects fallback after layerAiVideoType changes', (
   assert.equal(result.required.length, 1);
 });
 
+test('terminal sound-effect failure remains optional when legacy base type is absent', () => {
+  const result = assessSoundEffectStage([soundEffectLayer('legacy', {
+    layerBaseAiImageType: undefined,
+    layerAiVideoType: 'ai_video',
+    soundEffectGenerationPending: false,
+    soundEffectVideoGenerationStatus: 'FAILED',
+  })]);
+
+  assert.equal(result.state, 'FALLBACK');
+  assert.equal(result.skipped[0].layerId, 'legacy');
+});
+
 test('sound-effect aggregate completes only with flag, status, and media link', () => {
   assert.equal(assessSoundEffectStage([
     soundEffectLayer('complete', {
@@ -105,4 +117,16 @@ test('remote-only base AI video remains eligible for sound-effect generation', (
 
   assert.equal(result.state, 'PENDING');
   assert.equal(result.required[0].layerId, 'remote-only');
+});
+
+test('sound-effect failure cannot fall back to a remote-only base video', () => {
+  const result = assessSoundEffectStage([soundEffectLayer('remote-only', {
+    aiVideoLayer: null,
+    aiVideoRemoteLink: 'https://provider.example/video/source.mp4',
+    soundEffectGenerationPending: false,
+    soundEffectVideoGenerationStatus: 'FAILED',
+  })]);
+
+  assert.equal(result.state, 'NO_BASE_VIDEO');
+  assert.equal(result.missingBase.layerId, 'remote-only');
 });

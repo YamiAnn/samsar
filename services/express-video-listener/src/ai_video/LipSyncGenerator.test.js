@@ -105,3 +105,33 @@ test('standalone and legacy Docker editions disable lip sync retry-on-fail', () 
   }), false);
   assert.equal(__testOnly__.shouldRetryLipSyncFailure({ CURRENT_ENV: 'docker' }), false);
 });
+
+test('one lip-sync enqueue failure marks its layer and still queues other character layers', async () => {
+  const generated = [];
+  const failed = [];
+  const layers = ['first', 'second'].map((id) => ({
+    _id: id,
+    layerAiVideoType: 'character',
+    hasAiVideoLayer: true,
+    aiVideoLayer: `/base/${id}.mp4`,
+  }));
+  const audioLayers = ['first', 'second'].map((id) => ({
+    _id: `speech-${id}`,
+    generationType: 'speech',
+    connectedLayerId: id,
+  }));
+
+  await __testOnly__.enqueueLipSyncLayers('session', layers, audioLayers, {
+    generateLayer: async (_sessionId, layer) => {
+      generated.push(layer._id);
+      if (layer._id === 'first') throw new Error('Audio upload failed');
+    },
+    markFailed: async (_sessionId, layerId, error) => failed.push([layerId, error.message]),
+    log: () => {},
+  });
+
+  assert.deepEqual(generated, ['first', 'second']);
+  assert.deepEqual(failed, [['first', 'Audio upload failed']]);
+  assert.deepEqual(layers.map((layer) => layer.aiVideoLayer), ['/base/first.mp4', '/base/second.mp4']);
+  assert.deepEqual(audioLayers.map((layer) => layer._id), ['speech-first', 'speech-second']);
+});

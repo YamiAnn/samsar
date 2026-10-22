@@ -46,7 +46,13 @@ export function renderCleanupCrontab(env = process.env) {
     CLEANUP_MIN_AGE_HOURS: env.CLEANUP_MIN_AGE_HOURS || '168',
     CLEANUP_DRY_RUN: env.CLEANUP_DRY_RUN || 'false',
   };
-  for (const name of ['CLEANUP_TARGETS', 'ALLOW_NON_ASSETS_V2_ROOT']) {
+  for (const name of [
+    'CLEANUP_FRAME_MIN_AGE_HOURS',
+    'CLEANUP_TEMP_MIN_AGE_HOURS',
+    'CLEANUP_STATUS_FILE',
+    'CLEANUP_TARGETS',
+    'ALLOW_NON_ASSETS_V2_ROOT',
+  ]) {
     if (env[name]) settings[name] = env[name];
   }
 

@@ -41,11 +41,18 @@ export async function generateHummingBirdLipSyncLayer(payload) {
 
     return request_id;
   } catch (error) {
-
-
-    return {
-      responseStatus: 'FAILED'
-    }
+    console.error('[lip_sync][hummingbird][submit_failed] HummingBird lip sync submit failed', {
+      sessionId: payload?.sessionId || null,
+      layerId: payload?.layerId || null,
+      model: payload?.model || null,
+      error: {
+        message: error?.message || String(error),
+        status: error?.status || error?.statusCode || error?.response?.status || null,
+        code: error?.code || null,
+        body: error?.body || error?.response?.data || error?.data || null,
+      },
+    });
+    throw error;
   }
 
 }

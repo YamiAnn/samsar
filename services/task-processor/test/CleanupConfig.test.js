@@ -37,15 +37,24 @@ test('explicit media roots override native and container defaults', () => {
   }
 });
 
-test('both cleanup stages inherit the shared retention unless explicitly overridden', () => {
-  for (const setting of ['STALE_SESSION_FRAME_CLEANUP_HOURS', 'INTERMEDIATE_MEDIA_CLEANUP_HOURS']) {
-    assert.equal(getCleanupMinAgeHours(setting, {}), 168);
-    assert.equal(getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: '72' }), 72);
-    assert.equal(getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: '72', [setting]: '' }), 72);
+test('frame and intermediate-media retention use stage defaults despite the legacy global setting', () => {
+  for (const [setting, defaultHours] of [
+    ['STALE_SESSION_FRAME_CLEANUP_HOURS', 24],
+    ['INTERMEDIATE_MEDIA_CLEANUP_HOURS', 48],
+  ]) {
+    assert.equal(getCleanupMinAgeHours(setting, {}), defaultHours);
+    assert.equal(getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: '168' }), defaultHours);
+    assert.equal(getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: '72', [setting]: '' }), defaultHours);
     assert.equal(getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: '72', [setting]: '96' }), 96);
     for (const value of ['invalid', '24hours', '0', '-1', 'Infinity']) {
-      assert.throws(() => getCleanupMinAgeHours(setting, { CLEANUP_MIN_AGE_HOURS: value }), /positive number/);
       assert.throws(() => getCleanupMinAgeHours(setting, { [setting]: value }), /positive number/);
     }
   }
+});
+
+test('other cleanup stages retain the shared global fallback', () => {
+  assert.equal(getCleanupMinAgeHours('OTHER_CLEANUP_HOURS', {}), 168);
+  assert.equal(getCleanupMinAgeHours('OTHER_CLEANUP_HOURS', { CLEANUP_MIN_AGE_HOURS: '72' }), 72);
+  assert.equal(getCleanupMinAgeHours('OTHER_CLEANUP_HOURS', { CLEANUP_MIN_AGE_HOURS: '72', OTHER_CLEANUP_HOURS: '96' }), 96);
+  assert.throws(() => getCleanupMinAgeHours('OTHER_CLEANUP_HOURS', { CLEANUP_MIN_AGE_HOURS: '0' }), /positive number/);
 });
