@@ -1,37 +1,15 @@
 import { videoBillingError } from './VideoPricing.js';
-import { getVideoDuration } from '../VideoProcessor.js';
+import { getVideoDuration, getVideoPricingMetadata } from '../VideoProcessor.js';
 import { falLipSyncTariff, requireCurrentFalLipSyncTariff } from './FalLipSyncTariffs.js';
+import { falSoundEffectTariff } from './FalSoundEffectTariffs.js';
+import { buildFalVideoSubmissionReceipt, falVideoTariffForReceipt } from './FalVideoTariffs.js';
+import AIVideoLayerGeneration from '../schema/AIVideoLayerGeneration.js';
 
 const DEFAULT_GENBLAZE_BASE_URL = 'http://genblaze:8080/v1';
 
-/** Fal reports actual discounted cost per request, independent of model,
- * video size, quality, output count, and the provider's billing unit. */
-export async function readFalVideoCharge(requestId, { fetchImpl = fetch, env = process.env } = {}) {
-  if (!requestId) throw videoBillingError('The video adapter request ID is missing.');
-  const key = env.FAL_BILLING_API_KEY || env.FAL_API_KEY;
-  if (!key) throw videoBillingError('Fal billing credentials are required.');
-  const url = new URL('https://api.fal.ai/v1/models/billing-events');
-  url.searchParams.set('request_id', requestId);
-  url.searchParams.set('limit', '10000');
-  const response = await fetchImpl(url, { headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw videoBillingError(`Video billing confirmation is unavailable (${response.status}).`);
-  const data = await response.json();
-  if (data.has_more || data.next_cursor) throw videoBillingError('The video adapter charge is incomplete.');
-  const events = data.billing_events?.filter(event => event.request_id === requestId);
-  if (!events?.length) throw videoBillingError('The video adapter charge is not available yet.');
-  let costUsd = 0;
-  for (const event of events) {
-    const value = event.cost_total;
-    if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' ||
-        !Number.isFinite(Number(value)) || Number(value) < 0) throw videoBillingError('Invalid video adapter charge.');
-    costUsd += Number(value);
-  }
-  return costUsd;
-}
-
-/** The gateway resolves the actual GMICloud model price against the submitted
- * request. Re-reading the sealed job also recovers outputs saved before that
- * price was available, without submitting another provider request. */
+/** Re-read the original GMICloud gateway result when its saved completion had
+ * no charge. This is a result/status GET, never a model pricing endpoint or a
+ * replacement generation request. */
 export async function readGenBlazeVideoCharge(requestId, { fetchImpl = fetch, env = process.env } = {}) {
   const id = String(requestId || '').replace(/^genblaze-video:/, '').trim();
   if (!id) throw videoBillingError('The GMICloud video request ID is missing.');
@@ -75,9 +53,110 @@ export async function resolveVideoAdapterReceipt(receipt, context = {}, dependen
     }
     return { ...receipt, [tariff.basis]: Number(seconds) };
   }
+  if (receipt.adapter === 'fal' && falSoundEffectTariff(receipt.model)) {
+    const tariff = falSoundEffectTariff(receipt.model);
+    let requestedSeconds = receipt.requestedSeconds;
+    let durationSource = receipt.durationSource || 'submitted_config';
+    if (requestedSeconds === undefined && receipt.model === 'MMAUDIOV2') {
+      requestedSeconds = tariff.defaultRequestedSeconds;
+      durationSource = 'legacy_fal_default';
+    }
+    if (requestedSeconds === undefined && receipt.model === 'MIRELOAI') {
+      const lookupGeneration = dependencies.lookupGeneration || (id =>
+        AIVideoLayerGeneration.findById(id, { duration: 1 }).lean());
+      let queued;
+      if (context.requestId) {
+        try { queued = await lookupGeneration(context.requestId); } catch { /* Saved output remains usable. */ }
+      }
+      if (queued) {
+        requestedSeconds = queued.duration || tariff.defaultRequestedSeconds;
+        durationSource = 'legacy_queue';
+      } else {
+        const video = context.result?.localVideoLink || context.result?.remoteUrl;
+        if (!video) throw videoBillingError('The saved Fal sound-effect output is unavailable.');
+        try {
+          requestedSeconds = await (dependencies.probeDuration || getVideoDuration)(video);
+        } catch {
+          // ffprobe errors can contain a signed result URL; never expose it.
+          throw videoBillingError('The saved Fal sound-effect duration could not be measured.');
+        }
+        durationSource = 'legacy_measured_output';
+      }
+    }
+    const sampleCount = receipt.sampleCount === undefined
+      ? (receipt.model === 'MIRELOAI' ? tariff.legacyDefaultSamples : 1)
+      : receipt.sampleCount;
+    return { ...receipt, requestedSeconds, durationSource, sampleCount,
+      sampleCountSource: receipt.sampleCountSource ||
+        (receipt.sampleCount === undefined ? 'legacy_default' : 'submitted_config') };
+  }
+  if (receipt.adapter === 'fal') {
+    let sealed = receipt.falVideoTariffVersion ? receipt : null;
+    if (!sealed) {
+      // Existing completed jobs predate submission receipts. Recover their
+      // original options from the queue without polling Fal or resubmitting.
+      const lookupGeneration = dependencies.lookupGeneration || (id =>
+        AIVideoLayerGeneration.findById(id, {
+          model: 1, duration: 1, generateAudio: 1, generate_audio: 1,
+          isAudioVideoGeneration: 1, generationType: 1, layerAiVideoType: 1,
+          framesPerSecond: 1, aspectRatio: 1, videoBillingNativeReceipt: 1,
+          submittedAdapter: 1, generationId: 1,
+        }).lean());
+      let queued;
+      if (context.requestId) {
+        try { queued = await lookupGeneration(context.requestId); } catch { /* Keep the saved output. */ }
+      }
+      if (queued && queued.model !== receipt.model) {
+        throw videoBillingError('The saved Fal video model differs from its queued request.');
+      }
+      if (queued?.submittedAdapter && queued.submittedAdapter !== 'fal') {
+        throw videoBillingError('The saved Fal video adapter differs from its queued request.');
+      }
+      if (queued?.generationId && receipt.providerRequestId &&
+          queued.generationId !== receipt.providerRequestId) {
+        throw videoBillingError('The saved Fal video provider request differs from its queued request.');
+      }
+      if (queued?.videoBillingNativeReceipt?.falVideoTariffVersion) {
+        sealed = queued.videoBillingNativeReceipt;
+      } else if (queued) {
+        try { sealed = buildFalVideoSubmissionReceipt(queued); } catch {
+          throw videoBillingError('The saved Fal video configuration has no verified tariff.');
+        }
+      } else if (['SDVIDEO', 'SKYREELSI2V', 'VIDUI2V'].includes(receipt.model)) {
+        sealed = buildFalVideoSubmissionReceipt({ model: receipt.model });
+      } else {
+        throw videoBillingError('The saved Fal video submission configuration is unavailable.');
+      }
+      sealed = { ...receipt, ...sealed, pricingRecovery: queued ? 'legacy_queue' : 'legacy_model' };
+    }
+    if (sealed.model !== receipt.model || !falVideoTariffForReceipt(sealed)) {
+      throw videoBillingError('The saved Fal video model has no verified tariff.');
+    }
+    if (sealed.tariffUnit === 'millionVideoTokens' || sealed.tariffUnit === 'thousandVideoTokens') {
+      if (sealed.billableQuantity !== undefined) return sealed;
+      const video = context.result?.localVideoLink || context.result?.remoteUrl;
+      if (!video) throw videoBillingError('The saved Fal video output is unavailable for token measurement.');
+      let metadata;
+      try {
+        metadata = await (dependencies.probeVideo || getVideoPricingMetadata)(video);
+      } catch {
+        // ffprobe errors can contain a signed result URL; never expose it.
+        throw videoBillingError('The Fal video output could not be measured for billing.');
+      }
+      const { width, height, seconds, framesPerSecond } = metadata || {};
+      const fps = sealed.tariffUnit === 'thousandVideoTokens' ? 24 : Number(framesPerSecond);
+      if (![width, height, seconds, fps].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
+        throw videoBillingError('The Fal video output dimensions or duration are invalid.');
+      }
+      const tokens = Number(width) * Number(height) * Number(seconds) * Number(fps) / 1024;
+      return { ...sealed, billableQuantity: tokens /
+        (sealed.tariffUnit === 'millionVideoTokens' ? 1_000_000 : 1_000),
+      measuredOutput: { width: Number(width), height: Number(height),
+        seconds: Number(seconds), framesPerSecond: Number(fps) } };
+    }
+    return sealed;
+  }
   if (Object.hasOwn(receipt, 'costUsd')) return receipt;
-  if (receipt.adapter === 'fal') return { ...receipt,
-    costUsd: await readFalVideoCharge(receipt.providerRequestId || context.apiRequestId, dependencies) };
   if (receipt.adapter === 'gmicloud') return { ...receipt,
     costUsd: await readGenBlazeVideoCharge(receipt.providerRequestId || context.apiRequestId, dependencies) };
   return receipt;

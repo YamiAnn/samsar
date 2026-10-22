@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { settleCompletedImageCall, debitImageOwnerOnce, imageCallId } from './ImageSettlement.js';
 import { billCompletedImage } from './ImageRequestBilling.js';
-import { readFalImageCharge } from './ImageAdapterReceipt.js';
+import { resolveImageAdapterReceipt } from './ImageAdapterReceipt.js';
+import { createFalImageTariffSnapshot } from './FalImageTariffs.js';
 
 function fixture() {
   const receipts = new Map();
@@ -118,10 +119,12 @@ test('existing prepaid jobs, production pipelines and local Docker never receive
 
 test('hosted image call from an agent settles through the same path as Studio', async () => {
   const f = fixture();
-  await billCompletedImage({ _id: 'hosted-image', userId: 'owner', imageBillingPolicy: 'adapter' },
-    { image: 'done.png', imageBillingReceipt: { adapter: 'fal', providerRequestId: 'remote-image', costUsd: 0.125 } },
+  await billCompletedImage({ _id: 'hosted-image', userId: 'owner', imageBillingPolicy: 'adapter',
+    falImageBillingSnapshot: createFalImageTariffSnapshot({ model: 'WAN2.7PRO' }) },
+    { image: 'done.png', imageBillingReceipt: { adapter: 'fal', model: 'WAN2.7PRO',
+      providerRequestId: 'remote-image', costUsd: 0.125 } },
     { env: { SAMSAR_DEPLOYMENT_EDITION: 'production', SAMSAR_RUNTIME: 'docker' }, store: f.store, charge: f.charge });
-  assert.equal(f.account.generationCredits, 85);
+  assert.equal(f.account.generationCredits, 91);
 });
 
 test('provider polling and transport retries retain one billing identity; a new reroll gets another', () => {
@@ -131,20 +134,19 @@ test('provider polling and transport retries retain one billing identity; a new 
   assert.notEqual(imageCallId(job), imageCallId({ ...job, _id: 'reroll-row' }));
 });
 
-test('Fal uses actual discounted request cost and rejects unrelated/partial records', async () => {
-  const fetchImpl = async url => {
-    assert.equal(new URL(url).searchParams.get('request_id'), 'wanted');
-    return { ok: true, json: async () => ({ billing_events: [
-      { request_id: 'other', cost_total: 100 },
-      { request_id: 'wanted', cost_total: 0.05, cost_subtotal: 0.1 },
-      { request_id: 'wanted', cost_total: 0.025 },
-    ], has_more: false, next_cursor: null }) };
-  };
-  assert.equal(await readFalImageCharge('wanted', { fetchImpl, env: { FAL_BILLING_API_KEY: 'test-billing-key' } }), 0.07500000000000001);
-  await assert.rejects(readFalImageCharge('wanted', { env: { FAL_API_KEY: 'test-key' },
-    fetchImpl: async () => ({ ok: false, status: 403 }) }), /confirmation/);
-  await assert.rejects(readFalImageCharge('wanted', { env: { FAL_API_KEY: 'test-key' },
-    fetchImpl: async () => ({ ok: true, json: async () => ({ billing_events: [], has_more: false }) }) }), /not available/);
+test('Fal settlement uses its sealed fixed tariff and makes no billing request', async () => {
+  const snapshot = createFalImageTariffSnapshot({ model: 'WAN2.7PRO' });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error('unexpected pricing network request'); };
+  try {
+    const priced = await resolveImageAdapterReceipt({ adapter: 'fal', model: 'WAN2.7PRO',
+      providerRequestId: 'wanted', costUsd: 0 }, { falImageBillingSnapshot: snapshot, result: { image: 'done.png' } });
+    assert.equal(priced.costUsd, 0.075);
+    await assert.rejects(resolveImageAdapterReceipt({ adapter: 'fal', costUsd: 0 }, {}),
+      /tariff could not be verified/);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test('a durable debit identity rejects a changed settlement amount', async () => {

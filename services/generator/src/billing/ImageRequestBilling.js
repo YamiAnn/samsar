@@ -41,9 +41,13 @@ export async function billCompletedImage(payload, result, dependencies = {}) {
     ? payload.imageBillingReceiptId : imageCallId(payload, result));
   return settleCompletedImageCall({ id, userId: payload.userId, result,
     adapterReceipt: { ...result?.imageBillingReceipt,
-      adapter: result?.imageBillingReceipt?.adapter || payload.submittedAdapter || payload.adapterProvider },
+      adapter: result?.imageBillingReceipt?.adapter || payload.submittedAdapter || payload.adapterProvider,
+      ...(payload.falImageBillingSnapshot
+        ? { falImageBillingSnapshot: payload.falImageBillingSnapshot } : {}) },
     context: { requestId: String(payload._id), sessionId: payload.videoSessionId || payload.sessionId,
-      apiRequestId: payload.apiRequestId, apiKeyUsage: payload.imageBillingAPIKeyUsage },
+      apiRequestId: payload.apiRequestId, apiKeyUsage: payload.imageBillingAPIKeyUsage,
+      ...(payload.falImageBillingSnapshot
+        ? { falImageBillingSnapshot: payload.falImageBillingSnapshot } : {}) },
     store: dependencies.store || store, charge: dependencies.charge || charge,
     resolveReceipt: dependencies.resolveReceipt || resolveImageAdapterReceipt });
 }

@@ -1,5 +1,7 @@
 import { isStandaloneEdition } from '../utils/Environment.js';
 import { calculateFalLipSyncUsd, falLipSyncTariff } from './FalLipSyncTariffs.js';
+import { calculateFalSoundEffectUsd, falSoundEffectTariff } from './FalSoundEffectTariffs.js';
+import { calculateFalVideoUsd, falVideoTariffForReceipt } from './FalVideoTariffs.js';
 
 export const VIDEO_CREDITS_PER_USD = 100;
 export const VIDEO_ADAPTER_MARKUP = 1.2;
@@ -19,12 +21,13 @@ function nonnegative(value, name) {
   return Number(value);
 }
 
-/** Fal lip sync uses published per-model tariffs. Other adapter receipts use
- * reported provider charges when present, including free calls. Native
- * receipts describe submitted configuration, not edited scene duration. */
+/** Fal models use checked-in per-model tariffs. Native adapter receipts
+ * describe submitted configuration, not edited scene duration. */
 export function calculateVideoCallCredits(receipt = {}) {
   let costUsd;
   const falLipSync = receipt.adapter === 'fal' ? falLipSyncTariff(receipt.model) : null;
+  const falSoundEffect = receipt.adapter === 'fal' ? falSoundEffectTariff(receipt.model) : null;
+  const falVideo = receipt.adapter === 'fal' ? falVideoTariffForReceipt(receipt) : null;
   if (falLipSync?.fallbackCreditsPerRequestedSecond) {
     const seconds = nonnegative(receipt.requestedSeconds, 'requested duration');
     if (!seconds) throw videoBillingError('The Fal lip sync requested duration is missing.');
@@ -34,6 +37,8 @@ export function calculateVideoCallCredits(receipt = {}) {
       credits: Math.round(seconds * falLipSync.fallbackCreditsPerRequestedSecond * 10_000) / 10_000 };
   }
   if (falLipSync) costUsd = calculateFalLipSyncUsd(receipt, falLipSync);
+  else if (falSoundEffect) costUsd = calculateFalSoundEffectUsd(receipt, falSoundEffect);
+  else if (receipt.adapter === 'fal') costUsd = calculateFalVideoUsd(receipt);
   else if (Object.hasOwn(receipt, 'costUsd')) costUsd = nonnegative(receipt.costUsd, 'adapter charge');
   else {
     const seconds = nonnegative(receipt.seconds, 'billable duration');
@@ -57,9 +62,19 @@ export function calculateVideoCallCredits(receipt = {}) {
     } else throw videoBillingError('The video adapter charge is not available yet.');
   }
   return { adapter: receipt.adapter, model: receipt.model, costUsd,
+    ...(falSoundEffect ? { billableSeconds: Number(receipt.requestedSeconds) * Number(receipt.sampleCount),
+      billingBasis: 'submittedSecondsPerSample', sampleCount: Number(receipt.sampleCount),
+      sampleCountSource: receipt.sampleCountSource || null,
+      tariffVerifiedOn: falSoundEffect.verifiedOn, tariffSource: falSoundEffect.source,
+      sampleMultiplierInferred: !!falSoundEffect.sampleMultiplierInferred } : {}),
     ...(falLipSync ? { billableSeconds: Number(receipt[falLipSync.basis]),
       billingBasis: falLipSync.basis, tariffVerifiedOn: falLipSync.verifiedOn,
       tariffSource: falLipSync.source } : {}),
+    ...(falVideo ? { billingBasis: receipt.tariffUnit,
+      billableQuantity: Number(receipt.billableQuantity ?? receipt.submittedQuantity),
+      tariffRateUsd: receipt.tariffRateUsd, tariffVersion: receipt.falVideoTariffVersion,
+      tariffVerifiedOn: receipt.tariffVerifiedOn, tariffSource: receipt.tariffSource,
+      ...(receipt.pricingRecovery ? { pricingRecovery: receipt.pricingRecovery } : {}) } : {}),
     credits: Math.round(costUsd * VIDEO_CREDITS_PER_USD * VIDEO_ADAPTER_MARKUP * 10_000) / 10_000 };
 }
 

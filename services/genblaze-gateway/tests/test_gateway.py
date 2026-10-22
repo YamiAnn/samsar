@@ -1817,7 +1817,7 @@ def test_non_video_provider_errors_keep_the_existing_server_error_mapping():
 
 
 @pytest.mark.parametrize("generate_audio", [True, False])
-def test_seedance_poll_returns_verified_live_gmi_charge(
+def test_seedance_poll_uses_checked_in_price_without_model_lookup(
     settings, fake_bindings, tmp_path, generate_audio
 ):
     class PricedSeedanceProvider(FakeVideoProvider):
@@ -1826,7 +1826,7 @@ def test_seedance_poll_returns_verified_live_gmi_charge(
             return {
                 "model": SEEDANCE_2_MODEL_ID,
                 "status": "success",
-                "created_at": 200,
+                "created_at": 1792017234,
                 "payload": {
                     "duration": 5,
                     "resolution": "720p",
@@ -1835,20 +1835,7 @@ def test_seedance_poll_returns_verified_live_gmi_charge(
             }
 
         def _get_http_client(self):
-            def get(path):
-                assert path == f"/models/{SEEDANCE_2_MODEL_ID}"
-                return SimpleNamespace(
-                    is_success=True,
-                    json=lambda: {
-                        "model": SEEDANCE_2_MODEL_ID,
-                        "updated_at": 100,
-                        "price_info": {"pricing_type": "per_second", "unit": "second"},
-                        "pricing_details": "Per second: 480p=$0.07, 720p=$0.152, 1080p=$0.374",
-                        "percentage_discount": 0,
-                    },
-                )
-
-            return SimpleNamespace(get=get)
+            pytest.fail("A completed Seedance call must not fetch model pricing")
 
     path = write_catalog(tmp_path, {
         "SEEDANCE2.0I2V": {
@@ -1872,12 +1859,12 @@ def test_seedance_poll_returns_verified_live_gmi_charge(
     assert completed.json()["billing"] == {"cost_usd": 0.76}
 
 
-def test_seedance_poll_preserves_completed_asset_if_price_lookup_fails(
+def test_seedance_poll_preserves_completed_asset_if_request_detail_fails(
     settings, fake_bindings, tmp_path
 ):
     class UnpricedSeedanceProvider(FakeVideoProvider):
         def _fetch_detail(self, prediction_id):
-            raise RuntimeError("pricing endpoint unavailable")
+            raise RuntimeError("request detail unavailable")
 
     path = write_catalog(tmp_path, {
         "SEEDANCE2.0I2V": {

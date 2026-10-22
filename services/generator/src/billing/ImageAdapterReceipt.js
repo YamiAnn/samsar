@@ -1,33 +1,34 @@
+import ImageGeneration from '../schema/ImageGeneration.js';
 import { imageBillingError } from './ImagePricing.js';
+import { calculateFalImageTariffCost, createFalImageTariffSnapshot } from './FalImageTariffs.js';
 
-/** Fal reports actual discounted cost per request, independent of model,
- * image size, quality, output count, and the provider's billing unit. */
-export async function readFalImageCharge(requestId, { fetchImpl = fetch, env = process.env } = {}) {
-  if (!requestId) throw imageBillingError('The image adapter request ID is missing.');
-  const key = env.FAL_BILLING_API_KEY || env.FAL_API_KEY;
-  if (!key) throw imageBillingError('Fal billing credentials are required.');
-  const url = new URL('https://api.fal.ai/v1/models/billing-events');
-  url.searchParams.set('request_id', requestId);
-  url.searchParams.set('limit', '10000');
-  const response = await fetchImpl(url, { headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw imageBillingError(`Image billing confirmation is unavailable (${response.status}).`);
-  const data = await response.json();
-  if (data.has_more || data.next_cursor) throw imageBillingError('The image adapter charge is incomplete.');
-  const events = data.billing_events?.filter(event => event.request_id === requestId);
-  if (!events?.length) throw imageBillingError('The image adapter charge is not available yet.');
-  let costUsd = 0;
-  for (const event of events) {
-    const value = event.cost_total;
-    if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' ||
-        !Number.isFinite(Number(value)) || Number(value) < 0) throw imageBillingError('Invalid image adapter charge.');
-    costUsd += Number(value);
+/** Calculate a Fal image charge from the tariff sealed before submission.
+ * A legacy saved completion can use its original job if the provider request
+ * identity still matches. No Fal billing endpoint is contacted. */
+export async function resolveImageAdapterReceipt(receipt = {}, context = {},
+  { imageGenerationModel = ImageGeneration } = {}) {
+  if (receipt.adapter !== 'fal') return receipt;
+
+  let snapshot = receipt.falImageBillingSnapshot || context.falImageBillingSnapshot;
+  if (!snapshot && context.requestId) {
+    const job = await imageGenerationModel.findById(context.requestId).lean();
+    const providerRequestId = receipt.providerRequestId || context.apiRequestId;
+    if (job && providerRequestId && String(job.apiRequestId) === String(providerRequestId) &&
+        (job.submittedAdapter === 'fal' || job.externalProvider === 'fal')) {
+      try {
+        snapshot = job.falImageBillingSnapshot || createFalImageTariffSnapshot(job);
+      } catch {
+        // Retain the saved result when legacy submission settings are insufficient.
+      }
+    }
   }
-  return costUsd;
-}
-
-export async function resolveImageAdapterReceipt(receipt, context = {}, dependencies = {}) {
-  if (Object.hasOwn(receipt, 'costUsd')) return receipt;
-  if (receipt.adapter === 'fal') return { ...receipt,
-    costUsd: await readFalImageCharge(receipt.providerRequestId || context.apiRequestId, dependencies) };
-  return receipt;
+  if (!snapshot) throw imageBillingError('The saved Fal image tariff could not be verified.');
+  if (receipt.model && String(receipt.model).toUpperCase() !== snapshot.model) {
+    throw imageBillingError('The saved Fal image model conflicts with its sealed tariff.');
+  }
+  if (receipt.providerRequestId && context.apiRequestId &&
+      String(receipt.providerRequestId) !== String(context.apiRequestId)) {
+    throw imageBillingError('The saved Fal image request identity conflicts with its sealed tariff.');
+  }
+  return { ...receipt, costUsd: calculateFalImageTariffCost(snapshot) };
 }

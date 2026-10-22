@@ -22,6 +22,8 @@ These prices apply to individual model calls on the named native adapter. Per-se
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 6 seconds | clip | 33.6 |
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 10 seconds | clip | 67.2 |
 
+Supported Fal AI-video routes have [their own final model-call rates](https://docs.samsar.one/pricing#video-model-calls) for the selected configuration. The Fal rates are checked into the worker and include a 20% markup over the provider base price at 100 credits per USD. Submitted per-second options and measured Seedance video-token output determine the completed charge. Hosted direct adapter-billed Fal requests for Haiper 2.0, Magi Distilled, 10-second Pika 2.2, 121-frame Wan 2.2 5B and PixVerse durations other than five or eight seconds currently lack a verified tariff and stop before a paid submission.
+
 ### Fal-backed lip-sync pricing
 
 The four verified Fal tariffs below include a 20% markup at 100 credits per USD. Each completed hosted model call has one charge.
@@ -36,7 +38,11 @@ The four verified Fal tariffs below include a 20% markup at 100 credits per USD.
 
 LatentSync's above-40-second rate applies to the entire output. Creatify's public price does not say whether input or output duration is billed; Samsar uses measured output duration. Fal's Kling pricing callout says $0.014 per input second rounded to five seconds, while nearby explanatory prose says $0.014 per block; Samsar follows the callout. Hummingbird's current Fal price cannot be verified, so its fallback is not presented as a verified provider price plus markup.
 
-Video sound-effect layers (`MMAUDIOV2`, `MIRELOAI`) and other Fal or GMICloud AI-video calls have configuration-specific final charges in completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
+### Fal-backed video sound-effect pricing
+
+Fal's authenticated pricing API lists [`MMAUDIOV2`](https://fal.ai/models/fal-ai/mmaudio-v2) at $0.001 per generated audio second and [`MIRELOAI`](https://fal.ai/models/mirelo-ai/sfx1.6/video-to-video) at $0.01 per second. At 100 credits per USD with a 20% adapter markup, Samsar uses the submitted duration for final hosted rates of **0.12 credits per submitted audio second** and **1.2 credits per submitted second per sample**, respectively. MMAudio defaults to eight seconds when duration is omitted. New Mirelo calls request one sample; older calls that omitted `num_samples` used Fal's two-sample default.
+
+Fal's SFX1.6 page does not explicitly say whether seconds multiply by sample count. The per-sample basis is inferred from [Fal's earlier Mirelo model](https://fal.ai/models/mirelo-ai/sfx-v1/video-to-video), [Fal's SFX2.0 model](https://fal.ai/models/mirelo-ai/sfx2.0/video-to-video), and a legacy two-output response; it is not invoice-verified. Other Fal or GMICloud AI-video calls have configuration-specific final charges in completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
 
 ## Endpoint scope
 
@@ -59,9 +65,9 @@ The worker retains a completed clip before billing and delivery. Billing confirm
 
 ## Provider configuration
 
-Fal-backed lip-sync calls use the published tariff constants above and do not require a Fal Billing Events lookup. Other Fal model calls may require billing-read access. For those, set `providers.fal.billingApiKey` in deployment configuration, rendered as `FAL_BILLING_API_KEY`; the ordinary Fal key is used when this is omitted. The key must have the [Fal billing-event permissions](https://fal.ai/docs/platform-apis/v1/models/billing-events).
+Fal-backed lip-sync, video sound-effect and supported AI-video calls use versioned model tariff constants. Completion billing calculates the charge from the saved request configuration and output metadata; it does not fetch Fal Billing Events or a model price during processing. A model or configuration without a verified tariff is not eligible for a new hosted paid call.
 
-The GenBlaze gateway forwards media cost metadata when available. GenBlaze deployments must configure a pricing strategy that supplies that metadata. Missing or invalid cost confirmation remains pending with the completed output retained; it is never treated as a free call or priced using another adapter's rates.
+The GenBlaze gateway forwards media cost metadata when available. For Seedance 2.0 (`seedance-2-0-260128`), if the response omits cost, the gateway uses checked-in account rates of $0.07, $0.152 or $0.374 per requested second at 480p, 720p or 1080p, respectively. It does not fetch a live model price card. Other GMICloud calls still require valid provider cost metadata; a missing cost leaves the completed output pending and is never treated as a free call or priced using another adapter's rates.
 
 ## Regression checks
 

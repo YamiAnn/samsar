@@ -2,16 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateVideoCallCredits, videoBillingMode } from './VideoPricing.js';
 import { FAL_LIP_SYNC_TARIFFS } from './FalLipSyncTariffs.js';
+import { FAL_SOUND_EFFECT_TARIFFS } from './FalSoundEffectTariffs.js';
+import { buildFalVideoSubmissionReceipt } from './FalVideoTariffs.js';
 
-for (const adapter of ['fal', 'gmicloud', 'runway', 'googleCloud', 'alibabaCloud', 'hailuo', 'custom']) {
+for (const adapter of ['gmicloud', 'runway', 'googleCloud', 'alibabaCloud', 'hailuo', 'custom']) {
   for (const model of ['video', 'SYNCLIPSYNC', 'MIRELOAI', 'MMAUDIOV2']) {
-    if (adapter === 'fal' && model === 'SYNCLIPSYNC') continue;
+    if (adapter === 'fal' && ['SYNCLIPSYNC', 'MIRELOAI', 'MMAUDIOV2'].includes(model)) continue;
     test(`${adapter} ${model} charges the same margin on the actual receipt`, () => {
       assert.equal(calculateVideoCallCredits({ adapter, model, costUsd: 0.375 }).credits, 45);
       assert.equal(calculateVideoCallCredits({ adapter, model, costUsd: 0 }).credits, 0);
     });
   }
 }
+
+test('Fal video uses the sealed model/config tariff, ignoring a provider-reported charge', () => {
+  const submitted = buildFalVideoSubmissionReceipt({ model: 'KLINGIMGTOVID3PRO',
+    duration: 10, generateAudio: true });
+  const billed = calculateVideoCallCredits({ ...submitted, costUsd: 0 });
+  assert.ok(Math.abs(billed.costUsd - 1.68) < 1e-10);
+  assert.equal(billed.credits, 201.6);
+  assert.equal(billed.billingBasis, 'second');
+  assert.equal(billed.tariffRateUsd, 0.168);
+});
 
 test('every Fal lip sync endpoint has an explicit model tariff and source', () => {
   assert.deepEqual(Object.keys(FAL_LIP_SYNC_TARIFFS).sort(), [
@@ -21,6 +33,34 @@ test('every Fal lip sync endpoint has an explicit model tariff and source', () =
     assert.match(tariff.source, /^https:\/\/fal\.ai\/models\//);
     assert.ok(tariff.endpoint);
   }
+});
+
+test('Fal sound-effect endpoint tariffs use submitted seconds and generated samples', () => {
+  assert.deepEqual(Object.keys(FAL_SOUND_EFFECT_TARIFFS).sort(), ['MIRELOAI', 'MMAUDIOV2']);
+  const mirelo = calculateVideoCallCredits({ adapter: 'fal', model: 'MIRELOAI',
+    requestedSeconds: 5, sampleCount: 2, sampleCountSource: 'legacy_default', costUsd: 999 });
+  assert.equal(mirelo.costUsd, 0.1);
+  assert.equal(mirelo.credits, 12);
+  assert.equal(mirelo.billableSeconds, 10);
+  assert.equal(mirelo.billingBasis, 'submittedSecondsPerSample');
+  assert.equal(mirelo.sampleMultiplierInferred, true);
+  const current = calculateVideoCallCredits({ adapter: 'fal', model: 'MIRELOAI',
+    requestedSeconds: 5, sampleCount: 1, sampleCountSource: 'provider_result' });
+  assert.equal(current.credits, 6);
+  assert.equal(current.sampleMultiplierInferred, true);
+  const mmaudio = calculateVideoCallCredits({ adapter: 'fal', model: 'MMAUDIOV2',
+    requestedSeconds: 8, sampleCount: 1 });
+  assert.equal(mmaudio.costUsd, 0.008);
+  assert.equal(mmaudio.credits, 0.96);
+});
+
+test('Fal sound effects fail closed on missing duration or sample count', () => {
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'MIRELOAI',
+    sampleCount: 2 }), /duration/);
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'MIRELOAI',
+    requestedSeconds: 5 }), /sample count/);
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'MMAUDIOV2',
+    requestedSeconds: 8, sampleCount: 2 }), /sample count/);
 });
 
 test('Sync v3 uses measured output seconds at $8/minute plus 20%', () => {
@@ -93,8 +133,9 @@ test('native Runway and Alibaba use the submitted configuration', () => {
 
 test('unknown or malformed charges cannot silently become free or use another adapter tariff', () => {
   for (const costUsd of [null, undefined, '', -1, NaN, Infinity, {}, false]) {
-    assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', costUsd }), /Invalid/);
+    assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', costUsd }), /Invalid/);
   }
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'HAIPER2.0', costUsd: 0 }), /tariff/);
   assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', model: 'RUNWAYML', seconds: 5 }), /not available/);
 });
 

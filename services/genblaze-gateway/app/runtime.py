@@ -1684,14 +1684,7 @@ class GatewayRuntime:
                 ):
                     try:
                         request_detail = provider._fetch_detail(upstream_id)
-                        model_response = provider._get_http_client().get(
-                            f"/models/{SEEDANCE_2_MODEL_ID}"
-                        )
-                        if not model_response.is_success:
-                            raise ValueError("model pricing lookup failed")
-                        fetched_step.cost_usd = seedance_2_cost_usd(
-                            request_detail, model_response.json()
-                        )
+                        fetched_step.cost_usd = seedance_2_cost_usd(request_detail)
                     except Exception:
                         # The video has already succeeded upstream. Return its
                         # asset so the worker can checkpoint it and retry
