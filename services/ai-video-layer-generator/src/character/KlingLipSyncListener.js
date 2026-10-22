@@ -7,9 +7,13 @@ fal.config({
 
 
 import { getDBConnectionString } from "../DBString.js";
+import AIVideoLayerGeneration from '../schema/AIVideoLayerGeneration.js';
+import { getVideoDuration } from '../VideoProcessor.js';
+import { videoBillingError, videoBillingMode } from '../billing/VideoPricing.js';
+import { requireCurrentFalLipSyncTariff } from '../billing/FalLipSyncTariffs.js';
 
 
-export async function generateKlingLipSyncLayer(payload) {
+export async function generateKlingLipSyncLayer(payload, dependencies = {}) {
 
   const { videoLink, audioLink } = payload;
 
@@ -22,6 +26,30 @@ export async function generateKlingLipSyncLayer(payload) {
 
   if (!videoLink || !audioLink) {
     throw new Error("Missing video or audio link");
+  }
+
+  if (videoBillingMode(payload, dependencies.env || process.env) === 'adapter') {
+    requireCurrentFalLipSyncTariff('KLINGLIPSYNC');
+    if (!payload._id) throw videoBillingError('The Kling lip sync billing queue ID is missing.');
+    let inputSeconds;
+    try {
+      inputSeconds = await (dependencies.probeDuration || getVideoDuration)(videoLink);
+    } catch {
+      // ffprobe errors can include the signed input URL.
+      throw videoBillingError('The Kling lip sync input duration could not be measured.');
+    }
+    if (!Number.isFinite(inputSeconds) || inputSeconds <= 0) {
+      throw videoBillingError('The Kling lip sync input duration is invalid.');
+    }
+    const nativeReceipt = { adapter: 'fal', model: 'KLINGLIPSYNC', inputSeconds };
+    const persistNativeReceipt = dependencies.persistNativeReceipt || (async (id, receipt) => {
+      await getDBConnectionString();
+      const update = await AIVideoLayerGeneration.updateOne({ _id: id },
+        { $set: { videoBillingNativeReceipt: receipt } });
+      if (update.matchedCount !== 1) throw videoBillingError('The Kling lip sync billing queue is unavailable.');
+    });
+    await persistNativeReceipt(payload._id, nativeReceipt);
+    payload.videoBillingNativeReceipt = nativeReceipt;
   }
 
 
@@ -38,7 +66,7 @@ export async function generateKlingLipSyncLayer(payload) {
 
   try {
 
-    const { request_id } = await fal.queue.submit(FAL_VIDEO_LINK, apiRequestPayload);
+    const { request_id } = await (dependencies.queue || fal.queue).submit(FAL_VIDEO_LINK, apiRequestPayload);
 
 
 

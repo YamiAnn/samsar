@@ -367,46 +367,33 @@ export const VIDEO_MODEL_PRICES = [
     units: [5, getCosmos3SuperMaxDurationSeconds()],
   },
 
-  // AI post-processing models still used in studio workflows
+  // Lip-sync prices depend on the Fal endpoint and its billing unit. The
+  // aspect-ratio price list cannot represent minute rates, a 40-second tier,
+  // five-second blocks, or the Hummingbird unverified-price fallback.
   {
     key: 'SYNCLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'LATENTSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'KLINGLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'HUMMINGBIRDLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'CREATIFYLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'MMAUDIOV2',

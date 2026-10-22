@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { settleCompletedVideoCall, debitVideoOwnerOnce, videoCallId } from './VideoSettlement.js';
 import { billCompletedVideo } from './VideoRequestBilling.js';
-import { readFalVideoCharge } from './VideoAdapterReceipt.js';
+import { readFalVideoCharge, resolveVideoAdapterReceipt } from './VideoAdapterReceipt.js';
 
 function fixture() {
   const receipts = new Map();
@@ -167,4 +167,31 @@ test('completed provider receipt survives queue deletion before settlement', asy
     adapterReceipt: saved.adapterReceipt, context: saved.context });
   assert.equal(f.mutations(), 1);
   assert.equal(f.account.generationCredits, 85);
+});
+
+test('an existing saved Sync v3 result settles once from its measured output', async () => {
+  const f = fixture();
+  let probes = 0;
+  const options = { ...f.options, id: 'saved-sync-result',
+    result: { remoteUrl: 'https://provider.example/saved.mp4' },
+    adapterReceipt: { adapter: 'fal', model: 'SYNCLIPSYNC', providerRequestId: 'existing-request' },
+    context: { sessionId: 'existing-session', requestId: 'existing-queue-row' },
+    resolveReceipt: (receipt, context) => resolveVideoAdapterReceipt(receipt, context, {
+      probeDuration: async () => { probes++; return 5.042; },
+      fetchImpl: async () => assert.fail('Fal billing lookup must not run'),
+    }),
+  };
+  await settleCompletedVideoCall({ ...options, deferSettlement: true });
+  const saved = f.receipts.get(options.id);
+  assert.equal(saved.status, 'PENDING');
+  assert.equal(f.mutations(), 0);
+  await settleCompletedVideoCall(options);
+  await settleCompletedVideoCall(options);
+  assert.equal(probes, 1);
+  assert.equal(saved.billing.credits, 80.672);
+  assert.equal(saved.billing.billableSeconds, 5.042);
+  assert.equal(saved.billing.billingBasis, 'outputSeconds');
+  assert.equal(saved.billing.tariffVerifiedOn, '2026-10-23');
+  assert.equal(f.mutations(), 1);
+  assert.equal(f.transactions.size, 1);
 });

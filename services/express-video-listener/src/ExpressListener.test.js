@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { __testOnly__ } from './ExpressListener.js';
+import { assessLipSyncFallback, assessLipSyncStage } from './ai_video/LipSyncStage.js';
 
 test('audio failure keeps the actionable failed-layer error instead of replacing it with a generic message', () => {
   const message = 'Fal rejected the audio API key (HTTP 401). Update the Fal credential.';
@@ -167,6 +168,64 @@ test('skipped lip sync advances the step without charging its stage', async () =
   ]);
   assert.equal(__testOnly__.isLipSyncStageReadyToComplete('FAILED', 'COMPLETE'), true);
   assert.equal(__testOnly__.isLipSyncStageReadyToComplete('FAILED', 'WAIT'), false);
+});
+
+test('INIT lip sync enqueues a preflagged character layer before any request exists', async () => {
+  const assessment = assessLipSyncStage([{
+    _id: 'character-1',
+    layerAiVideoType: 'character',
+    hasAiVideoLayer: true,
+    aiVideoLayer: '/assets_v2/ai_video/character-1.mp4',
+    aiVideoGenerationStatus: 'COMPLETED',
+    lipSyncGenerationPending: true,
+    lipSyncVideoGenerationStatus: 'INIT',
+  }], [{
+    _id: 'speech-1',
+    generationType: 'speech',
+    connectedLayerId: 'character-1',
+  }]);
+  assert.equal(assessment.state, 'PENDING');
+  assert.equal(assessLipSyncFallback(assessment).state, 'WAIT');
+
+  const calls = [];
+  const generationStatus = { lip_sync_generation: 'INIT', sound_effect_generation: 'INIT' };
+  const result = await __testOnly__.advanceInitialLipSyncStage(
+    'session-1',
+    'session-1',
+    generationStatus,
+    assessLipSyncFallback(assessment).state,
+    {
+      updateSession: async (...args) => calls.push(['update', ...args]),
+      generateForSession: async (sessionId) => calls.push(['enqueue', sessionId]),
+    },
+  );
+
+  assert.equal(result, 'PENDING');
+  assert.equal(generationStatus.lip_sync_generation, 'PENDING');
+  assert.deepEqual(calls.map(([operation]) => operation), ['update', 'enqueue']);
+  assert.equal(calls[0][1]._id, 'session-1');
+  assert.equal(calls[0][2].$set.expressGenerationStatus.lip_sync_generation, 'PENDING');
+  assert.equal(calls[1][1], 'session-1');
+});
+
+test('INIT lip sync completes without enqueue when all required outputs exist', async () => {
+  const calls = [];
+  const generationStatus = { lip_sync_generation: 'INIT' };
+  const result = await __testOnly__.advanceInitialLipSyncStage(
+    'session-1',
+    'session-1',
+    generationStatus,
+    'COMPLETE',
+    {
+      updateSession: async (...args) => calls.push(['update', ...args]),
+      generateForSession: async (sessionId) => calls.push(['enqueue', sessionId]),
+    },
+  );
+
+  assert.equal(result, 'COMPLETED');
+  assert.equal(generationStatus.lip_sync_generation, 'COMPLETED');
+  assert.deepEqual(calls.map(([operation]) => operation), ['update']);
+  assert.equal(calls[0][2].$set['expressGenerationStatus.lip_sync_generation'], 'COMPLETED');
 });
 
 test('lip-sync skip stores one reason without changing character or audio layers', async () => {

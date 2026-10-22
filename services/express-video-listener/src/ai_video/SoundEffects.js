@@ -207,7 +207,7 @@ export async function generateSoundEffectsForLayer({
   const billingSession = await VideoSession.findById(sessionId).lean();
   generationPayload.videoBillingPolicy = billingSession?.videoBillingPolicy || 'pipeline';
   generationPayload.videoBillingAPIKeyUsage = billingSession?.videoBillingAPIKeyUsage || null;
-  if (generationPayload.videoBillingPolicy === 'adapter') generationPayload.expireAt = null;
+  generationPayload.expireAt = null;
   return AIVideoLayerGeneration.create(generationPayload);
 }
 

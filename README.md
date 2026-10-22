@@ -508,15 +508,11 @@ These prices apply to individual model calls on the named native adapter. Per-se
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 6 seconds | clip | 33.6 |
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 10 seconds | clip | 67.2 |
 
-#### Lip-sync and video sound-effect pricing
+#### Fal-backed lip-sync pricing
 
-| Operation | Model keys | Final customer price |
-| --- | --- | --- |
-| Lip-sync layer | `SYNCLIPSYNC`, `LATENTSYNC`, `KLINGLIPSYNC`, `HUMMINGBIRDLIPSYNC`, `CREATIFYLIPSYNC` | Configuration-specific completed-call charge; reported in the final credit receipt |
-| Video sound-effect layer | `MMAUDIOV2`, `MIRELOAI` | Configuration-specific completed-call charge; reported in the final credit receipt |
-| Other Fal or GMICloud AI-video calls | Selected model and configuration | Final completed-call charge in the credit receipt |
+Verified Fal rates have a 20% markup at 100 credits per USD. Final hosted rates are `SYNCLIPSYNC` 16 credits per measured output second, `LATENTSYNC` 24 credits per video through 40 output seconds or 0.6 credits per output second above 40 seconds, `KLINGLIPSYNC` 1.68 credits per input-video second rounded up to five-second blocks, and `CREATIFYLIPSYNC` 2 credits per measured output second. Fal publishes Creatify as $1 per video minute without naming the duration basis; output duration is Samsar's billing inference. Fal's Kling pricing callout and explanatory prose conflict; Samsar follows the callout's per-input-second unit. See [the provider sources and billing details](pages/video-model-billing.md#fal-backed-lip-sync-pricing).
 
-These operations have no universal flat per-scene price. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
+`HUMMINGBIRDLIPSYNC` uses a historical fallback of 15 credits per requested second because a current Fal price cannot be verified. This is not a verified Fal price plus markup. Video sound-effect layers (`MMAUDIOV2`, `MIRELOAI`) and other Fal or GMICloud AI-video calls have configuration-specific final charges in their completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
 
 
 ### Assistant billing

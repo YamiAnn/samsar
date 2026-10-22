@@ -415,7 +415,11 @@ export default function VideoPromptGenerator(props) {
         <div className={controlGridFullSpanClass}>
           <div className="text-xs font-semibold text-gray-300">
             {isProviderBilled ? (
-              <span className="text-blue-300">Provider billed by configured adapter</span>
+              <span className="text-blue-300">
+                {modelPricing?.key === 'HUMMINGBIRDLIPSYNC'
+                  ? '15 credits per requested second (unverified-price fallback)'
+                  : 'Model-specific charge on completion'}
+              </span>
             ) : (
               <>
                 <span className="text-blue-300">Charged on completion</span>

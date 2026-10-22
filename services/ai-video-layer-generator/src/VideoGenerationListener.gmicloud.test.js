@@ -122,11 +122,13 @@ for (const model of ['SEEDANCE2.0I2V', 'VEO3.1', 'VEO3.1FAST', 'HAILUOPRO']) {
     await generatePendingAiVideoLayerRequests();
     assert.equal(f.job.status, 'PENDING');
     assert.equal(f.job.transientProviderErrorCount, 1);
+    assert.equal(f.job.expireAt, null);
     assert.equal(f.job.nextAttemptAfter.getTime() - Date.now(), 10_000);
     f.respond({ status: 'pending' });
     f.job.nextAttemptAfter = null;
     await generatePendingAiVideoLayerRequests();
     assert.equal(f.job.transientProviderErrorCount, 0);
+    assert.equal(f.job.expireAt, null);
     f.respond({ status: 'unrecognized' });
     for (const delay of [10_000, 20_000, 40_000, 60_000, 60_000, 0]) {
       f.job.nextAttemptAfter = null;

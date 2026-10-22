@@ -35,6 +35,14 @@ function summarizeProviderError(error) {
   };
 }
 
+const RETRYABLE_POLL_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_POLL_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN']);
+
+export function isRetryableSyncLipSyncPollError(error) {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status);
+  return RETRYABLE_POLL_STATUSES.has(status) || RETRYABLE_POLL_CODES.has(error?.code);
+}
+
 export async function generateSyncLipSyncLayer(payload) {
 
   const { videoLink, audioLink } = payload;
@@ -91,23 +99,14 @@ export async function generateSyncLipSyncLayer(payload) {
 
 }
 
-export async function listenToPendingSyncLipSyncRequests(payload) {
+export async function listenToPendingSyncLipSyncRequests(payload, dependencies = {}) {
 
-    await getDBConnectionString();
+    await (dependencies.connect || getDBConnectionString)();
   
 
 
-    const { generationId, model, requestSubmitAt } = payload;
-
-    // if requestSubmitAt greater than 10 mins ago, return failed
-    const TEN_MINS = 10 * 60 * 1000;
-    const currentTime = new Date().getTime();
-    if (currentTime - new Date(requestSubmitAt).getTime() > TEN_MINS) {
-
-      return {
-        responseStatus: 'FAILED'
-      }
-    }
+    const { generationId, model } = payload;
+    const queue = dependencies.queue || fal.queue;
 
 
     try {
@@ -115,7 +114,7 @@ export async function listenToPendingSyncLipSyncRequests(payload) {
       const FAL_VIDEO_LINK = getSyncLipSyncForModel();
   
   
-      const responseStatusData = await fal.queue.status(FAL_VIDEO_LINK, {
+      const responseStatusData = await queue.status(FAL_VIDEO_LINK, {
         requestId: generationId,
       });
 
@@ -129,7 +128,7 @@ export async function listenToPendingSyncLipSyncRequests(payload) {
   
   
   
-        const result = await fal.queue.result(FAL_VIDEO_LINK, {
+        const result = await queue.result(FAL_VIDEO_LINK, {
           requestId: generationId
         });
   
@@ -170,6 +169,12 @@ export async function listenToPendingSyncLipSyncRequests(payload) {
         model,
         error: summarizeProviderError(error),
       });
+
+      // A queue status/result timeout says nothing about the accepted FAL job.
+      // Keep its provider request ID and poll again instead of submitting twice.
+      if (isRetryableSyncLipSyncPollError(error)) {
+        return { responseStatus: 'PENDING' };
+      }
   
       return {
         responseStatus: 'FAILED',

@@ -6,7 +6,12 @@ export async function completeVideoOutput(payload, response, dependencies) {
   try {
     let saved = payload.videoBillingSavedResult;
     if (!saved) {
+      const klingInputSeconds = Number(payload.videoBillingNativeReceipt?.inputSeconds);
       saved = { remoteUrl: response.remoteUrl, videoBillingReceipt: response.videoBillingReceipt || {
+        ...(payload.model === 'KLINGLIPSYNC' && payload.submittedAdapter === 'fal' &&
+          Number.isFinite(klingInputSeconds) && klingInputSeconds > 0
+          ? { inputSeconds: klingInputSeconds } : {}),
+        ...(payload.model === 'HUMMINGBIRDLIPSYNC' ? { requestedSeconds: payload.duration } : {}),
         adapter: payload.submittedAdapter, model: payload.model, providerRequestId: payload.generationId } };
       if (!response.remoteUrl) saved.localVideoLink = await dependencies.downloadBlob(response.responseBlob, payload.sessionId, payload.layerId);
       if (videoBillingMode(payload, dependencies.env || process.env) === 'adapter') {

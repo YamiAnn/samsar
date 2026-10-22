@@ -20,6 +20,7 @@ from app.catalog import (
 )
 from app.config import Settings
 from app.errors import GatewayError
+from app.gmi_video_pricing import SEEDANCE_2_MODEL_ID
 from app.main import create_app
 from app.media_staging import GMICloudMediaStager
 from app.runtime import (
@@ -1813,6 +1814,93 @@ def test_non_video_provider_errors_keep_the_existing_server_error_mapping():
     ))
     assert token_error.status_code == 502
     assert token_error.code == "server_error"
+
+
+@pytest.mark.parametrize("generate_audio", [True, False])
+def test_seedance_poll_returns_verified_live_gmi_charge(
+    settings, fake_bindings, tmp_path, generate_audio
+):
+    class PricedSeedanceProvider(FakeVideoProvider):
+        def _fetch_detail(self, prediction_id):
+            assert prediction_id == "gmi-upstream-job-123"
+            return {
+                "model": SEEDANCE_2_MODEL_ID,
+                "status": "success",
+                "created_at": 200,
+                "payload": {
+                    "duration": 5,
+                    "resolution": "720p",
+                    "generate_audio": generate_audio,
+                },
+            }
+
+        def _get_http_client(self):
+            def get(path):
+                assert path == f"/models/{SEEDANCE_2_MODEL_ID}"
+                return SimpleNamespace(
+                    is_success=True,
+                    json=lambda: {
+                        "model": SEEDANCE_2_MODEL_ID,
+                        "updated_at": 100,
+                        "price_info": {"pricing_type": "per_second", "unit": "second"},
+                        "pricing_details": "Per second: 480p=$0.07, 720p=$0.152, 1080p=$0.374",
+                        "percentage_discount": 0,
+                    },
+                )
+
+            return SimpleNamespace(get=get)
+
+    path = write_catalog(tmp_path, {
+        "SEEDANCE2.0I2V": {
+            "video": {"modelId": SEEDANCE_2_MODEL_ID, "operation": "video.generate"}
+        }
+    })
+    bindings = replace(fake_bindings[0], video_provider_type=PricedSeedanceProvider)
+    with build_client(settings_with_catalog(settings, path), bindings) as client:
+        submitted = client.post("/v1/media/requests", json={
+            "model": "SEEDANCE2.0I2V",
+            "modality": "video",
+            "prompt": "move",
+            "input_urls": ["https://example/start.png"],
+            "params": {"duration": 5, "resolution": "720p", "generate_audio": generate_audio},
+        })
+        assert submitted.status_code == 202
+        PricedSeedanceProvider.instances[-1].terminal = True
+        completed = client.get(f"/v1/media/requests/{submitted.json()['request_id']}")
+
+    assert completed.status_code == 200
+    assert completed.json()["billing"] == {"cost_usd": 0.76}
+
+
+def test_seedance_poll_preserves_completed_asset_if_price_lookup_fails(
+    settings, fake_bindings, tmp_path
+):
+    class UnpricedSeedanceProvider(FakeVideoProvider):
+        def _fetch_detail(self, prediction_id):
+            raise RuntimeError("pricing endpoint unavailable")
+
+    path = write_catalog(tmp_path, {
+        "SEEDANCE2.0I2V": {
+            "video": {"modelId": SEEDANCE_2_MODEL_ID, "operation": "video.generate"}
+        }
+    })
+    bindings = replace(fake_bindings[0], video_provider_type=UnpricedSeedanceProvider)
+    with build_client(settings_with_catalog(settings, path), bindings) as client:
+        submitted = client.post("/v1/media/requests", json={
+            "model": "SEEDANCE2.0I2V",
+            "modality": "video",
+            "prompt": "move",
+            "input_urls": ["https://example/start.png"],
+            "params": {"duration": 5, "resolution": "720p"},
+        })
+        assert submitted.status_code == 202
+        UnpricedSeedanceProvider.instances[-1].terminal = True
+        completed = client.get(f"/v1/media/requests/{submitted.json()['request_id']}")
+
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "succeeded"
+    assert completed.json()["assets"]
+    assert "billing" not in completed.json()
 
 
 def test_video_input_contracts_enforce_exact_required_frame_counts(

@@ -13,5 +13,5 @@ export function videoQueueBillingFields(payload = {}) {
   return { videoBillingPolicy: payload.videoBillingPolicy,
     videoBillingPending: payload.videoBillingPending,
     videoBillingAPIKeyUsage: payload.videoBillingAPIKeyUsage,
-    ...(payload.videoBillingPolicy === 'adapter' ? { expireAt: null } : {}) };
+    expireAt: null };
 }

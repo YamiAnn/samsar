@@ -18,7 +18,8 @@ export async function settleCompletedVideoCall({ id, userId, result, adapterRece
   if (deferSettlement) return receipt;
   if (receipt.status === 'COMPLETED') return receipt;
   if (!receipt.billing) {
-    const pricing = await resolveReceipt(receipt.adapterReceipt, receipt.context);
+    const pricing = await resolveReceipt(receipt.adapterReceipt,
+      { ...receipt.context, result: receipt.result });
     const billing = calculateVideoCallCredits(pricing);
     receipt = await store.saveBilling(id, billing);
   }

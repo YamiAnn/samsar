@@ -35,7 +35,7 @@ const aiVideoLayerGenerationSchema = new Schema({
 
   expireAt: {
     type: Date,
-    default: Date.now,
+    default: null,
     expires: 3600 // 3600 seconds = 1 hour
   },
   numRetries: { type: Number, default: 0 },
