@@ -483,7 +483,7 @@ Credits per generated image on the listed native adapter and configuration.
 | `QWENIMAGE3PRO` | Alibaba China / global | 1K | 4.1256 |
 | `QWENIMAGE3PRO` | Alibaba China / global | 2K | 8.25132 |
 
-Other image models and Fal or GMICloud routes have configuration-specific final charges in their completion receipts. Their prices should not be inferred from another adapter's table.
+Supported Fal image routes have separate checked-in [final model-call rates](https://docs.samsar.one/pricing#image-models) and do not require a runtime provider pricing lookup. Other adapter routes have configuration-specific final charges in their completion receipts; their prices should not be inferred from another adapter's table.
 
 
 ### Video model billing
@@ -492,7 +492,7 @@ Studio AI-video calls, lip-sync and sound-effect layers, direct hosted video end
 
 #### Final AI-video output prices
 
-These prices apply to individual model calls on the named native adapter. Per-second prices refer to generated output before scene trimming or padding. Multiple completed outputs are billable individually.
+These prices apply to individual model calls on the named native adapter. Per-second prices refer to generated output before scene trimming or padding. Multiple completed outputs are billable individually. Supported Fal routes have separate checked-in [final model-call rates](https://docs.samsar.one/pricing#video-model-calls), including a 20% markup over the provider base price; the worker does not fetch a provider price while completing them.
 
 | Model | Adapter | Configuration | Unit | Credits |
 | --- | --- | --- | --- | --- |
@@ -512,7 +512,7 @@ These prices apply to individual model calls on the named native adapter. Per-se
 
 Verified Fal rates have a 20% markup at 100 credits per USD. Final hosted rates are `SYNCLIPSYNC` 16 credits per measured output second, `LATENTSYNC` 24 credits per video through 40 output seconds or 0.6 credits per output second above 40 seconds, `KLINGLIPSYNC` 1.68 credits per input-video second rounded up to five-second blocks, and `CREATIFYLIPSYNC` 2 credits per measured output second. Fal publishes Creatify as $1 per video minute without naming the duration basis; output duration is Samsar's billing inference. Fal's Kling pricing callout and explanatory prose conflict; Samsar follows the callout's per-input-second unit. See [the provider sources and billing details](pages/video-model-billing.md#fal-backed-lip-sync-pricing).
 
-`HUMMINGBIRDLIPSYNC` uses a historical fallback of 15 credits per requested second because a current Fal price cannot be verified. This is not a verified Fal price plus markup. Video sound-effect layers (`MMAUDIOV2`, `MIRELOAI`) and other Fal or GMICloud AI-video calls have configuration-specific final charges in their completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
+`HUMMINGBIRDLIPSYNC` uses a historical fallback of 15 credits per requested second because a current Fal price cannot be verified. This is not a verified Fal price plus markup. Hosted video sound effects use 0.12 credits per submitted audio second for `MMAUDIOV2` and 1.2 credits per submitted second per sample for `MIRELOAI`, including the 20% adapter markup. Mirelo's sample multiplier is inferred from related Fal models; its SFX1.6 page does not state the multiplier explicitly. New calls request one sample; older calls used Fal's two-sample default. Other Fal or GMICloud AI-video calls have configuration-specific final charges in their completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
 
 
 ### Assistant billing

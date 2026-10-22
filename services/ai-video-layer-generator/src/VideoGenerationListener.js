@@ -1,4 +1,5 @@
-import { billCompletedVideo, recoverVideoBillingRequests } from './billing/VideoRequestBilling.js';
+import { attachLocalVideoBillingResult, billCompletedVideo, recoverVideoBillingRequests } from './billing/VideoRequestBilling.js';
+import { sealFalVideoSubmissionReceipt } from './billing/FalVideoTariffs.js';
 import { completeVideoOutput } from './billing/VideoCompletion.js';
 import { frameCountToSeconds, secondsToFrameCount } from './utils/FrameClock.js';
 import { extractSyncStartingFrame } from './utils/SyncLipSyncFace.js';
@@ -1986,6 +1987,15 @@ export async function generatePendingAiVideoLayerRequests() {
         throw e;
       }
       console.error('Error while starting a new INIT request:', getErrorLogPayload(e));
+      if (['FAL_VIDEO_TARIFF_UNAVAILABLE', 'FAL_VIDEO_RECEIPT_NOT_PERSISTED'].includes(e?.code)) {
+        await AIVideoLayerGeneration.findByIdAndUpdate(request._id, {
+          status: 'FAILED', rowLocked: false, retryOnFail: false,
+          providerFailureDefinitive: true, submissionOutcomeUnknown: false,
+          lastProviderFailureMessage: e.message,
+          lastProviderFailureDetail: getErrorLogPayload(e),
+        });
+        continue;
+      }
       const requestType = resolveAIVideoRequestType(request.model, request);
       const protectsAmbiguousSubmission = protectsAmbiguousVideoSubmission(request);
       if (protectsAmbiguousSubmission && isSafeProviderSubmissionRetry(e)) {
@@ -2206,6 +2216,11 @@ async function generateAIVideoLayer(payload) {
   if (shouldPrepareExpressLipSyncFace(payload) && !usesSamsarExternalProvider && !usesGenBlazeProvider) {
     payload = await prepareExpressLipSyncPrompt(payload);
   }
+
+  // Persist the selected price before the provider can accept a paid job.
+  // A missing tariff is a definitive local rejection: never queue.submit.
+  await sealFalVideoSubmissionReceipt(payload, submissionAdapter, (id, receipt) =>
+    AIVideoLayerGeneration.findByIdAndUpdate(id, { $set: { videoBillingNativeReceipt: receipt } }));
 
   let generationId;
 
@@ -2514,6 +2529,7 @@ async function finishVideoOutput(payload, response) {
   return completeVideoOutput(payload, response, {
     download: downloadVideoFromRemote, downloadBlob: downloadVideoFromRemoteBlob,
     retain: (job, saved) => billCompletedVideo(job, saved, { deferSettlement: true }),
+    attachLocalBillingResult: attachLocalVideoBillingResult,
     checkpoint: async (id, saved) => {
       await AIVideoLayerGeneration.findByIdAndUpdate(id, { $set: {
         videoBillingSavedResult: saved, videoBillingPending: true, expireAt: null } });

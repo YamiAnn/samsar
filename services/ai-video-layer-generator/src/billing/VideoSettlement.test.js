@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { settleCompletedVideoCall, debitVideoOwnerOnce, videoCallId } from './VideoSettlement.js';
 import { billCompletedVideo } from './VideoRequestBilling.js';
-import { readFalVideoCharge, resolveVideoAdapterReceipt } from './VideoAdapterReceipt.js';
+import { resolveVideoAdapterReceipt } from './VideoAdapterReceipt.js';
 
 function fixture() {
   const receipts = new Map();
@@ -47,7 +47,7 @@ function fixture() {
   };
   const charge = (userId, credits, idempotencyKey) => debitVideoOwnerOnce({ Owner, Ledger, userId, credits, idempotencyKey });
   const options = { id: 'logical-video-1', userId: 'owner', result: { video: 'finished.png' },
-    adapterReceipt: { adapter: 'fal', costUsd: 0.125 }, store, charge };
+    adapterReceipt: { adapter: 'gmicloud', costUsd: 0.125 }, store, charge };
   return { options, store, charge, receipts, transactions, account, Owner, Ledger,
     failLedger: () => ledgerFailures++, failReceipt: () => receiptFailures++, mutations: () => mutations };
 }
@@ -84,7 +84,7 @@ test('independent video calls and rerolls each incur their own charge', async ()
 
 test('missing adapter billing remains pending and later confirmation settles the retained result', async () => {
   const f = fixture();
-  const options = { ...f.options, adapterReceipt: { adapter: 'fal' } };
+  const options = { ...f.options, adapterReceipt: { adapter: 'gmicloud' } };
   await assert.rejects(settleCompletedVideoCall(options), /charge|duration/i);
   assert.equal(f.mutations(), 0);
   assert.equal(f.receipts.get(options.id).result.video, 'finished.png');
@@ -94,7 +94,7 @@ test('missing adapter billing remains pending and later confirmation settles the
 
 test('zero adapter receipts are completed without an artificial minimum charge', async () => {
   const f = fixture();
-  const result = await settleCompletedVideoCall({ ...f.options, adapterReceipt: { adapter: 'fal', costUsd: 0 } });
+  const result = await settleCompletedVideoCall({ ...f.options, adapterReceipt: { adapter: 'gmicloud', costUsd: 0 } });
   assert.equal(result.status, 'COMPLETED');
   assert.equal(f.mutations(), 0);
 });
@@ -119,7 +119,7 @@ test('existing prepaid jobs, production pipelines and local Docker never receive
 test('hosted video call from an agent settles through the same path as Studio', async () => {
   const f = fixture();
   await billCompletedVideo({ _id: 'hosted-video', userId: 'owner', videoBillingPolicy: 'adapter' },
-    { video: 'done.png', videoBillingReceipt: { adapter: 'fal', providerRequestId: 'remote-video', costUsd: 0.125 } },
+    { video: 'done.png', videoBillingReceipt: { adapter: 'gmicloud', providerRequestId: 'remote-video', costUsd: 0.125 } },
     { env: { SAMSAR_DEPLOYMENT_EDITION: 'production', SAMSAR_RUNTIME: 'docker' }, store: f.store, charge: f.charge });
   assert.equal(f.account.generationCredits, 85);
 });
@@ -131,20 +131,16 @@ test('provider polling and transport retries retain one billing identity; a new 
   assert.notEqual(videoCallId(job), videoCallId({ ...job, _id: 'reroll-row' }));
 });
 
-test('Fal uses actual discounted request cost and rejects unrelated/partial records', async () => {
-  const fetchImpl = async url => {
-    assert.equal(new URL(url).searchParams.get('request_id'), 'wanted');
-    return { ok: true, json: async () => ({ billing_events: [
-      { request_id: 'other', cost_total: 100 },
-      { request_id: 'wanted', cost_total: 0.05, cost_subtotal: 0.1 },
-      { request_id: 'wanted', cost_total: 0.025 },
-    ], has_more: false, next_cursor: null }) };
-  };
-  assert.equal(await readFalVideoCharge('wanted', { fetchImpl, env: { FAL_BILLING_API_KEY: 'test-billing-key' } }), 0.07500000000000001);
-  await assert.rejects(readFalVideoCharge('wanted', { env: { FAL_API_KEY: 'test-key' },
-    fetchImpl: async () => ({ ok: false, status: 403 }) }), /confirmation/);
-  await assert.rejects(readFalVideoCharge('wanted', { env: { FAL_API_KEY: 'test-key' },
-    fetchImpl: async () => ({ ok: true, json: async () => ({ billing_events: [], has_more: false }) }) }), /not available/);
+test('Fal saved video uses its original queue configuration without a pricing request', async () => {
+  const receipt = await resolveVideoAdapterReceipt(
+    { adapter: 'fal', model: 'KLINGIMGTOVID3PRO', providerRequestId: 'finished-request' },
+    { requestId: 'original-queue', result: { remoteUrl: 'https://provider.example/video.mp4' } },
+    { lookupGeneration: async () => ({ model: 'KLINGIMGTOVID3PRO', duration: 5, generateAudio: true }),
+      fetchImpl: async () => assert.fail('Provider pricing must not be fetched') },
+  );
+  assert.equal(receipt.submittedQuantity, 5);
+  assert.equal(receipt.tariffRateUsd, 0.168);
+  assert.equal(receipt.pricingRecovery, 'legacy_queue');
 });
 
 test('a durable debit identity rejects a changed settlement amount', async () => {
@@ -192,6 +188,37 @@ test('an existing saved Sync v3 result settles once from its measured output', a
   assert.equal(saved.billing.billableSeconds, 5.042);
   assert.equal(saved.billing.billingBasis, 'outputSeconds');
   assert.equal(saved.billing.tariffVerifiedOn, '2026-10-23');
+  assert.equal(f.mutations(), 1);
+  assert.equal(f.transactions.size, 1);
+});
+
+test('an existing saved Mirelo result settles its two historical samples once', async () => {
+  const f = fixture();
+  let lookups = 0;
+  const options = { ...f.options, id: 'saved-mirelo-result',
+    result: { remoteUrl: 'https://provider.example/saved.mp4' },
+    adapterReceipt: { adapter: 'fal', model: 'MIRELOAI', providerRequestId: 'existing-request' },
+    context: { sessionId: 'existing-session', requestId: 'existing-queue-row' },
+    resolveReceipt: (receipt, context) => resolveVideoAdapterReceipt(receipt, context, {
+      lookupGeneration: async id => {
+        lookups++;
+        assert.equal(id, 'existing-queue-row');
+        return { duration: 5 };
+      },
+      probeDuration: async () => assert.fail('The old queue still has submitted duration'),
+      fetchImpl: async () => assert.fail('Fal billing or result lookup must not run'),
+    }),
+  };
+  await settleCompletedVideoCall({ ...options, deferSettlement: true });
+  await settleCompletedVideoCall({ ...options, context: { requestedSeconds: 99 } });
+  await settleCompletedVideoCall(options);
+  const saved = f.receipts.get(options.id);
+  assert.equal(saved.status, 'COMPLETED');
+  assert.equal(saved.billing.costUsd, 0.1);
+  assert.equal(saved.billing.credits, 12);
+  assert.equal(saved.billing.sampleCount, 2);
+  assert.equal(lookups, 1);
+  assert.equal(saved.context.requestId, 'existing-queue-row');
   assert.equal(f.mutations(), 1);
   assert.equal(f.transactions.size, 1);
 });

@@ -1,4 +1,5 @@
 import { fal } from "@fal-ai/client";
+import { prepareFalSoundEffectSubmission } from '../billing/FalSoundEffectSubmission.js';
 const FAL_API_KEY = process.env.FAL_API_KEY;
 
 fal.config({
@@ -9,15 +10,19 @@ fal.config({
 const FA_MM_VIDEO_LINK = "mirelo-ai/sfx1.6/video-to-video";
 
 
-export async function generateSoundEffectMireloVideo(payload) {
+export async function generateSoundEffectMireloVideo(payload, dependencies = {}) {
 
   const { videoLink, prompt, duration } = payload;
+  const requestedSeconds = duration || 10;
+  const submittedSamples = 1; // Only the first result is delivered.
+  await prepareFalSoundEffectSubmission(payload, requestedSeconds, submittedSamples, dependencies);
 
-  const { request_id } = await fal.queue.submit(FA_MM_VIDEO_LINK, {
+  const { request_id } = await (dependencies.queue || fal.queue).submit(FA_MM_VIDEO_LINK, {
     input: {
       video_url: videoLink,
       text_prompt: prompt,
-      duration: duration || 10,
+      duration: requestedSeconds,
+      num_samples: submittedSamples,
     },
   });
 
@@ -25,15 +30,16 @@ export async function generateSoundEffectMireloVideo(payload) {
 }
 
 
-export async function listenToPendingSoundEffectMireloVideoRequest(payload) {
+export async function listenToPendingSoundEffectMireloVideoRequest(payload, dependencies = {}) {
 
 
 
   const { generationId } = payload;
+  const queue = dependencies.queue || fal.queue;
 
 
 
-  const responseStatusData = await fal.queue.status(FA_MM_VIDEO_LINK, {
+  const responseStatusData = await queue.status(FA_MM_VIDEO_LINK, {
     requestId: generationId,
     logs: true,
   });
@@ -49,17 +55,19 @@ export async function listenToPendingSoundEffectMireloVideoRequest(payload) {
 
     while (retries < 3) {
       try {
-        const result = await fal.queue.result(FA_MM_VIDEO_LINK, {
+        const result = await queue.result(FA_MM_VIDEO_LINK, {
           requestId: generationId,
         });
 
 
         const videoURL = result.data?.video[0].url;
+        const sampleCount = Array.isArray(result.data?.video) ? result.data.video.length : 0;
 
-        if (videoURL) {
+        if (videoURL && sampleCount > 0) {
           return {
             responseStatus: 'COMPLETED',
             remoteUrl: videoURL,
+            videoBillingReceipt: { sampleCount },
           };
         } else {
           throw new Error("Video URL not found in response");

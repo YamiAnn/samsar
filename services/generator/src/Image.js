@@ -4,6 +4,7 @@ import { billCompletedImage, recoverImageBillingRequests, getPendingImageBilling
 import { imageBillingMode } from './billing/ImagePricing.js';
 import { imageCallId } from './billing/ImageSettlement.js';
 import { checkpointForAttempt } from './billing/ImageResultCheckpoint.js';
+import { sealFalImageSubmission } from './billing/FalImageSubmission.js';
 import { normalizeStoredGPTImageModelKey } from './consts/GPTImageModelKeys.js';
 import { getImageFromText, getEditImageFromText } from './Dispatcher.js';
 import { getDBConnectionString } from './DBString.js';
@@ -2913,6 +2914,17 @@ async function processPendingGenerationRequet(pendingRequestData) {
     );
   }
 
+  if (normalizeString(pendingRequestData.apiGenerationStatus || 'INIT').toUpperCase() === 'INIT') {
+    try {
+      await sealFalImageSubmission(pendingRequestData);
+    } catch (error) {
+      await markImageGenerationRequestFailed(pendingRequestData, { error: error.message }, {
+        message: error.message, source: 'fal_image_tariff_unverified', pruneLayer: false,
+      });
+      return;
+    }
+  }
+
   if (shouldUseSamsarExternalImageProvider(pendingRequestData)) {
     const imageData = await handleSamsarExternalTextToImageRequest(pendingRequestData);
     if (imageData?.image) {
@@ -4221,7 +4233,17 @@ async function processUpscaleRequest(pendingRequestData) {
       );
     }
 
-    const editedImageData = await getEditImageFromText(editPayload);
+    let tariffError = null;
+    if (normalizeString(apiEditStatus).toUpperCase() === 'INIT') {
+      try {
+        await sealFalImageSubmission(editPayload);
+      } catch (error) {
+        tariffError = error;
+      }
+    }
+    const editedImageData = tariffError
+      ? { image: null, error: tariffError.message, definitiveAdapterFailure: true }
+      : await getEditImageFromText(editPayload);
 
 
     if (!editedImageData) {
@@ -4582,7 +4604,17 @@ async function processEditRequest(pendingRequestData) {
         deferAdapterFailureFinalization: true,
       }
       : pendingRequestData;
-    const editedImageData = await getEditImageFromText(editRequestPayload);
+    let tariffError = null;
+    if (normalizeString(pendingRequestData.apiEditStatus || 'INIT').toUpperCase() === 'INIT') {
+      try {
+        await sealFalImageSubmission(editRequestPayload);
+      } catch (error) {
+        tariffError = error;
+      }
+    }
+    const editedImageData = tariffError
+      ? { image: null, error: tariffError.message, definitiveAdapterFailure: true }
+      : await getEditImageFromText(editRequestPayload);
     if (editedImageData?.image || editedImageData?.images?.length) {
       if (!editedImageData.image) editedImageData.image = editedImageData.images[0];
       await settleImageOutput(editRequestPayload, editedImageData);

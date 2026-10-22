@@ -40,7 +40,7 @@ Credits per generated image on the listed native adapter and configuration.
 | `QWENIMAGE3PRO` | Alibaba China / global | 1K | 4.1256 |
 | `QWENIMAGE3PRO` | Alibaba China / global | 2K | 8.25132 |
 
-Other image models and Fal or GMICloud routes have configuration-specific final charges in their completion receipts. Their prices should not be inferred from another adapter's table.
+Supported Fal image models have separate checked-in [final model-call rates](https://docs.samsar.one/pricing#image-models), including a 20% markup over their verified provider base price. A hosted direct adapter-billed worker seals the selected tariff before the paid call. Several Fal image model/configuration routes lack verified billing units or tariffs and stop before provider submission under that billing policy; this does not disable those model keys on other adapters or fixed-price production agent work. Other adapter routes have configuration-specific final charges in their completion receipts; their prices should not be inferred from another adapter's table.
 
 ## Completion receipts
 
@@ -52,7 +52,7 @@ Requests awaiting billing confirmation remain pending. Keep the original request
 
 ## Deployment Configuration
 
-Fal image billing needs a credential with billing-read access. Configure `providers.fal.billingApiKey` to render `FAL_BILLING_API_KEY`, or use a `FAL_API_KEY` with the required permissions. This is a server secret and must not be exposed to clients.
+Hosted direct Fal image completion uses the saved, checked-in model tariff and does not call Billing Events or a pricing endpoint. A model or option without a verified tariff stops before a new paid Fal submission under that billing policy. Existing saved results remain available for idempotent billing recovery.
 
 ## Verification
 

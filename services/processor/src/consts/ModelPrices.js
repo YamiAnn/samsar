@@ -397,21 +397,13 @@ export const VIDEO_MODEL_PRICES = [
   },
   {
     key: 'MMAUDIOV2',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
-    units: [5, 10],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'MIRELOAI',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
-    units: [5, 10],
+    providerBilled: true,
+    prices: [],
   },
 ]
 

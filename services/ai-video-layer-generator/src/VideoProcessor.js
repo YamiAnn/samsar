@@ -63,6 +63,25 @@ export async function getVideoDuration(videoPath) {
   });
 }
 
+/** Measure a completed video for Fal's output-token tariffs. The caller owns
+ * error redaction because ffprobe may include a signed media URL in stderr. */
+export async function getVideoPricingMetadata(videoPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (error, metadata) => {
+      if (error) return reject(error);
+      const video = metadata.streams?.find(stream => stream.codec_type === 'video');
+      const frameRate = String(video?.avg_frame_rate || video?.r_frame_rate || '0/1');
+      const [numerator, denominator = '1'] = frameRate.split('/').map(Number);
+      resolve({
+        width: Number(video?.width),
+        height: Number(video?.height),
+        framesPerSecond: numerator / denominator,
+        seconds: Number(video?.duration || metadata.format?.duration),
+      });
+    });
+  });
+}
+
 
 
 // A helper function to sleep for a given number of milliseconds.

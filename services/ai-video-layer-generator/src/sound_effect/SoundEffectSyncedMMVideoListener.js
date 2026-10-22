@@ -1,4 +1,5 @@
 import { fal } from "@fal-ai/client";
+import { prepareFalSoundEffectSubmission } from '../billing/FalSoundEffectSubmission.js';
 const FAL_API_KEY = process.env.FAL_API_KEY;
 
 fal.config({
@@ -9,16 +10,19 @@ fal.config({
 const FA_MM_VIDEO_LINK = "fal-ai/mmaudio-v2";
 
 
-export async function generateSoundEffectSyncedMMVideo(payload) {
+export async function generateSoundEffectSyncedMMVideo(payload, dependencies = {}) {
 
   const { videoLink , prompt} = payload;
+  const requestedSeconds = 8; // Fal's existing default when duration is omitted.
+  await prepareFalSoundEffectSubmission(payload, requestedSeconds, 1, dependencies);
 
 
   
-  const { request_id } = await fal.queue.submit(FA_MM_VIDEO_LINK, {
+  const { request_id } = await (dependencies.queue || fal.queue).submit(FA_MM_VIDEO_LINK, {
     input: {
      video_url: videoLink,
-    prompt: prompt
+    prompt: prompt,
+    duration: requestedSeconds,
     },
   });
 
@@ -94,4 +98,4 @@ export async function listenToPendingSoundEffectSyncedMMVideoRequest(payload) {
     } 
   }
  
-} 
+}
