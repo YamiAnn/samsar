@@ -362,46 +362,32 @@ export const VIDEO_MODEL_PRICES = [
     units: [5, getCosmos3SuperMaxDurationSeconds()],
   },
 
-  // AI post-processing models still used in studio workflows
+  // Lip-sync model calls use endpoint-specific billing units. Do not quote
+  // an aspect-ratio price for a completion charge or unverified fallback.
   {
     key: 'SYNCLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'LATENTSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'KLINGLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'HUMMINGBIRDLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'CREATIFYLIPSYNC',
-    prices: [
-      { aspectRatio: '1:1', price: 15 },
-      { aspectRatio: '16:9', price: 15 },
-      { aspectRatio: '9:16', price: 15 },
-    ],
+    providerBilled: true,
+    prices: [],
   },
   {
     key: 'MMAUDIOV2',

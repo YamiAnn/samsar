@@ -181,6 +181,53 @@ function isLipSyncStageReadyToComplete(stageStatus, fallbackState) {
     && fallbackState === 'COMPLETE';
 }
 
+async function advanceInitialLipSyncStage(
+  sessionId,
+  latestSessionId,
+  currentGenerationStatus,
+  fallbackState,
+  {
+    updateSession = (...args) => VideoSession.updateOne(...args),
+    generateForSession = generateLipSyncForSession,
+  } = {},
+) {
+  if (isLipSyncStageReadyToComplete('INIT', fallbackState)) {
+    currentGenerationStatus.lip_sync_generation = 'COMPLETED';
+    await updateSession({ _id: sessionId }, {
+      $set: {
+        'expressGenerationStatus.lip_sync_generation': 'COMPLETED',
+        lipSyncGenerationPending: false,
+        lipSyncGenerationSkipped: false,
+      },
+      $unset: {
+        lipSyncGenerationSkippedAt: '',
+        lipSyncGenerationSkipReason: '',
+      },
+    }, { new: true });
+    return 'COMPLETED';
+  }
+
+  // Scene creation can set lipSyncGenerationPending before a request exists.
+  // INIT must enqueue even when the layer looks pending; the generator reuses
+  // an existing INIT/PENDING request if one was already created.
+  currentGenerationStatus.lip_sync_generation = 'PENDING';
+  await updateSession({ _id: sessionId }, {
+    $set: {
+      expressGenerationStatus: currentGenerationStatus,
+      lipSyncGenerationPending: true,
+      lipSyncGenerationSkipped: false,
+      lipSyncGenerationStartedAt: new Date(),
+    },
+    $unset: {
+      lipSyncGenerationSkippedAt: '',
+      lipSyncGenerationSkipReason: '',
+    },
+  }, { new: true });
+
+  await generateForSession(latestSessionId);
+  return 'PENDING';
+}
+
 function canFinalizeExpressPipelineAfterStage(stageResult) {
   return stageResult?.ok === true &&
     stageResult.paused !== true &&
@@ -1603,38 +1650,13 @@ async function checkVideoRenderStatus(session) {
       currentGenerationStatus.lip_sync_generation = lipSyncStageStatus;
       lipSyncStageSkipped = true;
     } else if (lipSyncStageStatus === 'INIT') {
-      if (isLipSyncStageReadyToComplete(lipSyncStageStatus, lipSyncFallback.state)) {
-        lipSyncStageStatus = 'COMPLETED';
-        currentGenerationStatus.lip_sync_generation = lipSyncStageStatus;
-        await VideoSession.updateOne({ _id: sessionId }, {
-          $set: {
-            'expressGenerationStatus.lip_sync_generation': lipSyncStageStatus,
-            lipSyncGenerationPending: false,
-            lipSyncGenerationSkipped: false,
-          },
-          $unset: {
-            lipSyncGenerationSkippedAt: '',
-            lipSyncGenerationSkipReason: '',
-          },
-        }, { new: true });
-      } else if (lipSyncAssessment.pending.length) {
-        return;
-      } else {
-        currentGenerationStatus.lip_sync_generation = 'PENDING';
-        await VideoSession.updateOne({ _id: sessionId }, {
-          $set: {
-            expressGenerationStatus: currentGenerationStatus,
-            lipSyncGenerationPending: true,
-            lipSyncGenerationSkipped: false,
-            lipSyncGenerationStartedAt: new Date(),
-          },
-          $unset: {
-            lipSyncGenerationSkippedAt: '',
-            lipSyncGenerationSkipReason: '',
-          },
-        }, { new: true });
-
-        await generateLipSyncForSession(latestSessionId);
+      lipSyncStageStatus = await advanceInitialLipSyncStage(
+        sessionId,
+        latestSessionId,
+        currentGenerationStatus,
+        lipSyncFallback.state,
+      );
+      if (lipSyncStageStatus === 'PENDING') {
         return;
       }
     } else if (lipSyncStageStatus === 'PENDING' || lipSyncStageStatus === 'FAILED') {
@@ -2422,6 +2444,7 @@ export const __testOnly__ = {
   completeNarratorAvatarStage,
   completeLipSyncStage,
   isLipSyncStageReadyToComplete,
+  advanceInitialLipSyncStage,
   skipLipSyncGenerationStage,
   canFinalizeExpressPipelineAfterStage,
 };

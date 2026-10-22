@@ -518,6 +518,12 @@ function isAiVideoDispatchReady(request = {}, nowMs = Date.now()) {
   return !Number.isFinite(nextAttemptMs) || nextAttemptMs <= nowMs;
 }
 
+export function reservesAiVideoProviderSlot(request = {}) {
+  // Completed outputs are checkpointed before billing and delivery. Those
+  // retries use the saved result and cannot submit or poll the provider again.
+  return !request.videoBillingSavedResult;
+}
+
 export function selectAiVideoDispatchRequests({
   activeRequests = [],
   initRequests = [],
@@ -525,14 +531,15 @@ export function selectAiVideoDispatchRequests({
   maxGmiCloudVideoRequests = getMaxConcurrentGmiCloudVideoRequests(),
   nowMs = Date.now(),
 } = {}) {
-  const remainingCapacity = Math.max(0, maxConcurrentRequests - activeRequests.length);
+  const providerActiveRequests = activeRequests.filter(reservesAiVideoProviderSlot);
+  const remainingCapacity = Math.max(0, maxConcurrentRequests - providerActiveRequests.length);
   if (remainingCapacity === 0) {
     return [];
   }
 
   let remainingGmiCloudCapacity = Math.max(
     0,
-    maxGmiCloudVideoRequests - activeRequests.filter(
+    maxGmiCloudVideoRequests - providerActiveRequests.filter(
       isGmiCloudVideoRequest,
     ).length,
   );
@@ -665,7 +672,7 @@ async function requeueNextDockerVideoAdapterAfterDefinitiveFailure(
       nextAttemptAfter: new Date(
         Date.now() + getExplicitFailureRetryBackoffMs(failoverCount),
       ),
-      expireAt: new Date(),
+      expireAt: null,
     },
     $inc: {
       dockerAdapterFailoverCount: 1,
@@ -1493,7 +1500,7 @@ export function buildTransientProviderErrorUpdate(request = {}, error, phase = '
         phase === 'submit' &&
         !isSafeProviderSubmissionRetry(error) &&
         isTransientProviderError(error),
-      expireAt: new Date(),
+      expireAt: null,
     },
     inc: isManagedMediaTunnelError
       ? { mediaTunnelRefreshErrorCount: 1 }
@@ -1562,7 +1569,7 @@ async function scheduleNextPendingProviderPoll(payload) {
 
   const pollIntervalMs = getPendingPollIntervalMs(payload?.model, payload);
   const update = {
-    expireAt: new Date(),
+    expireAt: null,
     lastProviderPendingPollAt: new Date(),
   };
 
@@ -1609,7 +1616,7 @@ async function fallbackCustomAiVideoGeneration(payload, errorMessage) {
     customAdapterFallbackUsed: true,
     customAdapterError: errorMessage || null,
     rowLocked: false,
-    expireAt: new Date(),
+    expireAt: null,
   });
   await VideoSession.findByIdAndUpdate(payload.sessionId, {
     $set: {
@@ -1650,7 +1657,7 @@ async function fallbackGoogleNativeVeo3Generation(payload, errorMessage) {
       googleVeoNativeFallbackAt: new Date(),
       googleVeoNativeError: errorMessage || null,
       rowLocked: false,
-      expireAt: new Date(),
+      expireAt: null,
     },
     $unset: {
       submittedAdapter: '',
@@ -1811,15 +1818,27 @@ async function getSessionFramesPerSecond(sessionData) {
     .lean();
   return resolveFramesPerSecond(sessionData, userData);
 }
-
-
+export async function clearLiveAiVideoQueueExpiry(Model = AIVideoLayerGeneration) {
+  // Clear legacy dates at startup and during mixed-version rollouts, before
+  // capacity waits can let unsent or in-flight requests expire.
+  return Model.updateMany(
+    { status: { $in: ['INIT', 'PENDING'] }, expireAt: { $type: 'date' } },
+    { $set: { expireAt: null } },
+  );
+}
 
 export async function processPendingAiVideoGenerationRequests() {
   let transientDbFailureCount = 0;
   let billingRecovery = null;
   let lastBillingRecoveryAt = 0;
+  let lastLiveQueueExpiryClearAt = 0;
   while (true) {
     try {
+      if (Date.now() - lastLiveQueueExpiryClearAt >= 60_000) {
+        await getDBConnectionString();
+        await clearLiveAiVideoQueueExpiry();
+        lastLiveQueueExpiryClearAt = Date.now();
+      }
       await getTimeout(1000);
       await generatePendingAiVideoLayerRequests();
       if (!isStandaloneEdition() && !billingRecovery && Date.now() - lastBillingRecoveryAt > 15000) {
@@ -1917,6 +1936,9 @@ export async function generatePendingAiVideoLayerRequests() {
 
   const activeRequests = await withDbRetry(
     () => AIVideoLayerGeneration.find({
+      // A completed output awaiting settlement has no upstream job to occupy
+      // either the global worker limit or the provider-specific limit.
+      videoBillingSavedResult: null,
       $or: [
         { rowLocked: true },         // those that are currently being started
         { status: 'PENDING' }        // those that have an ongoing external job
@@ -2275,7 +2297,7 @@ async function generateAIVideoLayer(payload) {
     requestSubmitAt: requestSubmitAt,
     videoBillingNativeReceipt: payload.videoBillingNativeReceipt || null,
     transientProviderErrorCount: 0,
-    expireAt: payload.videoBillingPolicy === 'adapter' ? null : new Date(),
+    expireAt: null,
   };
   const submittedAdapter = submissionAdapter;
   if (submittedAdapter) {
@@ -2332,9 +2354,7 @@ export async function pollForAIVideoCompletion(reqPayload) {
   }
 
   if (LIPSYNC_MODELS.includes(model)) {
-    const requestSubmitAt = payload.requestSubmitAt || payload.createdAt;
-    const requestAgeMs = requestSubmitAt ? Date.now() - new Date(requestSubmitAt).getTime() : 0;
-    if (requestAgeMs > MAX_LIPSYNC_PROVIDER_PENDING_MS) {
+    if (shouldFailStaleLipSyncProviderPoll(payload)) {
       payload.retryOnFail = false;
       await processVideoGenerationFailed(payload);
       return;
@@ -2464,13 +2484,26 @@ export async function pollForAIVideoCompletion(reqPayload) {
           providerFailureDefinitive: false,
           providerPollingTimedOut: true,
           lastProviderFailureMessage: 'GMICloud video remained pending beyond the allowed polling time.',
-          expireAt: new Date(),
+          expireAt: null,
         },
       });
       return;
     }
     await scheduleNextPendingProviderPoll(payload);
   }
+}
+
+export function shouldFailStaleLipSyncProviderPoll(payload = {}, now = Date.now()) {
+  // A submitted Sync lip-sync job may finish after a transient FAL outage or
+  // while a hosted Samsar request awaits its completed provider output/billing.
+  // Both accepted provider IDs must remain pollable.
+  if (payload.model === 'SYNCLIPSYNC' &&
+      [DOCKER_VIDEO_PROVIDER.FAL, DOCKER_VIDEO_PROVIDER.SAMSAR].includes(
+        resolveSubmittedVideoAdapter(payload)) &&
+      payload.generationId) return false;
+  const submittedAt = payload.requestSubmitAt || payload.createdAt;
+  const ageMs = submittedAt ? now - new Date(submittedAt).getTime() : 0;
+  return ageMs > MAX_LIPSYNC_PROVIDER_PENDING_MS;
 }
 
 
@@ -3699,7 +3732,7 @@ async function processLipSyncGenerationFailed(payload) {
       rowLocked: false,
       generationId: null,
       submittedAdapter: null,
-      expireAt: new Date(),
+      expireAt: null,
     });
     return;
   }
@@ -3818,7 +3851,7 @@ async function processBaseGenerationFailed(payload) {
       generationId: null,
       submittedAdapter: null,
       nextAttemptAfter: new Date(Date.now() + getExplicitFailureRetryBackoffMs(tries)),
-      expireAt: new Date(),
+      expireAt: null,
     };
 
     // On the last permitted retry, adjust model/prompt before attempt 3.

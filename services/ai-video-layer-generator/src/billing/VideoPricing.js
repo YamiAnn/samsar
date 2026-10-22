@@ -1,4 +1,8 @@
 import { isStandaloneEdition } from '../utils/Environment.js';
+import { calculateFalLipSyncUsd, falLipSyncTariff } from './FalLipSyncTariffs.js';
+
+export const VIDEO_CREDITS_PER_USD = 100;
+export const VIDEO_ADAPTER_MARKUP = 1.2;
 
 export function videoBillingError(message) {
   return Object.assign(new Error(message), { videoBillingPending: true, code: 'VIDEO_BILLING_PENDING' });
@@ -15,12 +19,22 @@ function nonnegative(value, name) {
   return Number(value);
 }
 
-/** Provider charges take precedence over native tariffs, including free calls.
- * Native receipts must describe the actual submitted configuration, never the
- * scene duration after trimming, padding, or stitching. */
+/** Fal lip sync uses published per-model tariffs. Other adapter receipts use
+ * reported provider charges when present, including free calls. Native
+ * receipts describe submitted configuration, not edited scene duration. */
 export function calculateVideoCallCredits(receipt = {}) {
   let costUsd;
-  if (Object.hasOwn(receipt, 'costUsd')) costUsd = nonnegative(receipt.costUsd, 'adapter charge');
+  const falLipSync = receipt.adapter === 'fal' ? falLipSyncTariff(receipt.model) : null;
+  if (falLipSync?.fallbackCreditsPerRequestedSecond) {
+    const seconds = nonnegative(receipt.requestedSeconds, 'requested duration');
+    if (!seconds) throw videoBillingError('The Fal lip sync requested duration is missing.');
+    return { adapter: receipt.adapter, model: receipt.model, costUsd: null,
+      billableSeconds: seconds, billingBasis: 'requestedSeconds',
+      pricingFallback: 'historical_fixed_credits', tariffVerifiedOn: null,
+      credits: Math.round(seconds * falLipSync.fallbackCreditsPerRequestedSecond * 10_000) / 10_000 };
+  }
+  if (falLipSync) costUsd = calculateFalLipSyncUsd(receipt, falLipSync);
+  else if (Object.hasOwn(receipt, 'costUsd')) costUsd = nonnegative(receipt.costUsd, 'adapter charge');
   else {
     const seconds = nonnegative(receipt.seconds, 'billable duration');
     if (!seconds) throw videoBillingError('Completed video duration is missing.');
@@ -43,7 +57,10 @@ export function calculateVideoCallCredits(receipt = {}) {
     } else throw videoBillingError('The video adapter charge is not available yet.');
   }
   return { adapter: receipt.adapter, model: receipt.model, costUsd,
-    credits: Math.round(costUsd * 120 * 10_000) / 10_000 };
+    ...(falLipSync ? { billableSeconds: Number(receipt[falLipSync.basis]),
+      billingBasis: falLipSync.basis, tariffVerifiedOn: falLipSync.verifiedOn,
+      tariffSource: falLipSync.source } : {}),
+    credits: Math.round(costUsd * VIDEO_CREDITS_PER_USD * VIDEO_ADAPTER_MARKUP * 10_000) / 10_000 };
 }
 
 export function reportedVideoCharge(response = {}) {

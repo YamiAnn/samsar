@@ -364,7 +364,9 @@ export default function OverlayPromptGenerateVideo(props) {
               data-tooltip-id="videoModelCostTooltip"
               data-tooltip-content={
                 isProviderBilled
-                  ? "Provider billed by configured adapter"
+                  ? pricingForSelectedModel?.key === 'HUMMINGBIRDLIPSYNC'
+                    ? '15 credits per requested second (unverified-price fallback)'
+                    : 'Model-specific charge on completion'
                   : `Currently selected model cost: ${modelPrice} Credits`
               }
             >

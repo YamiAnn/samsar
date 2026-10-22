@@ -28,6 +28,7 @@ from .catalog import (
 )
 from .config import Settings
 from .errors import GatewayError
+from .gmi_video_pricing import SEEDANCE_2_MODEL_ID, seedance_2_cost_usd
 from .media_staging import GMICloudMediaStager
 
 
@@ -1675,7 +1676,28 @@ class GatewayRuntime:
             if not terminal:
                 return False, step, None
             try:
-                return True, provider.fetch_output(upstream_id, step), None
+                fetched_step = provider.fetch_output(upstream_id, step)
+                if (
+                    route.modality == "video"
+                    and getattr(route, "gmi_model", None) == "seedance-2-0-260128"
+                    and getattr(fetched_step, "cost_usd", None) is None
+                ):
+                    try:
+                        request_detail = provider._fetch_detail(upstream_id)
+                        model_response = provider._get_http_client().get(
+                            f"/models/{SEEDANCE_2_MODEL_ID}"
+                        )
+                        if not model_response.is_success:
+                            raise ValueError("model pricing lookup failed")
+                        fetched_step.cost_usd = seedance_2_cost_usd(
+                            request_detail, model_response.json()
+                        )
+                    except Exception:
+                        # The video has already succeeded upstream. Return its
+                        # asset so the worker can checkpoint it and retry
+                        # settlement without submitting a second generation.
+                        pass
+                return True, fetched_step, None
             except bindings.provider_error_type as exc:
                 return True, step, exc
 

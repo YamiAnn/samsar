@@ -20,7 +20,7 @@ export function buildRetryableImageToVideoQueuePayload(
   return {
     videoBillingPolicy: payload.videoBillingPolicy || 'pipeline',
     videoBillingAPIKeyUsage: payload.videoBillingAPIKeyUsage || null,
-    ...(payload.videoBillingPolicy === 'adapter' ? { expireAt: null } : {}),
+    expireAt: null,
     prompt: payload.prompt,
     model: payload.model,
     originalVideoModel: payload.originalVideoModel,

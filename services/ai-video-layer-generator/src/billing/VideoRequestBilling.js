@@ -43,7 +43,8 @@ export async function billCompletedVideo(payload, result, dependencies = {}) {
     adapterReceipt: { ...result?.videoBillingReceipt,
       adapter: result?.videoBillingReceipt?.adapter || payload.submittedAdapter || payload.adapterProvider },
     context: { requestId: String(payload._id), sessionId: payload.videoSessionId || payload.sessionId,
-      apiRequestId: payload.generationId, apiKeyUsage: payload.videoBillingAPIKeyUsage },
+      apiRequestId: payload.generationId, apiKeyUsage: payload.videoBillingAPIKeyUsage,
+      ...(payload.model === 'HUMMINGBIRDLIPSYNC' ? { requestedSeconds: payload.duration } : {}) },
     store: dependencies.store || store, charge: dependencies.charge || charge,
     deferSettlement: dependencies.deferSettlement || false,
     resolveReceipt: dependencies.resolveReceipt || resolveVideoAdapterReceipt });

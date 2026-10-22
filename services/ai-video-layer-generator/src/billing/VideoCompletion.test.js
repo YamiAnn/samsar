@@ -40,3 +40,23 @@ test('financial retention precedes queue checkpoint, debit, download and deliver
   });
   assert.deepEqual(events, ['retain', 'checkpoint', 'debit', 'download', 'checkpoint', 'deliver']);
 });
+
+test('completed lip sync retains the submitted pricing duration in its receipt', async () => {
+  for (const [model, native, durationField, expected] of [
+    ['KLINGLIPSYNC', { inputSeconds: 5.01, costUsd: 0, model: 'other' }, 'inputSeconds', 5.01],
+    ['HUMMINGBIRDLIPSYNC', null, 'requestedSeconds', 7],
+  ]) {
+    let retained;
+    await completeVideoOutput({ _id: 'queue', model, duration: 7,
+      videoBillingPolicy: 'adapter', submittedAdapter: 'fal', generationId: 'provider-id',
+      videoBillingNativeReceipt: native }, { remoteUrl: 'https://provider.example/result.mp4' }, {
+      env: {}, retain: async (_job, saved) => { retained = saved; },
+      checkpoint: async () => {}, bill: async () => ({}), recordCharge: async () => {},
+      download: async () => '/saved/output.mp4', deliver: async () => {},
+    });
+    assert.equal(retained.videoBillingReceipt[durationField], expected);
+    assert.equal(retained.videoBillingReceipt.providerRequestId, 'provider-id');
+    assert.equal(Object.hasOwn(retained.videoBillingReceipt, 'costUsd'), false);
+    assert.equal(retained.videoBillingReceipt.model, model);
+  }
+});

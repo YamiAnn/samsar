@@ -6,6 +6,7 @@ import {
   getInitialVideoAdapter,
 } from './AIVideoQueuePayload.js';
 import { VIDEO_MODEL_PRICES } from '../../consts/ModelPrices.js';
+import AIVideoLayerGeneration from '../../schema/AIVideoLayerGeneration.js';
 
 const retryContext = {
   startImageDescription: '  The selected frame description.  ',
@@ -47,6 +48,16 @@ const retryableImageToVideoModels = [
   'VEO3.1I2V',
   'HAPPYHORSEI2V',
 ];
+
+test('unsent pipeline video requests retain their queue record while capacity is full', () => {
+  const payload = buildRetryableImageToVideoQueuePayload({
+    videoSessionId: 'session-1', layerId: 'layer-1', model: 'SEEDANCE2.0I2V',
+    videoBillingPolicy: 'pipeline',
+  });
+  assert.equal(payload.expireAt, null);
+  assert.equal(new AIVideoLayerGeneration({ status: 'INIT' }).expireAt, null);
+  assert.equal(AIVideoLayerGeneration.schema.path('expireAt').options.expires, 3600);
+});
 
 for (const model of retryableImageToVideoModels) {
   test(`${model} queue payload serializes fallback retry context`, () => {

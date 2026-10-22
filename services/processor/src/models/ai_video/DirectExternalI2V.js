@@ -48,7 +48,7 @@ export function buildDirectExternalI2VGenerationDocument(payload = {}) {
     isExternalDirectImageToVideo: true,
     externalRequestIdempotencyKey: normalizeString(payload.externalRequestIdempotencyKey),
     ...videoQueueBillingFields(payload),
-    expireAt: payload.videoBillingPolicy === 'adapter' ? null : new Date(),
+    expireAt: null,
   };
 }
 

@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import AIVideoLayerGeneration from './schema/AIVideoLayerGeneration.js';
 
 import {
   buildBaseAiVideoCompletionUpdate,
   buildBaseGenerationFailureMessage,
   canRetryRejectedGmiCloudSubmission,
+  clearLiveAiVideoQueueExpiry,
   buildDockerVideoAdapterRetryPlan,
   buildTransientProviderErrorUpdate,
   buildBaseGenerationTerminalFailureUpdate,
@@ -27,9 +29,11 @@ import {
   resolveVideoSubmissionAdapter,
   resolveCompletedLayerDuration,
   resolveConnectedAudioLayerDuration,
+  reservesAiVideoProviderSlot,
   selectAiVideoDispatchRequests,
   selectFilterPassForBaseGenerationRetry,
   shouldRetryBaseGeneration,
+  shouldFailStaleLipSyncProviderPoll,
   shouldUseAlibabaNativeHappyHorse,
 } from './VideoGenerationListener.js';
 import { isTransientMongoError } from './DBString.js';
@@ -51,6 +55,49 @@ test('base AI-video completion marks the generated media as available', () => {
     aiVideoThumbnailVideo: '/assets/preview.mp4',
     aiVideoGenerationStatus: 'COMPLETED',
   });
+});
+
+test('accepted FAL and hosted Sync lip sync survive the generic ten-minute poll cutoff', () => {
+  const submittedAt = new Date('2026-10-22T18:00:00Z');
+  const now = new Date('2026-10-22T18:20:00Z').getTime();
+  assert.equal(shouldFailStaleLipSyncProviderPoll({
+    model: 'SYNCLIPSYNC', submittedAdapter: 'fal',
+    generationId: 'accepted-fal-request', requestSubmitAt: submittedAt,
+  }, now), false);
+  assert.equal(shouldFailStaleLipSyncProviderPoll({
+    model: 'SYNCLIPSYNC', submittedAdapter: 'samsar',
+    generationId: 'samsar-external-video:accepted-hosted-request', requestSubmitAt: submittedAt,
+  }, now), false);
+  assert.equal(shouldFailStaleLipSyncProviderPoll({
+    model: 'SYNCLIPSYNC', submittedAdapter: 'fal', requestSubmitAt: submittedAt,
+  }, now), true);
+  assert.equal(shouldFailStaleLipSyncProviderPoll({
+    model: 'CREATIFYLIPSYNC', submittedAdapter: 'fal',
+    generationId: 'other-request', requestSubmitAt: submittedAt,
+  }, now), true);
+});
+
+test('new AI-video queue rows survive provider capacity waits', () => {
+  const queued = new AIVideoLayerGeneration({ status: 'INIT', videoBillingPolicy: 'pipeline' });
+  assert.equal(queued.expireAt, null);
+  assert.equal(AIVideoLayerGeneration.schema.path('expireAt').options.expires, 3600);
+});
+
+test('startup clears legacy TTL dates only on live AI-video queue rows', async () => {
+  const calls = [];
+  const result = { modifiedCount: 2 };
+  const Model = {
+    updateMany: async (...args) => {
+      calls.push(args);
+      return result;
+    },
+  };
+
+  assert.equal(await clearLiveAiVideoQueueExpiry(Model), result);
+  assert.deepEqual(calls, [[
+    { status: { $in: ['INIT', 'PENDING'] }, expireAt: { $type: 'date' } },
+    { $set: { expireAt: null } },
+  ]]);
 });
 
 test('GMICloud video dispatch permits a second request without blocking other adapters', () => {
@@ -135,6 +182,35 @@ test('GMICloud video dispatch consumes both default provider slots', () => {
     selectAiVideoDispatchRequests({ initRequests }).map(({ id }) => id),
     ['gmi-one', 'gmi-two', 'fal-one', 'fal-two', 'fal-three'],
   );
+});
+
+test('saved GMICloud output awaiting billing frees global and provider slots', () => {
+  const savedResults = Array.from({ length: 5 }, (_, index) => ({
+    id: `completed-${index}`,
+    model: 'SEEDANCEI2V',
+    status: 'PENDING',
+    dockerVideoProvider: 'gmicloud',
+    videoBillingSavedResult: { remoteUrl: `https://cdn.example/${index}.mp4` },
+  }));
+  const initRequests = [
+    { id: 'next-gmi-one', model: 'SEEDANCEI2V', startImage: 'one.png', dockerVideoProvider: 'gmicloud' },
+    { id: 'next-gmi-two', model: 'SEEDANCEI2V', startImage: 'two.png', dockerVideoProvider: 'gmicloud' },
+    { id: 'next-fal', model: 'WANI2V', startImage: 'three.png', dockerVideoProvider: 'fal' },
+  ];
+
+  assert.equal(reservesAiVideoProviderSlot(savedResults[0]), false);
+  assert.equal(reservesAiVideoProviderSlot({ status: 'PENDING', dockerVideoProvider: 'gmicloud' }), true);
+  assert.deepEqual(selectAiVideoDispatchRequests({
+    activeRequests: savedResults,
+    initRequests,
+  }).map(({ id }) => id), ['next-gmi-one', 'next-gmi-two', 'next-fal']);
+  assert.deepEqual(selectAiVideoDispatchRequests({
+    activeRequests: [
+      ...savedResults,
+      { status: 'PENDING', model: 'SEEDANCEI2V', dockerVideoProvider: 'gmicloud' },
+    ],
+    initRequests,
+  }).map(({ id }) => id), ['next-gmi-one', 'next-fal']);
 });
 
 test('GMICloud retry backoff reserves the session queue head', () => {
@@ -858,6 +934,7 @@ test('repeated transient provider errors are promoted to FAILED for normal retry
   assert.equal(update.set.status, 'FAILED');
   assert.equal(update.set.rowLocked, false);
   assert.equal(update.set.nextAttemptAfter, null);
+  assert.equal(update.set.expireAt, null);
   assert.equal(update.set.transientProviderErrorExhausted, true);
   assert.equal(Object.hasOwn(update.set, 'numRetries'), false);
 });

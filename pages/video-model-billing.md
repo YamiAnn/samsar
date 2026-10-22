@@ -22,15 +22,21 @@ These prices apply to individual model calls on the named native adapter. Per-se
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 6 seconds | clip | 33.6 |
 | `HAILUOPRO` | MiniMax | Hailuo 02, 768p, 10 seconds | clip | 67.2 |
 
-### Lip-sync and video sound-effect pricing
+### Fal-backed lip-sync pricing
 
-| Operation | Model keys | Final customer price |
+The four verified Fal tariffs below include a 20% markup at 100 credits per USD. Each completed hosted model call has one charge.
+
+| Model key | Fal price | Final Samsar price |
 | --- | --- | --- |
-| Lip-sync layer | `SYNCLIPSYNC`, `LATENTSYNC`, `KLINGLIPSYNC`, `HUMMINGBIRDLIPSYNC`, `CREATIFYLIPSYNC` | Configuration-specific completed-call charge; reported in the final credit receipt |
-| Video sound-effect layer | `MMAUDIOV2`, `MIRELOAI` | Configuration-specific completed-call charge; reported in the final credit receipt |
-| Other Fal or GMICloud AI-video calls | Selected model and configuration | Final completed-call charge in the credit receipt |
+| [`SYNCLIPSYNC`](https://fal.ai/models/fal-ai/sync-lipsync/v3) | $8 per output minute | 16 credits per measured output second |
+| [`LATENTSYNC`](https://fal.ai/models/fal-ai/latentsync) | $0.20 per video through 40 seconds; $0.005 per output second above 40 seconds | 24 credits per video through 40 seconds; 0.6 credits per output second above 40 seconds |
+| [`KLINGLIPSYNC`](https://fal.ai/models/fal-ai/kling-video/lipsync/audio-to-video) | $0.014 per input-video second, rounded up to 5-second blocks | 1.68 credits per billable input-video second, in 5-second blocks |
+| [`CREATIFYLIPSYNC`](https://fal.ai/models/creatify/lipsync) | $1 per video minute | 2 credits per measured output second |
+| [`HUMMINGBIRDLIPSYNC`](https://fal.ai/models/fal-ai/tavus/hummingbird-lipsync/v0) | Current price unverified | 15 credits per requested second, historical fallback |
 
-These operations have no universal flat per-scene price. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
+LatentSync's above-40-second rate applies to the entire output. Creatify's public price does not say whether input or output duration is billed; Samsar uses measured output duration. Fal's Kling pricing callout says $0.014 per input second rounded to five seconds, while nearby explanatory prose says $0.014 per block; Samsar follows the callout. Hummingbird's current Fal price cannot be verified, so its fallback is not presented as a verified provider price plus markup.
+
+Video sound-effect layers (`MMAUDIOV2`, `MIRELOAI`) and other Fal or GMICloud AI-video calls have configuration-specific final charges in completion receipts. Billing confirmation may remain pending after generation. Audio-only sound effects use their separate [audio endpoint prices](https://docs.samsar.one/external-requests#audio).
 
 ## Endpoint scope
 
@@ -53,7 +59,7 @@ The worker retains a completed clip before billing and delivery. Billing confirm
 
 ## Provider configuration
 
-Fal completion billing requires billing-read access. Set `providers.fal.billingApiKey` in deployment configuration, rendered as `FAL_BILLING_API_KEY`; the ordinary Fal key is used when this is omitted. The key must have the [Fal billing-event permissions](https://fal.ai/docs/platform-apis/v1/models/billing-events).
+Fal-backed lip-sync calls use the published tariff constants above and do not require a Fal Billing Events lookup. Other Fal model calls may require billing-read access. For those, set `providers.fal.billingApiKey` in deployment configuration, rendered as `FAL_BILLING_API_KEY`; the ordinary Fal key is used when this is omitted. The key must have the [Fal billing-event permissions](https://fal.ai/docs/platform-apis/v1/models/billing-events).
 
 The GenBlaze gateway forwards media cost metadata when available. GenBlaze deployments must configure a pricing strategy that supplies that metadata. Missing or invalid cost confirmation remains pending with the completed output retained; it is never treated as a free call or priced using another adapter's rates.
 
