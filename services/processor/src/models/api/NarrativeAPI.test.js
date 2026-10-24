@@ -626,7 +626,7 @@ test('a recovered worker reuses persisted artifacts and an existing narrative de
   assert.deepEqual(result.themeJson, claimedRequest.themeJson);
   assert.deepEqual(result.narrativeJson, claimedRequest.narrativeJson);
   assert.deepEqual(result.movieResourceList, claimedRequest.movieResourceList);
-  assert.equal(result.billing.pricing_multiplier, 1.5);
+  assert.equal(result.billing.pricing_multiplier, 1.2);
   assert.equal(result.billing.underlying_cost_usd, expectedBilling.underlyingCostUsd);
   assert.equal(result.billing.underlying_credits, expectedBilling.underlyingCredits);
   assert.equal(result.billing.credits_charged, expectedBilling.credits);

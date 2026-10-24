@@ -8,6 +8,93 @@ import { Types } from 'mongoose';
 import { __testOnly__ } from './Image.js';
 import VideoSession from './schema/VideoSession.js';
 
+test('F2P: joined reroll scoring takes source scene context from the request snapshot', () => {
+  const details = __testOnly__.buildImageThemeScoringContextDetailsForPayload({
+    movieResourceList: { scenes: [{ visual: 'First-session anime astronaut.' }] },
+    layers: [{
+      sourceSceneIndex: 0,
+      sourceSceneRef: { version: 1, sourceSessionId: 'older-origin', sceneIndex: 0, scene: { visual: 'Older layer snapshot.' } },
+    }],
+  }, 0, {
+    sourceSceneIndex: 0,
+    sourceSceneRef: {
+      version: 1, sourceSessionId: 'second-origin', sceneIndex: 0,
+      scene: { visual: 'Second-session photorealistic coastal warrior.' },
+      themeJson: { style: ['photorealistic', 'historical epic'] },
+    },
+  });
+
+  assert.equal(details.context, 'Scene visual: Second-session photorealistic coastal warrior.');
+  assert.equal(details.diagnostics.sourceSceneIndex, 0);
+  assert.equal(details.diagnostics.sourceSceneIndexSource, 'payload.sourceSceneRef');
+  assert.equal(details.diagnostics.sceneIndexFallbackUsed, false);
+});
+
+test('F2P: image-session source snapshot provides scoring context when joined narrative scenes are absent', () => {
+  const details = __testOnly__.buildImageThemeScoringContextDetailsForPayload({
+    layers: [{ imageSession: { sourceSceneRef: {
+      version: 1, sourceSessionId: 'branch-origin', sceneIndex: 4,
+      scene: { visual: 'Canonical alternate branch scene.' },
+      themeJson: { style: 'oil painting' },
+    } } }],
+  }, 0);
+
+  assert.equal(details.context, 'Scene visual: Canonical alternate branch scene.');
+  assert.equal(details.diagnostics.sourceSceneIndex, 4);
+  assert.equal(details.diagnostics.sourceSceneIndexSource, 'layer.imageSession.sourceSceneRef');
+});
+
+test('joined image scoring uses the snapshot theme instead of the first joined session style', () => {
+  const sourceSceneRef = {
+    version: 1, sourceSessionId: 'second-origin', sceneIndex: 0,
+    scene: { visual: 'A historical coastal warrior.' },
+    themeJson: { style: ['photorealistic', 'historical epic'] },
+  };
+  const session = {
+    parentJsonTheme: JSON.stringify({ style: ['anime', 'cel-shaded'] }),
+    layers: [{ sourceSceneRef: { ...sourceSceneRef, themeJson: { style: 'watercolor' } } }],
+  };
+
+  assert.equal(
+    __testOnly__.buildImageThemeStyleContext(session, 0, { sourceSceneRef }),
+    JSON.stringify(['photorealistic', 'historical epic']),
+  );
+  assert.equal(__testOnly__.buildImageThemeStyleContext(session, 0), 'watercolor');
+  assert.equal(__testOnly__.buildImageThemeScoringContextForPayload(session, 0, {
+    prompt: 'The current photorealistic retry prompt.', sourceSceneRef,
+  }), 'Layer visual prompt: The current photorealistic retry prompt.');
+});
+
+test('source snapshot with no specified style does not inherit an unrelated joined style', () => {
+  const session = {
+    parentJsonTheme: { style: 'anime' },
+    layers: [{ imageSession: { sourceSceneRef: {
+      version: 1, sourceSessionId: 'unstyled-origin', sceneIndex: 0,
+      scene: { visual: 'A scene with no style restriction.' }, themeJson: {},
+    } } }],
+  };
+  assert.equal(__testOnly__.buildImageThemeStyleContext(session, 0), '');
+});
+
+test('ordinary render scoring retains parent style formats and request-prompt precedence', () => {
+  for (const [style, expected] of [
+    ['  cinematic  ', 'cinematic'],
+    [['photorealistic', 'film grain'], JSON.stringify(['photorealistic', 'film grain'])],
+    [{ medium: 'oil painting' }, JSON.stringify({ medium: 'oil painting' })],
+    [[], ''], [{}, ''],
+  ]) {
+    const session = {
+      parentJsonTheme: JSON.stringify({ style }),
+      movieResourceList: { scenes: [{ visual: 'Original scene visual.' }] },
+      layers: [{ originalImageGenerationPrompt: 'Original image prompt.' }],
+    };
+    assert.equal(__testOnly__.buildImageThemeStyleContext(session), expected);
+    assert.equal(__testOnly__.buildImageThemeStyleContext(session, 0, { prompt: 'Current request.' }), expected);
+    assert.equal(__testOnly__.buildImageThemeScoringContextForPayload(session, 0, { prompt: 'Current request.' }),
+      'Layer visual prompt: Current request.');
+  }
+});
+
 test('image scoring context prefers current request prompt over movie resource scene index', () => {
   const context = __testOnly__.buildImageThemeScoringContext(
     {

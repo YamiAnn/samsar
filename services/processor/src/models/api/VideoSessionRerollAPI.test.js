@@ -1,7 +1,196 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { __testOnly__ } from './VideoSessionRerollAPI.js';
+import { __testOnly__, rerollVideoSessionLayersAndQueueGeneration } from './VideoSessionRerollAPI.js';
+import { buildSourceSceneFields } from '../video/SceneIdentity.js';
+
+test('F2P: legacy sound-effect scene resolves through an appended outro without altering the source', () => {
+  const scenes = Array.from({ length: 13 }, (_, index) => ({
+    visual: `Original scene ${index}`, type: 'sound_effect', duration: 10,
+  }));
+  const session = {
+    _id: 'original-session',
+    movieResourceList: { scenes },
+    layers: [
+      ...scenes.map((scene, index) => ({
+        _id: `layer-${index}`, originalImageGenerationPrompt: scene.visual,
+        layerBaseAiImageType: 'sound_effect', imageSession: {},
+      })),
+      { _id: 'outro', layerBaseAiImageType: 'none', skipAiVideoGeneration: true },
+    ],
+    audioLayers: [{ connectedLayerId: 'layer-0', generationType: 'sound_effect' }],
+  };
+  const before = structuredClone(session);
+  const resolved = __testOnly__.resolveLayerSourceSceneIndexDetails(session, session.layers[0], 0);
+  assert.equal(resolved.sourceSceneIndex, 0);
+  assert.deepEqual(session, before);
+});
+
+test('F2P: original prompt identity wins over a reordered audio timeline position', () => {
+  const layer = { _id: 'scene-b', originalImageGenerationPrompt: 'Scene B', imageSession: {} };
+  const session = {
+    movieResourceList: { scenes: [{ visual: 'Scene A' }, { visual: 'Scene B' }] },
+    layers: [layer, { _id: 'scene-a', originalImageGenerationPrompt: 'Scene A' }],
+    audioLayers: [{ connectedLayerId: 'scene-b', connectedLayerIndex: 0 }],
+  };
+  assert.equal(__testOnly__.resolveLayerSourceSceneIndex(session, layer, 0), 1);
+});
+
+test('F2P: all connected audio rows are considered when the first row has no index', () => {
+  const layer = { _id: 'scene-b' };
+  const session = {
+    movieResourceList: { scenes: [{ visual: 'Scene A' }, { visual: 'Scene B' }] },
+    layers: [layer],
+    audioLayers: [
+      { connectedLayerId: 'scene-b', generationType: 'sound_effect' },
+      { connectedLayerId: 'scene-b', generationType: 'speech', connectedLayerIndex: 1 },
+    ],
+  };
+  assert.equal(__testOnly__.resolveLayerSourceSceneIndex(session, layer, 0), 1);
+});
+
+test('F2P: narrative-only sessions retain reroll scene resolution', () => {
+  const layer = { _id: 'scene-a', originalImageGenerationPrompt: 'Scene A' };
+  const session = { narrativeJson: { scenes: [{ visual: 'Scene A' }] }, layers: [layer] };
+  assert.equal(__testOnly__.resolveLayerSourceSceneIndex(session, layer, 0), 0);
+});
+
+function rerollHarness() {
+  const source = {
+    _id: 'source-session', userId: 'user', aspectRatio: '9:16', videoTone: 'grounded',
+    expressGenerationImageModel: 'SEEDREAM', expressGenerativeVideoModel: 'HAPPYHORSEI2V',
+    movieResourceList: { scenes: [{ visual: 'The original commander', type: 'sound_effect', duration: 10 }] },
+    layers: [{
+      _id: 'first-layer', originalImageGenerationPrompt: 'The original commander',
+      layerBaseAiImageType: 'sound_effect', duration: 10, refilterImageScore: 74,
+      frames: ['original/0.png'], aiVideoLayer: 'original/video.mp4',
+      imageSession: { activeGeneratedImage: 'original/clean.png', generationStatus: 'COMPLETED', activeItemList: [] },
+    }, { _id: 'outro', layerBaseAiImageType: 'none', skipAiVideoGeneration: true, frames: ['outro/0.png'] }],
+    expressGenerationStatus: { status: 'COMPLETED', image_generation: 'COMPLETED' },
+    videoLink: 'original/render.mp4',
+  };
+  const clone = structuredClone(source);
+  clone._id = 'clone-session';
+  const events = [];
+  clone.markModified = () => {};
+  clone.save = async () => { events.push('save'); };
+  const dependencies = {
+    loadOwnedSession: async (_user, id) => id === source._id ? source : clone,
+    prepareImageRequestBilling: async () => { events.push('billing'); },
+    copyVideoSession: async () => { events.push('copy'); return { sessionId: clone._id }; },
+    buildMovieResourceListVisualPrompts: async (options) => {
+      events.push('visual');
+      assert.equal(options.movieResourceList.scenes[0].visual, 'The original commander');
+      return { promptList: [{ prompt: 'Regenerated commander prompt' }] };
+    },
+    deleteStaleQueuedWork: async () => { events.push('delete'); },
+    queueImageRerollRequests: async (_user, _session, layers) => {
+      events.push('queue');
+      assert.equal(layers[0].sourceSceneRef.scene.visual, 'The original commander');
+    },
+    upsertGlobalSessionMapping: async () => { events.push('mapping'); },
+  };
+  return { source, clone, events, dependencies };
+}
+
+test('F2P: invalid scene mapping aborts reroll before billing, inference or clone creation', async () => {
+  const { source, events, dependencies } = rerollHarness();
+  delete source.movieResourceList;
+  await assert.rejects(
+    rerollVideoSessionLayersAndQueueGeneration('user', { videoSessionId: source._id, layerIndexes: [1] }, dependencies),
+    (error) => error.code === 'REROLL_VISUAL_SCENE_MISSING' && error.status === 422 && error.layerIndex === 1,
+  );
+  assert.deepEqual(events, []);
+  assert.equal(source.layers[0].imageSession.activeGeneratedImage, 'original/clean.png');
+});
+
+test('F2P: failed visual inference does not leave a cloned session', async () => {
+  const { source, events, dependencies } = rerollHarness();
+  dependencies.buildMovieResourceListVisualPrompts = async () => {
+    events.push('visual');
+    throw new Error('inference unavailable');
+  };
+  await assert.rejects(
+    rerollVideoSessionLayersAndQueueGeneration('user', { videoSessionId: source._id, layerIndexes: [1] }, dependencies),
+    /inference unavailable/,
+  );
+  assert.deepEqual(events, ['billing', 'visual']);
+});
+
+test('F2P/P2P: legacy SFX reroll queues the correct new frame while preserving the original render', async () => {
+  const { source, clone, events, dependencies } = rerollHarness();
+  const before = structuredClone(source);
+  const result = await rerollVideoSessionLayersAndQueueGeneration(
+    'user', { videoSessionId: source._id, layerIndexes: [1] }, dependencies,
+  );
+  assert.equal(result.session_id, 'clone-session');
+  assert.deepEqual(events, ['billing', 'visual', 'copy', 'delete', 'save', 'queue', 'mapping']);
+  assert.deepEqual(source, before);
+  assert.equal(clone.layers[0].imageSession.generationStatus, 'PENDING');
+  assert.equal(clone.layers[0].sourceSceneIndex, 0);
+  assert.equal(clone.layers[0].sourceSceneRef.scene.visual, 'The original commander');
+  assert.equal(clone.layers[0].prompt, 'Regenerated commander prompt');
+  assert.equal(clone.layers[0].soundEffectGenerationPending, true);
+  assert.equal(clone.layers[1].skipAiVideoGeneration, true);
+  assert.equal(result.creditQuote.totalCredits, 0);
+});
+
+test('F2P: joined layers regenerate from their own source scene, sounds and theme', async () => {
+  const second = buildSourceSceneFields({
+    sourceSessionId: 'second-origin', sceneIndex: 0,
+    scene: { visual: 'A different original', type: 'character', duration: 5 },
+    sounds: [{ sceneIndex: 0, gender: 'M', audio: 'Hello' }], themeJson: { setting: 'second origin' },
+  });
+  const session = {
+    _id: 'joined', movieResourceList: { scenes: [{ visual: 'First origin only' }] },
+    layers: [{ _id: 'joined-second', ...second }],
+  };
+  const targets = __testOnly__.resolveRerollTargets(session, [1]);
+  const plans = await __testOnly__.prepareRerollVisualPlans(session, targets, {
+    buildMovieResourceListVisualPrompts: async (options) => {
+      assert.equal(options.movieResourceList.scenes[0].visual, 'A different original');
+      assert.deepEqual(options.themeJson, { setting: 'second origin' });
+      assert.equal(options.movieResourceList.sounds[0].gender, 'M');
+      assert.equal(options.movieResourceList.sounds[0].sceneIndex, 0);
+      return { promptList: [{ prompt: 'Correct second-origin prompt' }] };
+    },
+  });
+  assert.equal(plans[0].sourceSceneRef.sourceSessionId, 'second-origin');
+  assert.equal(plans[0].prompt, 'Correct second-origin prompt');
+});
+
+test('P2P: an empty persisted source theme never inherits another joined video theme', async () => {
+  const fields = buildSourceSceneFields({ sourceSessionId: 'empty-theme-origin', sceneIndex: 0,
+    scene: { visual: 'An unthemed source', duration: 5 } });
+  // The persistence layer minimizes empty objects.
+  delete fields.sourceSceneRef.themeJson;
+  const session = { _id: 'joined', themeJson: { setting: 'Wrong first-video theme' },
+    layers: [{ _id: 'layer', ...fields }] };
+  await __testOnly__.prepareRerollVisualPlans(session, __testOnly__.resolveRerollTargets(session, [1]), {
+    buildMovieResourceListVisualPrompts: async (options) => {
+      assert.deepEqual(options.themeJson, {});
+      return { promptList: [{ prompt: 'Unthemed regenerated prompt' }] };
+    },
+  });
+});
+
+test('F2P: a joined layer quote uses its own snapshot visual when no stored image prompt exists', () => {
+  const fields = buildSourceSceneFields({ sourceSessionId: 'second-origin', sceneIndex: 0,
+    scene: { visual: 'Second source visual', duration: 5 } });
+  const layer = { _id: 'joined-layer', ...fields };
+  const session = { layers: [layer], movieResourceList: { scenes: [{ visual: 'First source visual' }] } };
+  assert.deepEqual(__testOnly__.getLayerPromptInfo(session, layer, 0), { prompt: 'Second source visual', source: 'seed' });
+});
+
+test('F2P: a joined layer quote recovers source context retained only on linked audio', () => {
+  const fields = buildSourceSceneFields({ sourceSessionId: 'second-origin', sceneIndex: 0,
+    scene: { visual: 'Second audio-origin visual', duration: 5 } });
+  const layer = { _id: 'joined-layer' };
+  const session = { joinedSourceSessionIds: ['first-origin', 'second-origin'], layers: [layer],
+    audioLayers: [{ connectedLayerId: layer._id, ...fields }],
+    movieResourceList: { scenes: [{ visual: 'First source visual' }] } };
+  assert.deepEqual(__testOnly__.getLayerPromptInfo(session, layer, 0), { prompt: 'Second audio-origin visual', source: 'seed' });
+});
 
 test('rerolls defer video and image calls without a prepaid stage charge', () => {
   const quote = __testOnly__.buildQuote({ aspectRatio: '16:9', expressGenerativeVideoModel: 'RUNWAYML',

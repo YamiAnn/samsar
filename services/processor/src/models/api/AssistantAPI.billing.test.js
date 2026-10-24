@@ -40,7 +40,7 @@ function harness(model = 'gpt-6-astra', adapter = 'openrouter') {
   return { account, store, session, state, response, dependencies, charge, Sessions };
 }
 
-for (const model of ['gpt-6-astra', 'gemini-4-argon', 'qwen3.8-max', 'kimi-k3', 'claude-opus-5.5']) {
+for (const [model, expectedCredits] of [['gpt-6-astra', 1.26], ['gemini-4-argon', 0.246], ['qwen3.8-max', 0.207], ['kimi-k3', 0.378], ['claude-opus-5.5', 0.492]]) {
   for (const endpoint of ['session', 'external']) {
     test(`${endpoint} assistant ${model} applies 20% once and replays the saved response`, async () => {
       const h = harness(model);
@@ -51,7 +51,7 @@ for (const model of ['gpt-6-astra', 'gemini-4-argon', 'qwen3.8-max', 'kimi-k3', 
         : () => createExternalChatCompletion({ userId: 'user', payload: request, idempotencyKey: 'sdk-request' },
           { ...h.dependencies, deductCredits: h.charge });
       const first = await call();
-      assert.equal(first.creditsCharged, 3);
+      assert.equal(first.creditsCharged, expectedCredits);
       assert.deepEqual(await call(), first);
       assert.equal(h.state.providerCalls, 1);
       assert.equal(h.account.debits, 1);
@@ -93,7 +93,7 @@ test('background recovery settles a retained SDK response without a client retry
   assert.equal(results.length, 1);
   assert.equal(h.state.providerCalls, 1);
   assert.equal(h.account.debits, 1);
-  assert.equal(h.account.account.generationCredits, 97);
+  assert.equal(h.account.account.generationCredits, 98.74);
 });
 
 test('session output persistence failure recovers one debit and one assistant message', async () => {
@@ -170,7 +170,7 @@ for (const failure of ['ledger', 'queue-result']) {
     assert.equal(job.payload.messages[0].content, 'Hi');
     const completed = await processExternalChatCompletionRequest('job', dependencies);
     assert.equal(completed.status, 'COMPLETED');
-    assert.equal(completed.creditsCharged, 3);
+    assert.equal(completed.creditsCharged, 1.26);
     assert.equal(h.state.providerCalls, 1);
     assert.equal(h.account.debits, 1);
     assert.equal(h.account.transactions.size, 1);

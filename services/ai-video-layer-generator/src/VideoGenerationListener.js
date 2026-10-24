@@ -4,6 +4,7 @@ import { completeVideoOutput } from './billing/VideoCompletion.js';
 import { frameCountToSeconds, secondsToFrameCount } from './utils/FrameClock.js';
 import { extractSyncStartingFrame } from './utils/SyncLipSyncFace.js';
 import { shouldPrepareExpressLipSyncFace } from './utils/ExpressLipSyncPrompt.js';
+import { getSourceSceneMetadata } from './utils/SourceSceneMetadata.js';
 import {
   getDBConnectionString,
   isTransientMongoError,
@@ -3302,9 +3303,11 @@ async function realignAudioLayersToLayers(payload) {
 
 
 
-export async function realignAudioVideoLayerToVideoLayer(payload) {
+export async function realignAudioVideoLayerToVideoLayer(payload, dependencies = {}) {
 
-  await getDBConnectionString();
+  const ensureDatabase = dependencies.getDBConnectionString || getDBConnectionString;
+  const VideoSessionModel = dependencies.VideoSession || VideoSession;
+  await ensureDatabase();
 
 
   const {
@@ -3320,7 +3323,7 @@ export async function realignAudioVideoLayerToVideoLayer(payload) {
   const audioPath = audioVideoAudioLink;
 
 
-  let videoSession = await VideoSession.findById(sessionId);
+  let videoSession = await VideoSessionModel.findById(sessionId);
   if (!videoSession) return;
 
   const currentLayerIndex = videoSession.layers.findIndex(
@@ -3366,6 +3369,13 @@ export async function realignAudioVideoLayerToVideoLayer(payload) {
 
 
     connectedAudioLayer.startTime = newAudioLayerStartTime;
+    const sourceSceneMetadata = getSourceSceneMetadata(currentLayer);
+    if (typeof connectedAudioLayer.set === 'function') {
+      connectedAudioLayer.set(sourceSceneMetadata);
+    } else {
+      Object.assign(connectedAudioLayer, sourceSceneMetadata);
+    }
+    connectedAudioLayer.connectedLayerIndex = currentLayerIndex;
     connectedAudioLayer.endTime = newAudioLayerEndTime;
     connectedAudioLayer.duration = audioLayerDuration;
     connectedAudioLayer.connectedLayerStartTimeOffset = audioStartOffset;
@@ -3383,7 +3393,7 @@ export async function realignAudioVideoLayerToVideoLayer(payload) {
     const connectedAudioLayerId = connectedAudioLayer._id.toString();
 
 
-    await VideoSession.updateOne(
+    await VideoSessionModel.updateOne(
       {
         _id: sessionId,
         "audioLayers._id": connectedAudioLayerId
@@ -3427,6 +3437,8 @@ export async function realignAudioVideoLayerToVideoLayer(payload) {
 
     const newAudioLayer = {
       connectedLayerId: layerId,
+      connectedLayerIndex: currentLayerIndex,
+      ...getSourceSceneMetadata(currentLayer),
       startTime: newAudioLayerStartTime,
       endTime: newAudioLayerStartTime + audioLayerDuration,
       duration: audioLayerDuration,

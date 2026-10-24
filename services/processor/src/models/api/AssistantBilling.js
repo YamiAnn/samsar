@@ -1,7 +1,9 @@
+import { GENERATION_PRICING_MULTIPLIER, GENERATION_CREDITS_PER_USD } from '../../consts/pricing/GenerationPricingPolicy.js';
+
 const TOKENS_PER_MILLION = 1_000_000;
-const CREDITS_PER_DOLLAR = 100;
-export const DEFAULT_ASSISTANT_PRICING_MULTIPLIER = 1.2;
-export const EXTERNAL_CHAT_PRICING_MULTIPLIER = 1.2;
+const CREDITS_PER_DOLLAR = GENERATION_CREDITS_PER_USD;
+export const DEFAULT_ASSISTANT_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
+export const EXTERNAL_CHAT_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
 const GEMINI_4_ARGON_STANDARD_PRICING_START_MS = Date.UTC(2026, 11, 1);
 const GEMINI_4_ARGON_STANDARD_PRICING = Object.freeze({
   input: 4,
@@ -93,24 +95,13 @@ export function calculateAssistantCreditsFromUsage({
     ? GEMINI_4_ARGON_STANDARD_PRICING
     : pricingModel ? (tariffProfile === 'legacy' ? LEGACY_INFERENCE_PRICING : TOKEN_PRICING_USD_PER_MILLION)[pricingModel] : null;
   const normalizedUsage = normalizeUsage(usage);
-  // Only adapter responses may supply a monetary charge; callers must never
-  // copy this value from the client request. Zero is a valid provider charge.
-  const reportedCost = adapterCostUsd ?? (adapter === 'openrouter' ? usage?.cost : undefined);
-  if (reportedCost !== undefined && reportedCost !== null) {
-    const costUsd = Number(reportedCost);
-    if (!['number', 'string'].includes(typeof reportedCost) ||
-      (typeof reportedCost === 'string' && !reportedCost.trim()) ||
-      !Number.isFinite(costUsd) || costUsd < 0 || !Number.isFinite(costUsd * CREDITS_PER_DOLLAR * pricingMultiplier)) {
-      throw billingError('Invalid adapter charge.', 'ASSISTANT_BILLING_INVALID_COST');
-    }
-    return { credits: roundTo(costUsd * CREDITS_PER_DOLLAR * pricingMultiplier, 4),
-      costUsd, usage: normalizedUsage, pricingModel, pricingMultiplier,
-      creditsPerDollar: CREDITS_PER_DOLLAR, billable: true,
-      costSource: 'adapter_reported', adapter: adapter || null };
-  }
+  // Provider monetary fields are audit data only. Settlement always uses the
+  // checked-in model tariff and measured usage, including zero-token usage.
 
-  const hasTokenUsage = usage && [usage.input_tokens, usage.prompt_tokens, usage.promptTokenCount,
-    usage.output_tokens, usage.completion_tokens, usage.candidatesTokenCount].some(value => value !== undefined && value !== null);
+  const hasTokenUsage = [usage, usage?.anthropic_usage, usage?.google_usage_metadata].some(source =>
+    source && [source.input_tokens, source.prompt_tokens, source.promptTokenCount,
+      source.output_tokens, source.completion_tokens, source.candidatesTokenCount]
+      .some(value => value !== undefined && value !== null));
   if (!pricing || (!normalizedUsage.inputTokens && !normalizedUsage.outputTokens && !hasTokenUsage)) {
     return {
       credits: 0,
@@ -216,15 +207,19 @@ export function normalizeAssistantResponseUsage(usage) {
     total_tokens: Number(usage.total_tokens) || u.inputTokens + u.outputTokens };
 }
 
+export function assertAssistantTariffAvailable(model) {
+  const pricingModel = resolvePricingModel(model);
+  if (!pricingModel || !TOKEN_PRICING_USD_PER_MILLION[pricingModel]) {
+    throw billingError('The inference model has no checked-in token tariff.', 'ASSISTANT_BILLING_TARIFF_UNAVAILABLE');
+  }
+  return pricingModel;
+}
+
 export function calculateAssistantRequestBilling(response, { model, waived = false, pricingTimestampMs } = {}) {
   if (waived) return { credits: 0, costUsd: 0, billable: true, waived: true,
     pricingMultiplier: DEFAULT_ASSISTANT_PRICING_MULTIPLIER };
   const adapter = response?.samsarBilling?.adapter;
-  if (['openrouter', 'samsar', 'gmicloud'].includes(adapter) &&
-    response?.samsarBilling?.costUsd == null && !(adapter === 'openrouter' && response?.usage?.cost != null)) {
-    throw billingError('The adapter did not report its charge; billing needs reconciliation.',
-      'ASSISTANT_BILLING_COST_REQUIRED');
-  }
+  assertAssistantTariffAvailable(response?.model || model);
   const result = calculateAssistantCreditsFromUsage({
     model: response?.model || model, usage: response?.usage,
     adapter,
@@ -240,11 +235,11 @@ export function calculateAssistantRequestBilling(response, { model, waived = fal
       'code_interpreter_call', 'shell_call']);
     if (response?.output?.some?.(item => paidToolTypes.has(item.type)) ||
       Object.values(response?.usage?.anthropic_usage?.server_tool_use || {}).some(Number)) {
-      throw billingError('This response includes tool charges that require an adapter charge receipt.',
+      throw billingError('This response includes paid tools without checked-in tool tariffs; provider-reported costs are not used.',
         'ASSISTANT_BILLING_TOOL_COST_REQUIRED');
     }
   }
-  if (!result.billable) throw billingError('Provider response has no supported billable usage or adapter charge.',
+  if (!result.billable) throw billingError('Provider response has no supported billable token usage.',
     'ASSISTANT_BILLING_USAGE_REQUIRED');
   return result;
 }

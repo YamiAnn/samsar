@@ -79,6 +79,7 @@ import {
 } from './branching/BranchedVideoSessionPlan.js';
 import { hasConnectedSpeechAudioLayer } from '../video/LipSyncLayerState.js';
 import { normalizeExpressVideoPricingRateClass } from '../../consts/pricing/ExpressVideoPricingDistribution.js';
+import { buildSourceSceneFields } from '../video/SceneIdentity.js';
 
 const MEDIA_DOWNLOAD_TIMEOUT_MS = Number.isFinite(Number(process.env.API_MEDIA_DOWNLOAD_TIMEOUT_MS))
   ? Math.max(1000, Math.floor(Number(process.env.API_MEDIA_DOWNLOAD_TIMEOUT_MS)))
@@ -747,6 +748,7 @@ export async function buildMovieResourceListVisualPrompts({
       prompt: normalizedPrompt,
       duration: scene.duration,
       sceneType,
+      sourceSceneIndex: sceneIndex,
     });
     generatedVisualsBySceneIndex.set(sceneIndex, normalizedPrompt);
   }
@@ -849,11 +851,38 @@ export function buildPreparedNarrativeVisualPromptList(movieResourceList = {}) {
       prompt,
       duration,
       sceneType: normalizeLayerSceneType(scene?.type),
+      sourceSceneIndex: sceneIndex,
       ...(scene?.branchAssetKey ? { branchAssetKey: scene.branchAssetKey } : {}),
       ...(Number.isInteger(scene?.branchSourceSceneIndex)
         ? { branchSourceSceneIndex: scene.branchSourceSceneIndex }
         : {}),
     };
+  });
+}
+
+export function buildMovieLayerSourceSceneFields({
+  sourceSessionId,
+  sceneIndex,
+  movieResourceList = {},
+  narrativeJson = null,
+  themeJson = {},
+} = {}) {
+  const movieScenes = Array.isArray(movieResourceList?.scenes) ? movieResourceList.scenes : [];
+  const canonicalScene = movieScenes[sceneIndex];
+  const narrativeScenes = Array.isArray(narrativeJson?.scenes) ? narrativeJson.scenes : [];
+  // Branched scenes use their canonical pool position, not a path-local scene index.
+  const rawScene = !canonicalScene?.branchAssetKey && narrativeScenes.length === movieScenes.length
+    ? narrativeScenes[sceneIndex]
+    : null;
+  return buildSourceSceneFields({
+    sourceSessionId,
+    sceneIndex,
+    scene: { ...(canonicalScene || {}), ...(rawScene || {}) },
+    sounds: Array.isArray(movieResourceList?.sounds) && movieResourceList.sounds.length
+      ? movieResourceList.sounds
+      : narrativeJson?.sounds || [],
+    themeJson,
+    branchAssetKey: canonicalScene?.branchAssetKey,
   });
 }
 
@@ -1334,6 +1363,13 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
       shouldEnableSubtitles,
     );
     let returnPayload = {
+      ...(sceneIndex !== null && scenes[sceneIndex] ? buildMovieLayerSourceSceneFields({
+        sourceSessionId: sessionId,
+        sceneIndex,
+        movieResourceList: movieResourceListWithCharacters,
+        narrativeJson: sourceNarrativeJson || movieResourceList,
+        themeJson,
+      }) : {}),
       prompt: sound.audio,
       ...subtitleLayerFields,
       generationType: "speech",
@@ -1434,6 +1470,13 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
     const duration = promptItem.duration;
 
     const sceneType = promptItem.sceneType;
+    const sourceSceneFields = buildMovieLayerSourceSceneFields({
+      sourceSessionId: sessionId,
+      sceneIndex: promptItem.sourceSceneIndex ?? pIdx,
+      movieResourceList: movieResourceListWithCharacters,
+      narrativeJson: sourceNarrativeJson || movieResourceList,
+      themeJson,
+    });
 
 
     const initActiveItemList = [{
@@ -1454,6 +1497,7 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
     let currentGenerationStatus = 'PENDING';
 
     const newSession = {
+      ...sourceSceneFields,
       userId,
       generations: [],
       activeSelectedImage: '',
@@ -1499,6 +1543,7 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
 
 
     let layerPayload = {
+      ...sourceSceneFields,
       imageSession: newSession,
       prompt: prompt,
       originalImageGenerationPrompt: prompt,
@@ -1636,6 +1681,8 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
     }
 
     const outroImageSession = {
+      sourceSceneIndex: null,
+      sourceSceneRef: null,
       userId,
       generations: [],
       activeSelectedImage: '',
@@ -1654,6 +1701,8 @@ async function requestQuickMovieGenerationInternal(userId, payload, {
     };
 
     newSessionLayers.push({
+      sourceSceneIndex: null,
+      sourceSceneRef: null,
       imageSession: outroImageSession,
       prompt: '',
       status: "pending",

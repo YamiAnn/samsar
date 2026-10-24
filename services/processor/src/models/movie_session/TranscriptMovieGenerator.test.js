@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { assignCharactersAndInstructionsToScenes } from './MovieGeneratorUtils.js';
+import { __testOnly__ as reroll } from '../api/VideoSessionRerollAPI.js';
+import VideoSession from '../../schema/VideoSession.js';
 import {
   alignSpeechSpeakerNamesToScenes,
   buildPreparedNarrativeVisualPromptList,
+  buildMovieLayerSourceSceneFields,
   buildMovieResourceListVisualPrompts,
   buildVideoSessionNarrativeArtifactFields,
   buildVideoSessionMovieResourceList,
@@ -214,8 +217,8 @@ test('visual prompt builder selects the scene updater, propagates inference args
     { requestKey: 'narrative:create_single:visual:scene-1', sceneIndex: 1 },
   ]);
   assert.deepEqual(result.promptList, [
-    { prompt: 'Expanded generic visual.', duration: 5, sceneType: 'narration' },
-    { prompt: 'Expanded character visual.', duration: 10, sceneType: 'character' },
+    { prompt: 'Expanded generic visual.', duration: 5, sceneType: 'narration', sourceSceneIndex: 0 },
+    { prompt: 'Expanded character visual.', duration: 10, sceneType: 'character', sourceSceneIndex: 1 },
   ]);
 
   assert.deepEqual(movieResourceList, rawSnapshot, 'the raw narrative input must remain unchanged');
@@ -280,6 +283,7 @@ test('visual prompt builder can regenerate one scene and passes its matched spee
     prompt: 'A male technician faces the camera while the mixed crew works behind him.',
     duration: 10,
     sceneType: 'character',
+    sourceSceneIndex: 1,
   }]);
   assert.equal(result.movieResourceList.scenes[0].visual, 'Wide opening.');
   assert.equal(
@@ -336,10 +340,11 @@ test('prepared narrative visuals become media prompts without inference expansio
       prompt: 'Saved wide establishing prompt.',
       duration: 5,
       sceneType: 'base',
+      sourceSceneIndex: 0,
       branchAssetKey: 'scene:0:key',
       branchSourceSceneIndex: 0,
     },
-    { prompt: 'Saved actor close-up prompt.', duration: 10, sceneType: 'character' },
+    { prompt: 'Saved actor close-up prompt.', duration: 10, sceneType: 'character', sourceSceneIndex: 1 },
   ]);
 });
 
@@ -351,4 +356,118 @@ test('prepared narrative visuals reject invalid saved scene data', () => {
     }),
     (error) => error.code === 'INVALID_PREPARED_NARRATIVE' && error.status === 422,
   );
+});
+
+test('F2P: selected visual prompts retain their narrative indexes instead of their result positions', async () => {
+  const result = await buildMovieResourceListVisualPrompts({
+    movieResourceList: {
+      scenes: [
+        { visual: 'Opening shoreline.', duration: 5, type: 'base' },
+        { visual: 'Warriors advance.', duration: 5, type: 'sound_effect' },
+        { visual: 'A gate breaks.', duration: 5, type: 'base' },
+      ],
+      sounds: [],
+    },
+    sceneIndexes: [2, 0],
+    dependencies: { updatePromptWithTheme: async (visual) => `Expanded: ${visual}` },
+  });
+
+  assert.deepEqual(result.promptList.map((item) => item.sourceSceneIndex), [2, 0]);
+  assert.deepEqual(result.promptList.map((item) => item.prompt), [
+    'Expanded: A gate breaks.',
+    'Expanded: Opening shoreline.',
+  ]);
+});
+
+test('F2P: prepared canonical branch prompts retain canonical and branch source indexes separately', () => {
+  const prompts = buildPreparedNarrativeVisualPromptList({
+    scenes: [
+      { visual: 'Shared opening.', duration: 5, type: 'base', branchSourceSceneIndex: 0, branchAssetKey: 'shared' },
+      { visual: 'Alternate path.', duration: 5, type: 'base', branchSourceSceneIndex: 0, branchAssetKey: 'alternate' },
+    ],
+  });
+
+  assert.deepEqual(prompts.map((item) => item.sourceSceneIndex), [0, 1]);
+  assert.deepEqual(prompts.map((item) => item.branchSourceSceneIndex), [0, 0]);
+  assert.deepEqual(prompts.map((item) => item.branchAssetKey), ['shared', 'alternate']);
+});
+
+test('created movie scene references preserve raw visual context and matched sound independently of later edits', () => {
+  const narrativeJson = {
+    scenes: [{ visual: 'The original shore approach.', type: 'sound_effect', duration: 10 }],
+    sounds: [{ sceneIndex: 0, type: 'sound_effect', audio: 'Boots cross dry sand.' }],
+  };
+  const movieResourceList = {
+    scenes: [{ ...narrativeJson.scenes[0], visual: 'Expanded cinematic shoreline prompt.' }],
+    sounds: [
+      ...narrativeJson.sounds,
+      { sceneIndex: 1, type: 'speech', audio: 'Unrelated second scene.' },
+    ],
+  };
+  const themeJson = { style: ['grounded'] };
+  const fields = buildMovieLayerSourceSceneFields({
+    sourceSessionId: 'original-session', sceneIndex: 0, movieResourceList, narrativeJson, themeJson,
+  });
+
+  assert.equal(fields.sourceSceneIndex, 0);
+  assert.equal(fields.sourceSceneRef.sourceSessionId, 'original-session');
+  assert.equal(fields.sourceSceneRef.scene.visual, 'The original shore approach.');
+  assert.deepEqual(fields.sourceSceneRef.sounds, [narrativeJson.sounds[0]]);
+  narrativeJson.scenes[0].visual = 'Changed raw scene';
+  movieResourceList.sounds[0].audio = 'Changed sound';
+  themeJson.style[0] = 'anime';
+  assert.equal(fields.sourceSceneRef.scene.visual, 'The original shore approach.');
+  assert.equal(fields.sourceSceneRef.sounds[0].audio, 'Boots cross dry sand.');
+  assert.deepEqual(fields.sourceSceneRef.themeJson, { style: ['grounded'] });
+});
+
+test('created branch scene references retain canonical context even when a flat raw artifact shares its length', () => {
+  const fields = buildMovieLayerSourceSceneFields({
+    sourceSessionId: 'branch-session',
+    sceneIndex: 1,
+    movieResourceList: {
+      scenes: [
+        { visual: 'Shared opening.', duration: 5, branchAssetKey: 'root', branchSourceSceneIndex: 0 },
+        { visual: 'Canonical alternate ending.', duration: 5, branchAssetKey: 'alternate', branchSourceSceneIndex: 0 },
+      ],
+      sounds: [{ sceneIndex: 1, audio: 'Alternate path sound.' }],
+    },
+    narrativeJson: { scenes: [{ visual: 'Unrelated raw zero.' }, { visual: 'Unrelated raw one.' }] },
+  });
+
+  assert.equal(fields.sourceSceneIndex, 1);
+  assert.equal(fields.sourceSceneRef.sceneIndex, 1);
+  assert.equal(fields.sourceSceneRef.scene.visual, 'Canonical alternate ending.');
+  assert.equal(fields.sourceSceneRef.scene.branchSourceSceneIndex, 0);
+  assert.equal(fields.sourceSceneRef.branchAssetKey, 'alternate');
+});
+
+test('created thirteen-scene session retains first SFX identity through persistence and an appended outro', () => {
+  const movieResourceList = {
+    scenes: Array.from({ length: 13 }, (_, index) => ({
+      visual: `Original visual for scene ${index}.`, duration: 10, type: index === 0 ? 'sound_effect' : 'base',
+    })),
+    sounds: [{ type: 'sound_effect', sceneIndex: 0, audio: 'Boots cross dry sand.' }],
+  };
+  const prompts = buildPreparedNarrativeVisualPromptList(movieResourceList);
+  const layers = prompts.map((item) => {
+    const fields = buildMovieLayerSourceSceneFields({
+      sourceSessionId: 'production-shaped-origin', sceneIndex: item.sourceSceneIndex, movieResourceList,
+    });
+    return {
+      ...fields, prompt: item.prompt, duration: item.duration,
+      layerBaseAiImageType: item.sceneType === 'sound_effect' ? 'sound_effect' : 'scene',
+      imageSession: { ...fields, prompt: item.prompt, generationStatus: 'COMPLETED' },
+    };
+  });
+  layers.push({ sourceSceneIndex: null, sourceSceneRef: null, layerBaseAiImageType: 'none', skipAiVideoGeneration: true });
+  const session = new VideoSession({ movieResourceList, layers, audioLayers: [] }).toObject();
+
+  const firstScene = reroll.resolveLayerSourceSceneIndexDetails(session, session.layers[0], 0);
+  assert.equal(firstScene.sourceSceneIndex, 0);
+  assert.equal(session.layers.length, 14);
+  assert.equal(session.layers[0].imageSession.generationStatus, 'COMPLETED');
+  assert.equal(session.layers[0].imageSession.sourceSceneRef.scene.visual, 'Original visual for scene 0.');
+  assert.equal(reroll.buildQuote(session, [1]).layers[0].baseLayerType, 'sound_effect');
+  assert.equal(session.layers[13].skipAiVideoGeneration, true);
 });

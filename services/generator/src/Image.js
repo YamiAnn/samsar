@@ -5,6 +5,7 @@ import { imageBillingMode } from './billing/ImagePricing.js';
 import { imageCallId } from './billing/ImageSettlement.js';
 import { checkpointForAttempt } from './billing/ImageResultCheckpoint.js';
 import { sealFalImageSubmission } from './billing/FalImageSubmission.js';
+import { sealImageAdapterSubmission } from './billing/ImageAdapterSubmission.js';
 import { normalizeStoredGPTImageModelKey } from './consts/GPTImageModelKeys.js';
 import { getImageFromText, getEditImageFromText } from './Dispatcher.js';
 import { getDBConnectionString } from './DBString.js';
@@ -802,10 +803,44 @@ function getOptionalInteger(value) {
   return null;
 }
 
+function getImageSourceSceneReference(layer = null, options = {}) {
+  const candidates = [
+    { value: options.sourceSceneRef, source: 'payload.sourceSceneRef' },
+    { value: layer?.sourceSceneRef, source: 'layer.sourceSceneRef' },
+    { value: layer?.imageSession?.sourceSceneRef, source: 'layer.imageSession.sourceSceneRef' },
+  ];
+  for (const candidate of candidates) {
+    const reference = parseMaybeJson(candidate.value);
+    if (reference?.version === 1 && getOptionalInteger(reference.sceneIndex) !== null &&
+        reference.scene && typeof reference.scene === 'object' && !Array.isArray(reference.scene)) {
+      return { reference, source: candidate.source };
+    }
+  }
+  return null;
+}
+
 function getSceneVisualDetailsForLayer(sessionData = {}, layerDataIndex = -1, layer = null, options = {}) {
   const movieResourceList = parseMaybeJson(sessionData.movieResourceList) || sessionData.movieResourceList;
   const scenes = Array.isArray(movieResourceList?.scenes) ? movieResourceList.scenes : [];
   const layers = Array.isArray(sessionData.layers) ? sessionData.layers : [];
+  const sourceScene = getImageSourceSceneReference(layer, options);
+  if (sourceScene) {
+    return {
+      value: getFirstNonEmptyString(
+        sourceScene.reference.scene.visual,
+        sourceScene.reference.scene.imagePrompt,
+        sourceScene.reference.scene.image_prompt,
+        sourceScene.reference.scene.visualPrompt,
+        sourceScene.reference.scene.visual_prompt,
+      ),
+      sourceSceneIndex: getOptionalInteger(sourceScene.reference.sceneIndex),
+      sourceSceneIndexSource: sourceScene.source,
+      visualSource: `${sourceScene.source}.scene.visual`,
+      fallbackUsed: false,
+      sceneCount: scenes.length,
+      layerCount: layers.length,
+    };
+  }
   if (!scenes.length) {
     return {
       value: '',
@@ -909,7 +944,7 @@ function buildImageThemeScoringContextDetails(sessionData = {}, layerDataIndex =
       diagnostics: {
         contextType: 'scene_visual',
         contextLabel: 'Scene visual',
-        selectedPromptSource: 'movieResourceList.scenes.visual',
+        selectedPromptSource: sceneDetails.visualSource || 'movieResourceList.scenes.visual',
         layerDataIndex,
         sourceSceneIndex: sceneDetails.sourceSceneIndex,
         sourceSceneIndexSource: sceneDetails.sourceSceneIndexSource,
@@ -959,6 +994,7 @@ function buildImageThemeScoringContextDetailsForPayload(sessionData = {}, layerD
     layerDataIndex,
     payload?.prompt || '',
     {
+      sourceSceneRef: payload?.sourceSceneRef,
       sourceSceneIndex,
       sourceSceneIndexSource: payload?.sourceSceneIndexSource ||
         (payload?.sourceSceneIndex !== undefined
@@ -975,9 +1011,15 @@ function buildImageThemeScoringContextForPayload(sessionData = {}, layerDataInde
   return buildImageThemeScoringContextDetailsForPayload(sessionData, layerDataIndex, payload).context;
 }
 
-function buildImageThemeStyleContext(sessionData = {}) {
-  const parentJsonTheme = parseMaybeJson(sessionData.parentJsonTheme);
-  const themeStyle = parentJsonTheme?.style;
+function buildImageThemeStyleContext(sessionData = {}, layerDataIndex = -1, payload = {}) {
+  const layer = Array.isArray(sessionData.layers) && layerDataIndex >= 0
+    ? sessionData.layers[layerDataIndex]
+    : null;
+  const sourceScene = getImageSourceSceneReference(layer, { sourceSceneRef: payload?.sourceSceneRef });
+  const theme = sourceScene
+    ? parseMaybeJson(sourceScene.reference.themeJson)
+    : parseMaybeJson(sessionData.parentJsonTheme);
+  const themeStyle = theme?.style;
 
   if (!themeStyle) {
     return '';
@@ -2917,9 +2959,10 @@ async function processPendingGenerationRequet(pendingRequestData) {
   if (normalizeString(pendingRequestData.apiGenerationStatus || 'INIT').toUpperCase() === 'INIT') {
     try {
       await sealFalImageSubmission(pendingRequestData);
+      await sealImageAdapterSubmission(pendingRequestData);
     } catch (error) {
       await markImageGenerationRequestFailed(pendingRequestData, { error: error.message }, {
-        message: error.message, source: 'fal_image_tariff_unverified', pruneLayer: false,
+        message: error.message, source: 'image_adapter_tariff_unverified', pruneLayer: false,
       });
       return;
     }
@@ -3219,7 +3262,7 @@ async function updateImageInSessionLayer(imageData, payload) {
     const requestedAspectRatio = payload.aspectRatio || sessionDataValue.aspectRatio || '';
     const imageThemeContextDetails = buildImageThemeScoringContextDetailsForPayload(sessionDataValue, layerDataIndex, payload);
     const imageThemeContext = imageThemeContextDetails.context;
-    const imageThemeStyle = buildImageThemeStyleContext(sessionDataValue);
+    const imageThemeStyle = buildImageThemeStyleContext(sessionDataValue, layerDataIndex, payload);
 
     // 1) get description from Vision - do NOT save to layer yet
     imageDescription = await addVisionDescriptionsForLayerImage(
@@ -4237,6 +4280,7 @@ async function processUpscaleRequest(pendingRequestData) {
     if (normalizeString(apiEditStatus).toUpperCase() === 'INIT') {
       try {
         await sealFalImageSubmission(editPayload);
+        await sealImageAdapterSubmission(editPayload);
       } catch (error) {
         tariffError = error;
       }
@@ -4608,6 +4652,7 @@ async function processEditRequest(pendingRequestData) {
     if (normalizeString(pendingRequestData.apiEditStatus || 'INIT').toUpperCase() === 'INIT') {
       try {
         await sealFalImageSubmission(editRequestPayload);
+        await sealImageAdapterSubmission(editRequestPayload);
       } catch (error) {
         tariffError = error;
       }
@@ -5102,6 +5147,7 @@ async function markGlobalSessionFailed(sessionId, message) {
 }
 
 export const __testOnly__ = {
+  buildImageThemeStyleContext,
   buildImageThemeScoringContext,
   buildImageThemeScoringContextDetails,
   buildImageThemeScoringContextForPayload,

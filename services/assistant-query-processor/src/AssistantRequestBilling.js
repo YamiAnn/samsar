@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { calculateAssistantRequestBilling } from './AssistantBilling.js';
+import { assertAssistantTariffAvailable, calculateAssistantRequestBilling } from './AssistantBilling.js';
 
 function error(message, code, status = 409) {
   return Object.assign(new Error(message), { code, status, statusCode: status });
@@ -86,6 +86,7 @@ export async function runAssistantRequest({ id, fingerprint, userId, scope, stor
       // A crash while dispatching cannot safely be repaired by silently making
       // another billable provider request. Keep it available for reconciliation.
       if (receipt.dispatchStarted) throw error('The provider outcome needs reconciliation; inference was not repeated.', 'ASSISTANT_PROVIDER_OUTCOME_UNKNOWN', 503);
+      if (!waived && model) assertAssistantTariffAvailable(model);
       await admit();
       await store.save(id, { dispatchStarted: true });
       dispatched = true;

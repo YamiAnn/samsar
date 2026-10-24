@@ -14,6 +14,7 @@ import { requestRenderViduI2VVideo } from './ViduI2VGenerator.js';
 import { requestRenderExpressCustomVideo } from './GenericVideoGenerator.js';
 import { requestRenderSeeDanceVideo } from './SeeDanceGenerator.js';
 import { shouldRequestAudioVideoLayer } from './SoundEffectStage.js';
+import { getSourceSceneMetadata } from './utils/SourceSceneMetadata.js';
 import { requestRenderExpressHailuoVideo } from './HailuoListener.js';
 import { requestRenderVeo3I2VVideo } from './Veo3I2VGenerator.js';
 import { requestRenderSora2I2VVideo } from './Sora2Generator.js';
@@ -528,6 +529,7 @@ export async function createGenerativeVideoAnimationsForFrames(sessionId) {
       videoSessionId: sessionId,
       layerId: currentLayerId,
       prompt: textToVideoPrompt,
+      ...getSourceSceneMetadata(currentLayer),
       model: videoGenerationModel,
       combineLayers: false, // Adjust based on your requirements
       useStartFrame: true,

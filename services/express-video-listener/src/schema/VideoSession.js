@@ -228,6 +228,13 @@ const audioLayerSchema = new Schema({
 
 // Create the main schema corresponding to the document interface
 const videoSessionSchema = new Schema({
+  // Reroll completion billing must remain tracked when a hydrated session
+  // receives new policy, attribution, and debit metadata before save().
+  videoBillingPolicy: String,
+  videoBillingAPIKeyUsage: Schema.Types.Mixed,
+  videoBillingDebits: Schema.Types.Mixed,
+  videoCreditsCharged: Number,
+  videoRemainingCredits: Number,
   userId: String,
   narrativeType: {
     type: String,

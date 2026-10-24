@@ -506,6 +506,15 @@ const videoSessionSchema = new Schema({
 
   sessionReceipt: { type: Object, default: {} },
 
+  // Rerolls opt into adapter settlement after cloning a hydrated session.
+  // Explicit paths make direct assignments participate in Mongoose saves;
+  // no defaults means ordinary and historical sessions keep their policy.
+  videoBillingPolicy: String,
+  videoBillingAPIKeyUsage: Schema.Types.Mixed,
+  videoBillingDebits: Schema.Types.Mixed,
+  videoCreditsCharged: Number,
+  videoRemainingCredits: Number,
+
   inputPrompt: { type: String, default: '' },
   sessionLanguage: { type: String, default: 'EN' },
   language: { type: String, default: null },

@@ -33,7 +33,7 @@ test('repeated assistant requests reuse one provider response and one fractional
   const first = await runAssistantRequest(h.options);
   const replay = await runAssistantRequest(h.options);
   assert.deepEqual(replay, first);
-  assert.equal(first.creditsCharged, 1.2);
+  assert.equal(first.creditsCharged, 1.8);
   assert.equal(h.providerCalls, 1);
   assert.equal(h.account.debits, 1);
   assert.equal(h.account.transactions.size, 1);
@@ -89,19 +89,21 @@ test('session delivery failure after charging does not lose or duplicate billing
 
 test('missing usage never silently becomes free or word-priced inference', async () => {
   const h = harness();
-  h.options.generate = async () => ({ id: 'missing-usage', model: 'unknown', output_text: 'hello' });
+  h.options.generate = async () => ({ id: 'missing-usage', model: 'gpt-6-astra', output_text: 'hello' });
   await assert.rejects(runAssistantRequest(h.options), { code: 'ASSISTANT_BILLING_USAGE_REQUIRED' });
   assert.equal(h.account.debits, 0);
   const pending = h.store.records.get(h.options.id);
-  pending.providerResponse.samsarBilling = { adapter: 'openrouter', costUsd: 0.02 };
+  pending.providerResponse.usage = { input_tokens: 1000, output_tokens: 100 };
+  pending.providerResponse.samsarBilling = { adapter: 'openrouter', costUsd: 999 };
   const recovered = await runAssistantRequest(h.options);
-  assert.equal(recovered.creditsCharged, 2.4);
+  assert.equal(recovered.creditsCharged, 1.8);
   assert.equal(h.account.debits, 1);
 });
 
-test('reported free responses are completed without a fallback minimum charge', async () => {
+test('explicit zero token responses are completed without a fallback minimum charge', async () => {
   const h = harness();
-  h.options.generate = async () => ({ model: 'unknown', samsarBilling: { adapter: 'openrouter', costUsd: 0 } });
+  h.options.generate = async () => ({ model: 'gpt-6-astra', usage: { input_tokens: 0, output_tokens: 0 },
+    samsarBilling: { adapter: 'openrouter', costUsd: 999 } });
   const result = await runAssistantRequest(h.options);
   assert.equal(result.creditsCharged, 0);
   assert.equal(h.account.debits, 0);
@@ -126,7 +128,7 @@ test('different assistant requests settle atomically against the same balance', 
   assert.equal(h.providerCalls, 2);
   assert.equal(h.account.debits, 2);
   assert.equal(h.account.transactions.size, 2);
-  assert.ok(Math.abs(h.account.account.generationCredits - 97.6) < 1e-10);
+  assert.ok(Math.abs(h.account.account.generationCredits - 96.4) < 1e-10);
 });
 
 test('request identity is owner-scoped and refuses changed payloads under the same key', async () => {
@@ -159,20 +161,17 @@ test('Responses and Chat usage conversions preserve cache counts, reasoning and 
   assert.equal(normalized.cost, 0.02);
 });
 
-test('malformed adapter charges are rejected rather than replaced by guessed prices', () => {
-  for (const costUsd of [-1, 'invalid', true, Infinity, [], {}, ' ', '', 1e308]) {
-    assert.throws(() => calculateAssistantRequestBilling({ model: 'gpt-6-astra',
-      usage: { input_tokens: 1000 }, samsarBilling: { adapter: 'openrouter', costUsd } }),
-    { code: 'ASSISTANT_BILLING_INVALID_COST' });
+test('malformed adapter monetary fields cannot override checked-in token prices', () => {
+  for (const costUsd of [null, undefined, '', -1, NaN, Infinity, {}, false]) {
+    assert.equal(calculateAssistantRequestBilling({ model: 'gpt-6-astra',
+      usage: { input_tokens: 1000 }, samsarBilling: { adapter: 'openrouter', costUsd } }).credits, 1.2);
   }
 });
 
-
-test('adapter charges never silently fall back to native tariffs when the adapter receipt is missing', () => {
+test('all adapters use checked-in tariffs without requiring a monetary receipt', () => {
   for (const adapter of ['openrouter', 'samsar', 'gmicloud']) {
-    assert.throws(() => calculateAssistantRequestBilling({ model: 'gpt-6-astra',
-      usage: { input_tokens: 1000 }, samsarBilling: { adapter } }),
-    { code: 'ASSISTANT_BILLING_COST_REQUIRED' });
+    assert.equal(calculateAssistantRequestBilling({ model: 'gpt-6-astra',
+      usage: { input_tokens: 1000 }, samsarBilling: { adapter } }).credits, 1.2);
   }
 });
 
@@ -192,7 +191,7 @@ test('native image and other paid tool calls cannot complete with only the text 
     const response = { model: 'gpt-6-astra', usage: { input_tokens: 1000, output_tokens: 100 }, output: [{ type }] };
     assert.throws(() => calculateAssistantRequestBilling(response), { code: 'ASSISTANT_BILLING_TOOL_COST_REQUIRED' });
     response.samsarBilling = { adapter: 'openrouter', costUsd: 0.05 };
-    assert.equal(calculateAssistantRequestBilling(response).credits, 6);
+    assert.throws(() => calculateAssistantRequestBilling(response), { code: 'ASSISTANT_BILLING_TOOL_COST_REQUIRED' });
   }
 });
 
@@ -243,5 +242,28 @@ test('a pre-dispatch admission rejection can resume under the same key after cre
   admitted = true;
   await runAssistantRequest(h.options);
   assert.equal(h.providerCalls, 1);
+  assert.equal(h.account.debits, 1);
+});
+
+
+test('F2P: unsupported static models are rejected before any provider dispatch or admission', async () => {
+  const h = harness();
+  let admissions = 0;
+  h.options.model = 'unlisted-provider/model';
+  h.options.admit = async () => { admissions++; };
+  await assert.rejects(runAssistantRequest(h.options), { code: 'ASSISTANT_BILLING_TARIFF_UNAVAILABLE' });
+  assert.equal(h.providerCalls, 0);
+  assert.equal(admissions, 0);
+  assert.equal(h.account.debits, 0);
+});
+
+test('P2P: historical sealed billing is reused without applying the new tariff or markup again', async () => {
+  const h = harness();
+  await h.store.ensure(h.options.id, { fingerprint: h.options.fingerprint, status: 'BILLING_PENDING',
+    providerResponse: { model: 'retired-provider/model', usage: { cost: 999 } },
+    billing: { credits: 7.5, costUsd: 0.05, pricingMultiplier: 1.5, costSource: 'historical_sealed' } });
+  const result = await runAssistantRequest(h.options);
+  assert.equal(result.creditsCharged, 7.5);
+  assert.equal(h.providerCalls, 0);
   assert.equal(h.account.debits, 1);
 });

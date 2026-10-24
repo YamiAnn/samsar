@@ -29,6 +29,7 @@ from .catalog import (
 from .config import Settings
 from .errors import GatewayError
 from .gmi_video_pricing import SEEDANCE_2_MODEL_ID, seedance_2_cost_usd
+from .gmi_image_usage import completed_image_usage
 from .media_staging import GMICloudMediaStager
 
 
@@ -1676,7 +1677,22 @@ class GatewayRuntime:
             if not terminal:
                 return False, step, None
             try:
+                image_detail = None
+                if route.modality == "image":
+                    # Pinned GenBlaze caches the terminal status response.
+                    # Read and restore that cache for its normal fetch_output;
+                    # never perform a second request to obtain pricing/usage.
+                    cached = getattr(provider, "_get_cached_poll_result", None)
+                    restore = getattr(provider, "_cache_poll_result", None)
+                    if callable(cached) and callable(restore):
+                        image_detail = cached(upstream_id)
+                        if image_detail is not None:
+                            restore(upstream_id, image_detail)
                 fetched_step = provider.fetch_output(upstream_id, step)
+                if route.modality == "image":
+                    usage = completed_image_usage(fetched_step, image_detail)
+                    if usage is not None:
+                        fetched_step.metadata["image_billing_usage"] = usage
                 if (
                     route.modality == "video"
                     and getattr(route, "gmi_model", None) == "seedance-2-0-260128"
@@ -1715,6 +1731,10 @@ class GatewayRuntime:
         billing = {}
         if route.modality in {"image", "video", "audio"} and cost_usd is not None:
             billing = {"billing": {"cost_usd": cost_usd}}
+        if route.modality == "image":
+            usage = getattr(fetched_step, "metadata", {}).get("image_billing_usage")
+            if usage is not None:
+                billing.setdefault("billing", {})["usage"] = usage
         return {
             **billing,
             "status": "succeeded",

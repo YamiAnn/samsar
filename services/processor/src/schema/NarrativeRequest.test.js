@@ -33,7 +33,7 @@ test('narrative requests keep standalone mixed artifacts and durable polling fie
   assert.equal(paths.billingSnapshot.instance, 'Mixed');
   assert.deepEqual(paths.status.enumValues, ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']);
   assert.deepEqual(paths.generationOutcome.enumValues, ['PENDING', 'SUCCEEDED', 'FAILED']);
-  assert.equal(paths.pricingMultiplier.defaultValue, 1.5);
+  assert.equal(paths.pricingMultiplier.defaultValue, 1.2);
   assert.equal(paths.meteringSlotActive.instance, 'Boolean');
   assert.equal(paths.workerLeaseId.instance, 'String');
   assert.equal(paths.expireAt, undefined, 'narrative results must not be TTL-expired');

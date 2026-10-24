@@ -390,8 +390,8 @@ test('generates, meters, and durably settles default-path publication metadata',
   assert.equal(inferenceInput.options.inferenceModel, 'gpt-6-astra');
   assert.equal(harness.charges.length, 1);
   assert.equal(harness.charges[0].userId, USER_ID);
-  assert.equal(harness.charges[0].credits, 2.25);
-  assert.equal(harness.charges[0].options.metadata.pricingMultiplier, 1.5);
+  assert.equal(harness.charges[0].credits, 1.8);
+  assert.equal(harness.charges[0].options.metadata.pricingMultiplier, 1.2);
   assert.equal(harness.charges[0].options.metadata.pricingModel, 'gpt-6-astra');
   assert.equal(harness.charges[0].options.settleIncurredUsage, true);
   assert.equal(
@@ -412,7 +412,7 @@ test('generates, meters, and durably settles default-path publication metadata',
     title: 'Signal at Dawn',
     description: 'Choose a route through the forest.',
     defaultPathId: 'root.1',
-    creditsCharged: 2.25,
+    creditsCharged: 1.8,
     remainingCredits: 19.76,
     reused: false,
   });
@@ -475,7 +475,7 @@ test('replays a completed metadata request without inference or a second debit',
   assert.equal(harness.charges.length, 1);
   assert.equal(harness.requestStore.writes.length, writesBeforeReplay);
   assert.equal(replay.reused, true);
-  assert.equal(replay.creditsCharged, 2.25);
+  assert.equal(replay.creditsCharged, 1.8);
 });
 
 test('charges persisted usage and then fails when structured metadata is malformed', async () => {
@@ -495,14 +495,14 @@ test('charges persisted usage and then fails when structured metadata is malform
     (error) => {
       assert.equal(error?.code, 'PUBLICATION_METADATA_GENERATION_FAILED');
       assert.equal(error?.status, 502);
-      assert.equal(error?.creditsCharged, 2.25);
+      assert.equal(error?.creditsCharged, 1.8);
       assert.equal(error?.remainingCredits, 19.76);
       return true;
     },
   );
 
   assert.equal(harness.charges.length, 1);
-  assert.equal(harness.charges[0].credits, 2.25);
+  assert.equal(harness.charges[0].credits, 1.8);
   assert.equal(harness.requestStore.getDocument().status, 'FAILED');
   assert.equal(harness.requestStore.getDocument().billingStatus, 'CHARGED');
   assert.equal(harness.requestStore.getDocument().generationSucceeded, false);

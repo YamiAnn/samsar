@@ -1,16 +1,15 @@
+import { GENERATION_PRICING_MULTIPLIER, GENERATION_CREDITS_PER_USD } from '../../consts/pricing/GenerationPricingPolicy.js';
 import OpenAI, { toFile } from 'openai';
 import path from 'path';
 
 import { deductGenerationCredits } from '../GenerationCredits.js';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
-const TRANSCRIPT_ALIGN_PRICING_MULTIPLIER = 1.5;
-const SAMSAR_CREDITS_PER_USD = 100;
-const configuredWhisperUsdPerMinute = Number(process.env.OPENAI_WHISPER_USD_PER_MINUTE);
-const WHISPER_USD_PER_MINUTE = Number.isFinite(configuredWhisperUsdPerMinute) &&
-  configuredWhisperUsdPerMinute > 0
-  ? configuredWhisperUsdPerMinute
-  : 0.006;
+const TRANSCRIPT_ALIGN_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
+const SAMSAR_CREDITS_PER_USD = GENERATION_CREDITS_PER_USD;
+// Checked-in Whisper provider base rate. Runtime environment and request
+// values cannot override the framework's tariff.
+const WHISPER_USD_PER_MINUTE = 0.006;
 const configuredMaxTranscriptAudioBytes = Number(process.env.TRANSCRIPT_ALIGN_MAX_AUDIO_BYTES);
 const MAX_TRANSCRIPT_AUDIO_BYTES = Number.isFinite(configuredMaxTranscriptAudioBytes) &&
   configuredMaxTranscriptAudioBytes > 0

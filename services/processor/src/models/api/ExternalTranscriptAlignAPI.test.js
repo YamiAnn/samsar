@@ -6,13 +6,13 @@ import {
   createExternalTranscriptAlignment,
 } from './ExternalTranscriptAlignAPI.js';
 
-test('transcript alignment charges 1.5x the underlying Whisper request cost', () => {
+test('transcript alignment charges 1.2x the underlying Whisper request cost', () => {
   const charge = calculateTranscriptAlignmentCharge({ durationSeconds: 60 });
   assert.equal(charge.durationSeconds, 60);
   assert.equal(charge.underlyingCostUsd, 0.006);
-  assert.equal(charge.pricingMultiplier, 1.5);
-  assert.ok(Math.abs(charge.costUsd - 0.009) < Number.EPSILON);
-  assert.ok(Math.abs(charge.credits - 0.9) < Number.EPSILON);
+  assert.equal(charge.pricingMultiplier, 1.2);
+  assert.ok(Math.abs(charge.costUsd - 0.0072) < Number.EPSILON);
+  assert.ok(Math.abs(charge.credits - 0.72) < Number.EPSILON);
   assert.equal(charge.usdPerMinute, 0.006);
 });
 
@@ -63,8 +63,8 @@ test('transcript alignment proxies OpenAI word timestamp payloads and meters dur
   assert.equal(capturedRequest.prompt, 'Hello world');
   assert.equal(capturedRequest.file.name, 'speech.mp3');
   assert.equal(capturedCharge.userId, 'user-1');
-  assert.ok(Math.abs(capturedCharge.credits - 0.45) < Number.EPSILON);
-  assert.equal(capturedCharge.context.metadata.pricingMultiplier, 1.5);
+  assert.ok(Math.abs(capturedCharge.credits - 0.36) < Number.EPSILON);
+  assert.equal(capturedCharge.context.metadata.pricingMultiplier, 1.2);
   assert.equal(result.response.words[0].word, 'Hello');
   assert.equal(result.remainingCredits, 99.55);
 });

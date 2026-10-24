@@ -9,6 +9,7 @@ import { GPT_56_SOL_REASONING_EFFORT } from '../../consts/InferenceModels.js';
 
 import User from '../../schema/User.js';
 import VideoSession from '../../schema/VideoSession.js';
+import { captureSessionSceneReferences } from '../video/SceneIdentity.js';
 
 const JOIN_VIDEOS_CREDITS_PER_SECOND = 3;
 const DEFAULT_FRAMES_PER_SECOND = 24;
@@ -871,6 +872,9 @@ function buildJoinedLayersAndAudioLayers(sessionDataList = [], options = {}) {
   let previousSessionOutroImageItem = null;
 
   for (const [sessionIndex, sessionData] of sessionDataList.entries()) {
+    // Capture source-local narrative context before IDs and audio positions
+    // become global positions in the joined timeline.
+    captureSessionSceneReferences(sessionData);
     const sessionDuration = resolveSessionDurationSeconds(sessionData);
     const sessionOffsetFrames = cumulativeDurationFrames;
     const sessionOffset = frameCountToSeconds(sessionOffsetFrames, timelineFramesPerSecond);
@@ -1204,6 +1208,7 @@ export async function joinVideoSessionsAndQueueGeneration(userId, payload = {}) 
 
   clonedSession.layers = joinedResult.layers;
   clonedSession.audioLayers = joinedResult.audioLayers;
+  clonedSession.joinedSourceSessionIds = sessionIds;
   clonedSession.joinedNarratorAvatarOverlays = joinedResult.joinedNarratorAvatarOverlays || [];
   const joinedTitleResult = await generateJoinedVideoTitle(sessionDataList);
   if (joinedTitleResult.title) {

@@ -2,22 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { calculateAssistantCreditsFromUsage, normalizeAssistantResponseUsage } from './AssistantBilling.js';
 
-for (const model of ['gpt-6-astra', 'gpt-6.1-sol', 'google/gemini-4-argon', 'qwen/qwen3.8-max', 'moonshotai/kimi-k3', 'anthropic/claude-opus-5.5', 'custom/unknown-model']) {
-  test(`${model}: assistant charge is exactly 120% of the reported adapter cost`, () => {
-    const result = calculateAssistantCreditsFromUsage({
-      model, usage: { prompt_tokens: 10000, completion_tokens: 1000, cost: 0.125 },
-      adapter: 'openrouter',
-    });
-    assert.equal(result.costUsd, 0.125);
+for (const [model, expectedCost] of [
+  ['gpt-6-astra', 0.15], ['gpt-6.1-sol', 0.03], ['google/gemini-4-argon', 0.03],
+  ['qwen/qwen3.8-max', 0.026], ['moonshotai/kimi-k3', 0.045], ['anthropic/claude-opus-5.5', 0.06],
+]) {
+  test(`${model}: assistant charge is exactly 120% of the checked-in token tariff`, () => {
+    const result = calculateAssistantCreditsFromUsage({ model,
+      usage: { prompt_tokens: 10000, completion_tokens: 1000, cost: 999 }, adapter: 'openrouter' });
+    assert.equal(result.costUsd, expectedCost);
     assert.equal(result.pricingMultiplier, 1.2);
-    assert.equal(result.credits, 15);
+    assert.equal(result.credits, Math.round(expectedCost * 120 * 10000) / 10000);
+    assert.equal(result.costSource, 'token_tariff');
   });
 }
 
-test('a reported zero-cost cache hit remains free instead of falling back to word billing', () => {
-  const result = calculateAssistantCreditsFromUsage({
-    model: 'unlisted-model', usage: { cost: 0 }, adapter: 'openrouter',
-  });
+test('explicit zero token usage remains free instead of falling back to word billing', () => {
+  const result = calculateAssistantCreditsFromUsage({ model: 'gpt-6-astra',
+    usage: { input_tokens: 0, output_tokens: 0, cost: 999 }, adapter: 'openrouter' });
   assert.equal(result.credits, 0);
   assert.equal(result.billable, true);
 });

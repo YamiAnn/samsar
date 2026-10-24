@@ -1,4 +1,5 @@
 import { frameCountToSeconds, secondsToFrameCount } from '../utils/FrameClock.js';
+import { captureSessionSceneReferences, resolveLayerSourceSceneReference } from './video/SceneIdentity.js';
 import { getDBConnectionString } from "./DBString.js";
 import VideoSession from "../schema/VideoSession.js";
 import VideoSessionEditLog from "../schema/VideoSessionEditLog.js";
@@ -8287,6 +8288,7 @@ export async function addNewLayerToSession(userId, payload) {
     throw new Error("Session not found");
   }
 
+  captureSessionSceneReferences(videoSession);
   const layers = videoSession.layers || [];
 
   // 2) Create a new "Session" sub-document for the layer
@@ -8404,9 +8406,23 @@ export async function copyLayerInSession(userId, payload) {
     throw new Error("Session not found");
   }
 
+  captureSessionSceneReferences(videoSession);
+  const sourceLayer = videoSession.layers.find((layer) => layer._id?.toString?.() === newLayer?._id?.toString?.());
+  const sourceIdentity = sourceLayer?.sourceSceneRef
+    ? sourceLayer
+    : resolveLayerSourceSceneReference(videoSession, newLayer, index, { allowPosition: false });
   // Create a deep copy of the new layer and assign a new ID
   const copiedLayer = {
     ...newLayer,
+    ...(sourceIdentity?.sourceSceneRef ? {
+      sourceSceneIndex: sourceIdentity.sourceSceneIndex,
+      sourceSceneRef: JSON.parse(JSON.stringify(sourceIdentity.sourceSceneRef)),
+      imageSession: {
+        ...newLayer.imageSession,
+        sourceSceneIndex: sourceIdentity.sourceSceneIndex,
+        sourceSceneRef: JSON.parse(JSON.stringify(sourceIdentity.sourceSceneRef)),
+      },
+    } : {}),
     _id: new mongoose.Types.ObjectId(),
     durationOffset: videoSession.layers.slice(0, index).reduce((acc, layer) => acc + layer.duration, 0),
     frameGenerationPending: true,
@@ -8444,6 +8460,7 @@ export async function removeLayerInSession(userId, payload) {
     throw new Error("Session not found");
   }
 
+  captureSessionSceneReferences(videoSession);
   // 2) Find the layer index
   const layerIndex = videoSession.layers.findIndex(
     (layer) => layer._id.toString() === layerId
@@ -13364,6 +13381,7 @@ export async function updateLayersOrder(payload) {
     throw new Error("Session not found");
   }
 
+  captureSessionSceneReferences(videoSession);
   // Mark transcript generation as pending (we’ll set this back to false once done).
   await VideoSession.updateOne(
     { _id: sessionId },

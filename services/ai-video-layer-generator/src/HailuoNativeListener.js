@@ -2,6 +2,7 @@ import { fal } from "@fal-ai/client";
 const HAILUO_API_KEY = process.env.HAILUO_ACCESS_KEY;
 
 import axios from 'axios';
+import { sealStaticVideoSubmission } from './billing/StaticVideoSubmission.js';
 
 const HAILUO_GROUP_ID = "1867628901300179228";
 
@@ -33,7 +34,7 @@ export async function generateHailuoNativeVideoLayer(payload) {
   }
 
 
-  payload.videoBillingNativeReceipt = { adapter: 'hailuo', model: inputPayload.model, seconds: duration, resolution: '768P' };
+  await sealStaticVideoSubmission(payload, { adapter: 'hailuo', model: inputPayload.model, seconds: duration, resolution: '768P' });
   const resData = await axios.post(`${HAILUO_VIDEO_LINK}`, inputPayload, headers);
 
 

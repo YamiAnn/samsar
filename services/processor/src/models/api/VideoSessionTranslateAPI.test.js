@@ -6,6 +6,28 @@ import path from 'path';
 
 import { __testOnly__ } from './VideoSessionTranslateAPI.js';
 
+test('F2P translation captures source scene context before regenerating layer and audio IDs', () => {
+  const sessionData = {
+    _id: 'original-session',
+    movieResourceList: { scenes: [{ visual: 'A harbor', duration: 3 }], sounds: [{ sceneIndex: 0, audio: 'Welcome' }] },
+    parentJsonTheme: JSON.stringify({ setting: 'coast' }),
+    layers: [{ _id: 'original-layer', originalImageGenerationPrompt: 'A harbor', duration: 3,
+      durationOffset: 0, imageSession: { activeItemList: [] } }],
+    audioLayers: [{ _id: 'original-audio', connectedLayerId: 'original-layer', connectedLayerIndex: 0,
+      generationType: 'speech', startTime: 0, duration: 3, endTime: 3 }],
+  };
+  __testOnly__.regenerateLayerAndAudioLayerIds(sessionData);
+  assert.notEqual(String(sessionData.layers[0]._id), 'original-layer');
+  assert.equal(sessionData.layers[0].sourceSceneIndex, 0);
+  assert.equal(sessionData.layers[0].sourceSceneRef.sourceSessionId, 'original-session');
+  assert.equal(sessionData.layers[0].sourceSceneRef.scene.visual, 'A harbor');
+  assert.equal(sessionData.layers[0].sourceSceneRef.themeJson.setting, 'coast');
+  assert.equal(sessionData.audioLayers[0].connectedLayerId, String(sessionData.layers[0]._id));
+  assert.equal(sessionData.audioLayers[0].sourceSceneRef.scene.visual, 'A harbor');
+  assert.equal(sessionData.layers[0].duration, 3);
+  assert.equal(sessionData.audioLayers[0].duration, 3);
+});
+
 test('translate video deep-clones referenced assets_v2 render resources', async () => {
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'samsar-translate-assets-'));
   const oldSessionId = 'source-session';

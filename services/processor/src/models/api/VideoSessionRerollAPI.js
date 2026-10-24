@@ -12,6 +12,7 @@ import { copyVideoSession } from './VideoSessionCloneAPI.js';
 import { buildMovieResourceListVisualPrompts } from '../movie_session/TranscriptMovieGenerator.js';
 import { prepareImageRequestBilling } from './ImageRequestBilling.js';
 import { getExpressVideoStageCreditsPerSecond } from '../../consts/pricing/ExpressVideoPricingDistribution.js';
+import { assignSourceSceneFields, resolveLayerSourceSceneReference } from '../video/SceneIdentity.js';
 
 const DEFAULT_IMAGE_MODEL = 'GPTIMAGE2.5';
 const DEFAULT_VIDEO_MODEL = 'RUNWAYML';
@@ -136,8 +137,7 @@ function normalizeOptionalInteger(value) {
 }
 
 function getMovieResourceScenes(sessionData = {}) {
-  const movieResourceList = getMovieResourceList(sessionData);
-  return Array.isArray(movieResourceList?.scenes) ? movieResourceList.scenes : [];
+  return getRerollVisualMovieResourceList(sessionData).scenes;
 }
 
 function getLayerIdString(layer = {}) {
@@ -154,77 +154,7 @@ function getSceneAtIndex(sessionData = {}, sceneIndex = null) {
 }
 
 function resolveLayerSourceSceneIndexDetails(sessionData = {}, layer = {}, zeroBasedIndex = -1) {
-  const scenes = getMovieResourceScenes(sessionData);
-  const layers = Array.isArray(sessionData.layers) ? sessionData.layers : [];
-  if (!scenes.length) {
-    return {
-      sourceSceneIndex: null,
-      sourceSceneIndexSource: '',
-      sceneCount: 0,
-      layerCount: layers.length,
-    };
-  }
-
-  const layerCandidates = [
-    { value: layer?.sourceSceneIndex, source: 'sourceLayer.sourceSceneIndex' },
-    { value: layer?.sceneIndex, source: 'sourceLayer.sceneIndex' },
-    { value: layer?.movieResourceIndex, source: 'sourceLayer.movieResourceIndex' },
-    { value: layer?.imageSession?.sourceSceneIndex, source: 'sourceLayer.imageSession.sourceSceneIndex' },
-    { value: layer?.imageSession?.sceneIndex, source: 'sourceLayer.imageSession.sceneIndex' },
-    { value: layer?.imageSession?.movieResourceIndex, source: 'sourceLayer.imageSession.movieResourceIndex' },
-  ];
-  for (const candidate of layerCandidates) {
-    const sceneIndex = normalizeOptionalInteger(candidate.value);
-    if (sceneIndex !== null && scenes[sceneIndex]) {
-      return {
-        sourceSceneIndex: sceneIndex,
-        sourceSceneIndexSource: candidate.source,
-        sceneCount: scenes.length,
-        layerCount: layers.length,
-      };
-    }
-  }
-
-  const layerId = getLayerIdString(layer);
-  const audioLayers = Array.isArray(sessionData.audioLayers) ? sessionData.audioLayers : [];
-  const connectedAudioLayer = audioLayers.find((audioLayer) =>
-    layerId && String(audioLayer?.connectedLayerId || '') === String(layerId)
-  );
-  if (connectedAudioLayer) {
-    const audioCandidates = [
-      { value: connectedAudioLayer.sceneIndex, source: 'connectedAudioLayer.sceneIndex' },
-      { value: connectedAudioLayer.sourceSceneIndex, source: 'connectedAudioLayer.sourceSceneIndex' },
-      { value: connectedAudioLayer.movieResourceIndex, source: 'connectedAudioLayer.movieResourceIndex' },
-      { value: connectedAudioLayer.connectedLayerIndex, source: 'connectedAudioLayer.connectedLayerIndex' },
-    ];
-    for (const candidate of audioCandidates) {
-      const sceneIndex = normalizeOptionalInteger(candidate.value);
-      if (sceneIndex !== null && scenes[sceneIndex]) {
-        return {
-          sourceSceneIndex: sceneIndex,
-          sourceSceneIndexSource: candidate.source,
-          sceneCount: scenes.length,
-          layerCount: layers.length,
-        };
-      }
-    }
-  }
-
-  if (zeroBasedIndex >= 0 && scenes.length === layers.length && scenes[zeroBasedIndex]) {
-    return {
-      sourceSceneIndex: zeroBasedIndex,
-      sourceSceneIndexSource: 'layerIndexEqualSceneIndexFallback',
-      sceneCount: scenes.length,
-      layerCount: layers.length,
-    };
-  }
-
-  return {
-    sourceSceneIndex: null,
-    sourceSceneIndexSource: '',
-    sceneCount: scenes.length,
-    layerCount: layers.length,
-  };
+  return resolveLayerSourceSceneReference(sessionData, layer, zeroBasedIndex);
 }
 
 function resolveLayerSourceSceneIndex(sessionData = {}, layer = {}, zeroBasedIndex = -1) {
@@ -232,9 +162,10 @@ function resolveLayerSourceSceneIndex(sessionData = {}, layer = {}, zeroBasedInd
 }
 
 function getLayerPromptInfo(sessionData, layer, zeroBasedIndex, sourceSceneIndex = null) {
+  const resolvedSource = resolveLayerSourceSceneIndexDetails(sessionData, layer, zeroBasedIndex);
   const scene = getSceneAtIndex(
     sessionData,
-    sourceSceneIndex ?? resolveLayerSourceSceneIndex(sessionData, layer, zeroBasedIndex)
+    sourceSceneIndex ?? resolvedSource.sourceSceneIndex
   );
   const candidates = [
     { value: layer?.originalImageGenerationPrompt, source: 'original' },
@@ -245,6 +176,9 @@ function getLayerPromptInfo(sessionData, layer, zeroBasedIndex, sourceSceneIndex
     { value: layer?.imageSession?.sourcePrompt, source: 'legacy_original' },
     { value: layer?.originalPrompt, source: 'legacy_original' },
     { value: layer?.imageSession?.originalPrompt, source: 'legacy_original' },
+    { value: layer?.sourceSceneRef?.scene?.visual, source: 'seed' },
+    { value: layer?.imageSession?.sourceSceneRef?.scene?.visual, source: 'seed' },
+    { value: resolvedSource.sourceSceneRef?.scene?.visual, source: 'seed' },
     { value: scene?.visual, source: 'seed' },
     { value: scene?.imagePrompt, source: 'seed' },
     { value: scene?.image_prompt, source: 'seed' },
@@ -369,6 +303,64 @@ async function regenerateRerollVisualPrompts(sessionData, sceneIndexes, dependen
     sceneIndex,
     prompt: normalizeString(result.promptList[resultIndex]?.prompt),
   }));
+}
+
+function resolveRerollTargets(sessionData, layerIndexes) {
+  return layerIndexes.map((layerIndex) => {
+    const zeroBasedIndex = layerIndex - 1;
+    const layer = sessionData.layers[zeroBasedIndex];
+    const resolved = resolveLayerSourceSceneIndexDetails(sessionData, layer, zeroBasedIndex);
+    if (resolved.sourceSceneIndex === null || !resolved.sourceSceneRef?.scene) {
+      const error = new Error(
+        `Unable to resolve a narrative scene for visual prompt regeneration. Layer ${layerIndex}: ` +
+        (resolved.reason || 'the original scene mapping is missing or ambiguous.'),
+      );
+      error.code = 'REROLL_VISUAL_SCENE_MISSING';
+      error.status = 422;
+      error.layerIndex = layerIndex;
+      throw error;
+    }
+    return { layerIndex, zeroBasedIndex, ...resolved };
+  });
+}
+
+async function prepareRerollVisualPlans(sessionData, targets, dependencies = {}) {
+  const plans = [];
+  const generatedByReference = new Map();
+  for (const target of targets) {
+    const reference = target.sourceSceneRef;
+    // A joined layer keeps its own narrative and theme, rather than inheriting
+    // those of the first video in the joined timeline.
+    const contextKey = JSON.stringify(reference);
+    let prompt = generatedByReference.get(contextKey);
+    if (!prompt) {
+      const sourceContext = {
+        _id: reference.sourceSessionId || sessionData._id,
+        aspectRatio: sessionData.aspectRatio,
+        expressGenerationInferenceModel: sessionData.expressGenerationInferenceModel,
+        inferenceModel: sessionData.inferenceModel,
+        videoTone: sessionData.videoTone,
+        // Mongoose can omit an empty snapshot theme. That still means an empty
+        // source theme, not the theme of another video in a joined session.
+        themeJson: reference.themeJson ?? {},
+        movieResourceList: {
+          scenes: [reference.scene],
+          sounds: (reference.sounds || []).map((sound) => ({ ...sound, sceneIndex: 0 })),
+        },
+      };
+      const generated = await regenerateRerollVisualPrompts(sourceContext, [0], dependencies);
+      prompt = generated[0]?.prompt;
+      if (!prompt) {
+        const error = new Error(`Visual prompt regeneration returned no prompt for layer index ${target.layerIndex}.`);
+        error.code = 'REROLL_VISUAL_PROMPT_GENERATION_FAILED';
+        error.status = 502;
+        throw error;
+      }
+      generatedByReference.set(contextKey, prompt);
+    }
+    plans.push({ ...target, prompt });
+  }
+  return plans;
 }
 
 function resolveRerollProvider(sessionData = {}) {
@@ -552,10 +544,12 @@ export async function quoteVideoSessionLayerReroll(userId, {
   const sessionData = await loadOwnedSession(userId, videoSessionId);
   assertSessionCanReroll(sessionData);
   const normalizedLayerIndexes = normalizeLayerIndexes(layerIndexes);
+  const quote = buildQuote(sessionData, normalizedLayerIndexes);
+  resolveRerollTargets(sessionData, normalizedLayerIndexes);
   return {
     session_id: sessionData._id.toString(),
     request_id: sessionData._id.toString(),
-    creditQuote: buildQuote(sessionData, normalizedLayerIndexes),
+    creditQuote: quote,
   };
 }
 
@@ -601,8 +595,8 @@ function resetLayerForReroll(sessionData, layer, layerIndex, promptInfo, sourceS
 
   layer.prompt = prompt;
   if (resolvedSourceSceneIndex !== null) {
-    layer.sourceSceneIndex = resolvedSourceSceneIndex;
-    layer.sourceSceneIndexSource = sourceSceneIndexSource;
+    assignSourceSceneFields(layer, { sourceSceneIndex: resolvedSourceSceneIndex,
+      sourceSceneIndexSource });
   }
   if (shouldPersistOriginalPrompt) {
     layer.originalImageGenerationPrompt = getOriginalPromptValue(layer.originalImageGenerationPrompt);
@@ -656,8 +650,8 @@ function resetLayerForReroll(sessionData, layer, layerIndex, promptInfo, sourceS
   layer.imageSession.userId = layer.imageSession.userId || sessionData.userId;
   layer.imageSession.prompt = prompt;
   if (resolvedSourceSceneIndex !== null) {
-    layer.imageSession.sourceSceneIndex = resolvedSourceSceneIndex;
-    layer.imageSession.sourceSceneIndexSource = sourceSceneIndexSource;
+    assignSourceSceneFields(layer.imageSession, { sourceSceneIndex: resolvedSourceSceneIndex,
+      sourceSceneIndexSource });
   }
   if (shouldPersistOriginalPrompt) {
     layer.imageSession.originalImageGenerationPrompt = getOriginalPromptValue(
@@ -702,6 +696,7 @@ function resetLayerForReroll(sessionData, layer, layerIndex, promptInfo, sourceS
     promptSource: promptInfo?.source || '',
     sourceSceneIndex: resolvedSourceSceneIndex,
     sourceSceneIndexSource,
+    sourceSceneRef: layer.sourceSceneRef || layer.imageSession.sourceSceneRef || null,
     runtimeType,
     requiresLipSync,
     requiresSoundEffect,
@@ -808,6 +803,7 @@ async function queueImageRerollRequests(userId, sessionData, rerollLayers, quote
       ...(layer.sourceSceneIndexSource
         ? { sourceSceneIndexSource: layer.sourceSceneIndexSource }
         : {}),
+      ...(layer.sourceSceneRef ? { sourceSceneRef: layer.sourceSceneRef } : {}),
       model: imageModel,
       isBaseGeneration: true,
       isBatchGeneration: true,
@@ -830,16 +826,21 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   layerIndexes,
   webhookUrl = null,
   apiKeyId = null,
-} = {}) {
-  const sourceSessionData = await loadOwnedSession(userId, videoSessionId);
+} = {}, dependencies = {}) {
+  const loadSession = dependencies.loadOwnedSession || loadOwnedSession;
+  const admitBilling = dependencies.prepareImageRequestBilling || prepareImageRequestBilling;
+  const copySession = dependencies.copyVideoSession || copyVideoSession;
+  const sourceSessionData = await loadSession(userId, videoSessionId);
   assertSessionCanReroll(sourceSessionData);
   const sourceSessionId = sourceSessionData._id.toString();
   const normalizedLayerIndexes = normalizeLayerIndexes(layerIndexes);
   const quote = buildQuote(sourceSessionData, normalizedLayerIndexes);
+  // Resolve every target before billing admission, inference or copying assets.
+  const rerollTargets = resolveRerollTargets(sourceSessionData, normalizedLayerIndexes);
+  await admitBilling(userId, { apiKeyId });
+  const visualPlans = await prepareRerollVisualPlans(sourceSessionData, rerollTargets, dependencies);
 
-  await prepareImageRequestBilling(userId, { apiKeyId });
-
-  const copyResult = await copyVideoSession(userId, { videoSessionId: sourceSessionId });
+  const copyResult = await copySession(userId, { videoSessionId: sourceSessionId });
   const rerollSessionId = resolveCopiedSessionId(copyResult);
   if (!rerollSessionId) {
     const error = new Error('Unable to clone video session before reroll.');
@@ -847,47 +848,24 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
     throw error;
   }
 
-  const sessionData = await loadOwnedSession(userId, rerollSessionId);
+  const sessionData = await loadSession(userId, rerollSessionId);
   assertRerollCloneIntegrity(sourceSessionData, sessionData, normalizedLayerIndexes);
   assertSessionCanReroll(sessionData);
 
-  const rerollTargets = normalizedLayerIndexes.map((layerIndex) => {
-    const zeroBasedIndex = layerIndex - 1;
-    const sourceLayer = sourceSessionData.layers[zeroBasedIndex];
-    const sourceSceneIndexDetails = resolveLayerSourceSceneIndexDetails(sourceSessionData, sourceLayer, zeroBasedIndex);
-    const { sourceSceneIndex, sourceSceneIndexSource } = sourceSceneIndexDetails;
-
-    return {
-      layerIndex,
-      zeroBasedIndex,
-      sourceSceneIndex,
-      sourceSceneIndexSource,
-    };
-  });
-  const regeneratedVisualPrompts = await regenerateRerollVisualPrompts(
-    sourceSessionData,
-    rerollTargets.map((target) => target.sourceSceneIndex),
-  );
-  const regeneratedPromptBySceneIndex = new Map(
-    regeneratedVisualPrompts.map((item) => [item.sceneIndex, item.prompt]),
-  );
-
   const rerollLayers = [];
-  for (const target of rerollTargets) {
+  for (const target of visualPlans) {
     const {
       layerIndex,
       zeroBasedIndex,
       sourceSceneIndex,
       sourceSceneIndexSource,
+      sourceSceneRef,
+      prompt: regeneratedPrompt,
     } = target;
     const layer = sessionData.layers[zeroBasedIndex];
-    const regeneratedPrompt = regeneratedPromptBySceneIndex.get(sourceSceneIndex);
-    if (!regeneratedPrompt) {
-      const error = new Error(`Visual prompt regeneration returned no prompt for layer index ${layerIndex}.`);
-      error.code = 'REROLL_VISUAL_PROMPT_GENERATION_FAILED';
-      error.status = 502;
-      throw error;
-    }
+    assignSourceSceneFields(layer, { sourceSceneIndex, sourceSceneRef: JSON.parse(JSON.stringify(sourceSceneRef)) });
+    layer.imageSession ||= {};
+    assignSourceSceneFields(layer.imageSession, { sourceSceneIndex, sourceSceneRef: JSON.parse(JSON.stringify(sourceSceneRef)) });
     rerollLayers.push(resetLayerForReroll(
       sessionData,
       layer,
@@ -901,7 +879,8 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   const rerolledLayerIds = rerollLayers.map((layer) => layer.layerId);
   const rerollRequiresLipSync = rerollLayers.some((layer) => layer.baseType === 'character');
   const rerollRequiresSoundEffect = rerollLayers.some((layer) => layer.baseType === 'sound_effect');
-  const staleWorkDeleteResult = await deleteStaleQueuedWork(sessionData._id.toString(), rerolledLayerIds);
+  const deleteQueuedWork = dependencies.deleteStaleQueuedWork || deleteStaleQueuedWork;
+  await deleteQueuedWork(sessionData._id.toString(), rerolledLayerIds);
 
   const nextStatus = {
     ...(sessionData.expressGenerationStatus || {}),
@@ -957,8 +936,10 @@ export async function rerollVideoSessionLayersAndQueueGeneration(userId, {
   sessionData.markModified('generatedOutroTileCount');
 
   await sessionData.save();
-  await queueImageRerollRequests(userId, sessionData, rerollLayers, quote, apiKeyId);
-  await upsertGlobalSessionMapping({
+  const queueImages = dependencies.queueImageRerollRequests || queueImageRerollRequests;
+  await queueImages(userId, sessionData, rerollLayers, quote, apiKeyId);
+  const upsertMapping = dependencies.upsertGlobalSessionMapping || upsertGlobalSessionMapping;
+  await upsertMapping({
     sessionId: rerollSessionId,
     sessionType: 'video',
     requestId: rerollSessionId,
@@ -1006,6 +987,8 @@ export const __testOnly__ = {
   getRerollVisualMovieResourceList,
   markAllLayersForFrameRegeneration,
   regenerateRerollVisualPrompts,
+  resolveRerollTargets,
+  prepareRerollVisualPlans,
   resolveLayerSourceSceneIndexDetails,
   resolveLayerSourceSceneIndex,
   resetLayerForReroll,

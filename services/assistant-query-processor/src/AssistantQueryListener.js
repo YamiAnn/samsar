@@ -34,7 +34,7 @@ async function chargeQueuedAssistant(userId, credits, { idempotencyKey, billing,
     Ledger: GenerationCreditTransaction, ledger: { userId,
       source: 'assistant_query_completion', metadata: { category: 'assistant',
         model: response?.model, costUsd: billing.costUsd, costSource: billing.costSource,
-        pricingMultiplier: 1.2, usage: billing.usage } } });
+        pricingMultiplier: billing.pricingMultiplier, usage: billing.usage } } });
 }
 
 async function saveQueuedAssistantOutput(sessionId, queryId, response, billing, debit, requestId) {

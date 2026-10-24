@@ -18,7 +18,7 @@ function harness() {
         idempotencyKey: options.idempotencyKey, ledger: { metadata: options.metadata } });
     },
   };
-  const options = { idempotencyKey: 'assistant:test', billing: { costUsd: 0.01, costSource: 'adapter_reported' },
+  const options = { idempotencyKey: 'assistant:test', billing: { costUsd: 0.01, costSource: 'token_tariff', pricingMultiplier: 1.2 },
     response: { model: 'any/model' } };
   return { internal, external, budget, dependencies, options };
 }
@@ -107,4 +107,12 @@ test('admission checks the correct balance, customer budget and API-key limit be
   h.dependencies.assertAPIKeyUsageLimitForDebit = async () => { throw Object.assign(new Error('limit'), { code: 'API_KEY_USAGE_LIMIT_EXCEEDED' }); };
   await assert.rejects(admitAssistantRequest('user', null, h.dependencies), { code: 'API_KEY_USAGE_LIMIT_EXCEEDED' });
   assert.equal(h.internal.debits + h.external.debits, 0);
+});
+
+
+test('P2P: ledger audit metadata preserves a sealed historical markup', async () => {
+  const h = harness();
+  h.options.billing.pricingMultiplier = 1.5;
+  await chargeAssistantRequest('user', 1.5, h.options, h.dependencies);
+  assert.equal(h.internal.transactions.get('assistant:test').metadata.pricingMultiplier, 1.5);
 });

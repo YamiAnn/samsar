@@ -3,7 +3,40 @@ import assert from 'node:assert/strict';
 import { calculateImageCallCredits } from './ImagePricing.js';
 import { resolveImageAdapterReceipt } from './ImageAdapterReceipt.js';
 import { sealFalImageSubmission } from './FalImageSubmission.js';
-import { calculateFalImageTariffCost, createFalImageTariffSnapshot } from './FalImageTariffs.js';
+import { calculateFalImageTariffCost, createFalImageTariffSnapshot, FAL_IMAGE_TARIFFS_V1 } from './FalImageTariffs.js';
+
+test('SEEDREAM seals its exact current low-area endpoint once and applies 20% markup', async () => {
+  const writes = [];
+  const imageGenerationModel = { async updateOne(filter, update) {
+    writes.push([filter, update]); return { matchedCount: 1 };
+  } };
+  const payload = { _id: 'seedream', model: 'SEEDREAM', submittedAdapter: 'fal',
+    imageBillingPolicy: 'adapter', aspectRatio: '9:16' };
+  const dependencies = { env: { SAMSAR_DEPLOYMENT_EDITION: 'production' }, imageGenerationModel };
+  const snapshot = await sealFalImageSubmission(payload, dependencies);
+  assert.equal(snapshot.version, 2);
+  assert.equal(snapshot.endpoint, 'bytedance/seedream/v5/pro/text-to-image');
+  const receipt = await resolveImageAdapterReceipt({ adapter: 'fal', model: 'SEEDREAM', costUsd: 999 },
+    { falImageBillingSnapshot: snapshot });
+  assert.equal(receipt.costUsd, .0675);
+  assert.equal(receipt.costSource, 'static_tariff');
+  assert.equal(calculateImageCallCredits(receipt).credits, 8.1);
+  assert.equal(await sealFalImageSubmission(payload, dependencies), snapshot);
+  assert.equal(writes.length, 1);
+  assert.equal(FAL_IMAGE_TARIFFS_V1.SEEDREAM, undefined);
+});
+
+test('old sealed Fal rates survive retry and a new catalog version', async () => {
+  const snapshot = { version: 1, model: 'WAN2.7PRO', endpoint: 'fal-ai/wan/v2.7/pro/text-to-image',
+    baseUsdPerUnit: .075, unit: 'images', billableUnits: 1 };
+  const payload = { model: 'WAN2.7PRO', submittedAdapter: 'fal', imageBillingPolicy: 'adapter',
+    falImageBillingSnapshot: snapshot };
+  assert.equal(await sealFalImageSubmission(payload, {
+    env: { SAMSAR_DEPLOYMENT_EDITION: 'production' },
+    imageGenerationModel: { updateOne() { throw new Error('must not reseal'); } },
+  }), snapshot);
+  assert.equal(calculateFalImageTariffCost(snapshot), .075);
+});
 
 test('Fal per-image tariffs include verified style, speed, resolution, and output-count tiers', async () => {
   const cases = [
@@ -31,9 +64,8 @@ test('verified FLUX submit sizes seal one billable megapixel before dispatch', a
 });
 
 test('unpriced endpoints and unverified megapixel rules fail before provider submission', async () => {
-  for (const model of ['IMAGEN4', 'FLITE', 'SEEDREAM', 'GPTIMAGE2.5',
-    'SANA', 'PHOTON', 'HUNYUAN', 'SDV3.5', 'FLUX1PROFILL',
-    'FLUX1.1PROULTRAREDUX']) {
+  for (const model of ['IMAGEN4', 'FLITE', 'UNKNOWN', 'GPTIMAGE2.5',
+    'SANA', 'PHOTON', 'HUNYUAN', 'SDV3.5', 'FLUX1PROFILL', 'FLUX1.1PROULTRAREDUX']) {
     assert.throws(() => createFalImageTariffSnapshot({ model }),
       { code: 'FAL_IMAGE_TARIFF_UNVERIFIED' }, model);
   }
@@ -41,7 +73,7 @@ test('unpriced endpoints and unverified megapixel rules fail before provider sub
     case_type: 'image_list_to_image_set', numImages: 0 }), /output count/);
   let writes = 0;
   const imageGenerationModel = { async updateOne() { writes++; return { matchedCount: 1 }; } };
-  await assert.rejects(sealFalImageSubmission({ _id: 'new', model: 'SEEDREAM',
+  await assert.rejects(sealFalImageSubmission({ _id: 'new', model: 'UNKNOWN',
     submittedAdapter: 'fal', imageBillingPolicy: 'adapter' },
   { env: { SAMSAR_DEPLOYMENT_EDITION: 'production' }, imageGenerationModel }), /unverified|no verified/);
   assert.equal(writes, 0);

@@ -12,6 +12,31 @@ function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+test('F2P joining legacy sessions retains each layer original narrative context before global index remapping', () => {
+  const source = (id, visual, theme) => ({
+    _id: id,
+    movieResourceList: { scenes: [{ visual, duration: 2, type: 'scene' }], sounds: [] },
+    themeJson: { setting: theme },
+    layers: [{ _id: `${id}-layer`, prompt: visual, duration: 2, durationOffset: 0, imageSession: {} }],
+    audioLayers: [{ generationType: 'speech', connectedLayerId: `${id}-layer`, connectedLayerIndex: 0,
+      startTime: 0, endTime: 2, duration: 2 }],
+  });
+  const result = __testOnly__.buildJoinedLayersAndAudioLayers([
+    source('source-a', 'An alpine lake', 'mountains'),
+    source('source-b', 'A city harbor', 'coast'),
+  ]);
+
+  assert.equal(result.layers[1].sourceSceneIndex, 0);
+  assert.equal(result.layers[1].sourceSceneRef.sourceSessionId, 'source-b');
+  assert.equal(result.layers[1].sourceSceneRef.scene.visual, 'A city harbor');
+  assert.equal(result.layers[1].sourceSceneRef.themeJson.setting, 'coast');
+  assert.equal(result.layers[1].imageSession.sourceSceneRef.scene.visual, 'A city harbor');
+  assert.equal(result.audioLayers[1].connectedLayerIndex, 1, 'timeline position remains global');
+  assert.equal(result.audioLayers[1].sourceSceneIndex, 0, 'narrative position remains source-local');
+  assert.equal(result.audioLayers[1].sourceSceneRef.sourceSessionId, 'source-b');
+  assert.equal(result.totalDuration, 4);
+});
+
 test('buildJoinedLayersAndAudioLayers appends sessions and shifts timings', () => {
   const session1Layer1Id = createObjectIdString();
   const session1Layer2Id = createObjectIdString();
