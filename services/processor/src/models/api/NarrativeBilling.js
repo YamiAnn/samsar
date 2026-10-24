@@ -1,8 +1,9 @@
+import { GENERATION_PRICING_MULTIPLIER, GENERATION_CREDITS_PER_USD } from '../../consts/pricing/GenerationPricingPolicy.js';
 import { calculateInferenceCreditsFromUsage as calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
 
-const CREDITS_PER_DOLLAR = 100;
+const CREDITS_PER_DOLLAR = GENERATION_CREDITS_PER_USD;
 
-export const NARRATIVE_PRICING_MULTIPLIER = 1.5;
+export const NARRATIVE_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
 
 /**
  * Calculate narrative billing from every inference call used to build a narrative.

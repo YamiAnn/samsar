@@ -488,7 +488,7 @@ test('GMICloud Seedance 2.5 supports up to 20 seconds without extending Seedance
 });
 
 for (const costUsd of [0, 0.425, undefined]) {
-  test(`GMI video polling preserves reported completion charge ${costUsd}`, async () => {
+  test(`GMI video polling ignores reported completion charge ${costUsd}`, async () => {
     const result = await listenToPendingGenBlazeVideoRequest({
       generationId: 'genblaze-video:receipt-job', model: 'SEEDANCE2.5I2V',
     }, { request: async () => ({ status: 'succeeded',
@@ -497,7 +497,17 @@ for (const costUsd of [0, 0.425, undefined]) {
     }) });
     assert.equal(result.videoBillingReceipt.adapter, 'gmicloud');
     assert.equal(result.videoBillingReceipt.providerRequestId, 'receipt-job');
-    assert.equal(Object.hasOwn(result.videoBillingReceipt, 'costUsd'), costUsd !== undefined);
-    if (costUsd !== undefined) assert.equal(result.videoBillingReceipt.costUsd, costUsd);
+    assert.equal(Object.hasOwn(result.videoBillingReceipt, 'costUsd'), false);
   });
 }
+
+test('unverified GMI Hailuo 1080P retains its normal completion-reported charge only', async () => {
+  const calls = [];
+  const completed = await listenToPendingGenBlazeVideoRequest({
+    generationId: 'genblaze-video:original', model: 'HAILUOPRO',
+  }, { request: async path => { calls.push(path); return {
+    status: 'succeeded', assets: [{ url: 'https://cdn.example/clip.mp4' }], billing: { cost_usd: 0.48 },
+  }; } });
+  assert.equal(completed.videoBillingReceipt.costUsd, 0.48);
+  assert.deepEqual(calls, ['/media/requests/original']);
+});

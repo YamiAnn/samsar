@@ -3,6 +3,7 @@ import AIVideoLayerGeneration from '../schema/AIVideoLayerGeneration.js';
 import VideoSession from '../schema/VideoSession.js';
 import User from '../schema/User.js';
 import { getCanonicalAiVideoReference } from './utils/ProviderMediaUrl.js';
+import { getSourceSceneMetadata } from './utils/SourceSceneMetadata.js';
 import {
   hasReusableBaseAiVideo,
   hasSoundEffectOutput,
@@ -37,6 +38,7 @@ export function buildSoundEffectGenerationPayload({
     useEndFrame: false,
     sessionId,
     layerId: currentLayer._id,
+    ...getSourceSceneMetadata(currentLayer),
     userId,
     aspectRatio,
     isExpressGeneration: true,

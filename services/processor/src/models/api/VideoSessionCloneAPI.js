@@ -4,6 +4,7 @@ import fsExtra from 'fs-extra';
 import { fileURLToPath } from 'url';
 import { Types } from 'mongoose';
 import { isContainerRuntime } from '../../utils/EnvironmentUtils.js';
+import { captureSessionSceneReferences } from '../video/SceneIdentity.js';
 
 import { getDBConnectionString } from '../DBString.js';
 import { createNewBlankQuickSession } from '../QuickSession.js';
@@ -969,6 +970,7 @@ export async function cloneVideoSessionAndQueueRender(userId, payload = {}) {
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
   const sourceResultUrl = resolveCloneResultUrl(originalSessionData);
   if (!sourceResultUrl) {
     const error = new Error('Video session does not have a completed video URL to clone.');
@@ -1077,6 +1079,7 @@ export async function cloneVideoSessionAndRegenerateNarratorAvatar(userId, paylo
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
   const sourceResultUrl = resolveCloneResultUrl(originalSessionData);
   if (!sourceResultUrl) {
     const error = new Error('Video session does not have a completed video URL to regenerate.');
@@ -1230,6 +1233,7 @@ export async function copyVideoSession(userId, payload = {}) {
 
   const oldSessionId = originalSessionDoc._id.toString();
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
   const newSessionId = await createNewBlankQuickSession(userId);
   const assetsRoots = resolveAssetsRoots();
   await copySessionAssetDirectories({ assetsRoots, oldSessionId, newSessionId });

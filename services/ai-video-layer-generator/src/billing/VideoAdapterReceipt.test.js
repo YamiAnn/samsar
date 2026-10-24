@@ -85,40 +85,46 @@ test('MMAudio existing default and current native sound receipts need no billing
   assert.equal(current.sampleCount, 1);
 });
 
-test('recovers the confirmed GMICloud charge for a saved video without submitting again', async () => {
-  const calls = [];
+test('GMICloud uses saved submitted configuration without a cost/status GET', async () => {
   const receipt = await resolveVideoAdapterReceipt(
-    { adapter: 'gmicloud', model: 'SEEDANCE2.0I2V', providerRequestId: 'sealed/job' },
-    {},
-    {
-      env: { SAMSAR_GENBLAZE_BASE_URL: 'http://genblaze:8080/v1/' },
-      fetchImpl: async (url, options) => {
-        calls.push({ url, options });
-        return { ok: true, json: async () => ({ status: 'succeeded', billing: { cost_usd: 0.76 } }) };
-      },
-    },
-  );
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'http://genblaze:8080/v1/media/requests/sealed%2Fjob');
-  assert.equal(calls[0].options.method, undefined);
-  assert.equal(receipt.costUsd, 0.76);
-});
-
-test('GMICloud billing recovery keeps an unpriced completed video pending', async () => {
-  await assert.rejects(
-    resolveVideoAdapterReceipt({ adapter: 'gmicloud', providerRequestId: 'sealed' }, {}, {
-      fetchImpl: async () => ({ ok: true, json: async () => ({ status: 'succeeded' }) }),
-    }),
-    error => error.code === 'VIDEO_BILLING_PENDING' && /charge is not available/.test(error.message),
-  );
-});
-
-test('GMICloud billing recovery accepts an explicit zero charge', async () => {
-  const receipt = await resolveVideoAdapterReceipt({ adapter: 'gmicloud' },
-    { apiRequestId: 'genblaze-video:sealed' }, {
-      fetchImpl: async () => ({ ok: true, json: async () => ({
-        status: 'succeeded', billing: { cost_usd: 0 },
-      }) }),
+    { adapter: 'gmicloud', model: 'SEEDANCE2.0I2V', providerRequestId: 'paid', costUsd: 999 },
+    { requestId: 'original-queue' }, {
+      lookupGeneration: async () => ({ model: 'SEEDANCE2.0I2V', duration: 5,
+        startImage: 'https://assets.example/first.png', submittedAdapter: 'gmicloud',
+        generationId: 'genblaze-video:paid' }),
+      fetchImpl: async () => assert.fail('No provider charge/status GET'),
     });
-  assert.equal(receipt.costUsd, 0);
+  assert.equal(receipt.tariffRateUsd, 0.152);
+  assert.equal(receipt.seconds, 5);
+  assert.equal(receipt.pricingRecovery, 'legacy_queue');
+  assert.equal(Object.hasOwn(receipt, 'costUsd'), false);
+});
+
+test('missing original configuration stays pending even with a reported zero price', async () => {
+  await assert.rejects(resolveVideoAdapterReceipt(
+    { adapter: 'gmicloud', model: 'SEEDANCE2.0I2V', providerRequestId: 'paid', costUsd: 0 },
+    { requestId: 'deleted-queue' }, {
+      lookupGeneration: async () => null,
+      fetchImpl: async () => assert.fail('No provider GET'),
+    }), /original static video submission configuration/);
+});
+
+test('saved current GMI tariff needs no queue or provider lookup', async () => {
+  const { buildStaticVideoReceipt } = await import('./StaticVideoTariffs.js');
+  const sealed = buildStaticVideoReceipt({ adapter: 'gmicloud', model: 'SEEDANCE2.0I2V',
+    seconds: 10, resolution: '720p' });
+  assert.deepEqual(await resolveVideoAdapterReceipt(sealed, {}, {
+    lookupGeneration: async () => assert.fail('No queue lookup'),
+    fetchImpl: async () => assert.fail('No provider GET'),
+  }), sealed);
+});
+
+test('legacy GMI Hailuo never performs a second GET to recover a missing charge', async () => {
+  for (const costUsd of [undefined, 0, 0.48]) {
+    const receipt = { adapter: 'gmicloud', model: 'HAILUOPRO', ...(costUsd === undefined ? {} : { costUsd }) };
+    assert.deepEqual(await resolveVideoAdapterReceipt(receipt, {}, {
+      lookupGeneration: async () => assert.fail('No repricing queue lookup'),
+      fetchImpl: async () => assert.fail('No result or pricing GET'),
+    }), receipt);
+  }
 });

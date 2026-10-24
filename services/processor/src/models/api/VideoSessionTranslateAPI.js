@@ -9,6 +9,7 @@ import { getDBConnectionString } from '../DBString.js';
 import { deductGenerationCredits } from '../GenerationCredits.js';
 import { upsertGlobalSessionMapping } from '../GlobalSession.js';
 import VideoSession from '../../schema/VideoSession.js';
+import { captureSessionSceneReferences } from '../video/SceneIdentity.js';
 import AudioGeneration from '../../schema/AudioGeneration.js';
 import User from '../../schema/User.js';
 import { normalizeSupportedLanguage, SUPPORTED_LANGUAGES } from '../../consts/SupportedLanguages.js';
@@ -482,6 +483,7 @@ function createNewObjectId() {
 }
 
 function regenerateLayerAndAudioLayerIds(sessionData = {}) {
+  captureSessionSceneReferences(sessionData);
   const layerIdMap = new Map();
   const layerIdByIndex = new Map();
   const audioLayerIdMap = new Map();
@@ -1574,6 +1576,7 @@ async function processTranslateVideoSessionJob({
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
 
   const originalSpeechLayers = Array.isArray(originalSessionData?.audioLayers)
     ? originalSessionData.audioLayers.filter(isSpeechAudioLayer)
@@ -1700,6 +1703,7 @@ export const __testOnly__ = {
   prepareSessionForSubtitleAddition,
   prepareSubtitleLanguageMetadataForAddition,
   prepareSessionForTranslate,
+  regenerateLayerAndAudioLayerIds,
 };
 
 export async function translateVideoSessionAndQueueGeneration(userId, payload = {}) {
@@ -1872,6 +1876,7 @@ export async function getTranslateVideoBillingPreview(userId, payload = {}) {
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
   const durationSeconds = resolveSessionDurationSeconds(originalSessionData);
   const billableSeconds = Math.ceil(durationSeconds);
   if (!Number.isFinite(billableSeconds) || billableSeconds <= 0) {
@@ -2204,6 +2209,7 @@ async function processRemoveSubtitlesSessionJob({ userId, oldSessionId, newSessi
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
 
   // NOTE: Do not use structuredClone here - it can serialize BSON ObjectIds into
   // `{ buffer: Uint8Array(...) }` shapes which Mongoose cannot cast back when saving.
@@ -2257,6 +2263,7 @@ async function processAddSubtitlesSessionJob({
   }
 
   const originalSessionData = originalSessionDoc.toObject({ depopulate: true });
+  captureSessionSceneReferences(originalSessionData);
 
   const clonedSession = JSON.parse(JSON.stringify(originalSessionData));
 

@@ -5,16 +5,6 @@ import { FAL_LIP_SYNC_TARIFFS } from './FalLipSyncTariffs.js';
 import { FAL_SOUND_EFFECT_TARIFFS } from './FalSoundEffectTariffs.js';
 import { buildFalVideoSubmissionReceipt } from './FalVideoTariffs.js';
 
-for (const adapter of ['gmicloud', 'runway', 'googleCloud', 'alibabaCloud', 'hailuo', 'custom']) {
-  for (const model of ['video', 'SYNCLIPSYNC', 'MIRELOAI', 'MMAUDIOV2']) {
-    if (adapter === 'fal' && ['SYNCLIPSYNC', 'MIRELOAI', 'MMAUDIOV2'].includes(model)) continue;
-    test(`${adapter} ${model} charges the same margin on the actual receipt`, () => {
-      assert.equal(calculateVideoCallCredits({ adapter, model, costUsd: 0.375 }).credits, 45);
-      assert.equal(calculateVideoCallCredits({ adapter, model, costUsd: 0 }).credits, 0);
-    });
-  }
-}
-
 test('Fal video uses the sealed model/config tariff, ignoring a provider-reported charge', () => {
   const submitted = buildFalVideoSubmissionReceipt({ model: 'KLINGIMGTOVID3PRO',
     duration: 10, generateAudio: true });
@@ -111,8 +101,8 @@ test('missing or wrong billable durations fail closed', () => {
   }
   assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'KLINGLIPSYNC',
     outputSeconds: 10 }), /inputSeconds/);
-  assert.equal(calculateVideoCallCredits({ adapter: 'gmicloud', model: 'SYNCLIPSYNC',
-    costUsd: 0.375 }).credits, 45);
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', model: 'SYNCLIPSYNC',
+    seconds: 5, costUsd: 0.375 }), /verified static tariff/);
 });
 
 test('native Veo uses generated duration, audio, resolution and successful sample count', () => {
@@ -133,10 +123,10 @@ test('native Runway and Alibaba use the submitted configuration', () => {
 
 test('unknown or malformed charges cannot silently become free or use another adapter tariff', () => {
   for (const costUsd of [null, undefined, '', -1, NaN, Infinity, {}, false]) {
-    assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', costUsd }), /Invalid/);
+    assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', costUsd }), /duration|tariff/);
   }
   assert.throws(() => calculateVideoCallCredits({ adapter: 'fal', model: 'HAIPER2.0', costUsd: 0 }), /tariff/);
-  assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', model: 'RUNWAYML', seconds: 5 }), /not available/);
+  assert.throws(() => calculateVideoCallCredits({ adapter: 'gmicloud', model: 'RUNWAYML', seconds: 5 }), /verified static tariff/);
 });
 
 test('Docker runtime does not waive hosted production calls; standalone edition does', () => {

@@ -43,6 +43,10 @@ import {
   createTextToInteractiveVideoDraftSession,
   createTextToInteractiveVideoRequest,
 } from '../../models/api/TextToInteractiveVideoAPI.js';
+import {
+  getVideoRequestListSessionIds,
+  resolveVideoRequestListResult,
+} from '../../models/api/VideoRequestListStatus.js';
 import { generateInteractivePublicationMetadata } from '../../models/api/InteractivePublicationMetadataAPI.js';
 import {
   buildStepVideoDetailedStatus,
@@ -1569,23 +1573,61 @@ async function handleInternalRequests(req, res) {
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
+    const videoSessionIds = getVideoRequestListSessionIds(sessions);
+    const videoSessions = videoSessionIds.length
+      ? await VideoSession.find({
+        _id: { $in: videoSessionIds },
+        userId: authContext.internalUserId,
+      }).select([
+        'userId',
+        'videoLink',
+        'remoteURL',
+        'videoGenerationPending',
+        'expressGenerationPending',
+        'frameGenerationPending',
+        'expressGenerationFailed',
+        'expressGenerationCancelled',
+        'expressGenerationPaused',
+        'generationError',
+        'expressGenerationStatus.status',
+        'expressGenerationStatus.video_generation',
+        'narrativeType',
+        'sourceNarrativeType',
+        'defaultBranchPathId',
+        'branchingTimeline.defaultPathId',
+        'branchRenderPaths.pathId',
+        'branchRenderPaths.ordinal',
+        'branchRenderPaths.frameGenerationStatus',
+        'branchRenderPaths.videoGenerationStatus',
+        'branchRenderPaths.videoLink',
+        'branchRenderPaths.remoteURL',
+      ].join(' ')).lean()
+      : [];
+    const videoSessionsById = new Map(videoSessions.map((session) => [session._id.toString(), session]));
 
     return res.status(200).json({
-      requests: sessions.map((session) => ({
-        request_id: session.requestId || session.sessionId,
-        session_id: session.sessionId,
-        type: session.sessionType,
-        provider: session.provider || null,
-        status: session.status || 'PENDING',
-        result_url: session.resultUrl || null,
-        result_urls: Array.isArray(session.resultUrls) ? session.resultUrls : [],
-        thumbnail_url: session.thumbnailUrl || null,
-        request_type: session.requestType || null,
-        session_sub_type: session.sessionSubType || null,
-        created_at: session.createdAt,
-        updated_at: session.updatedAt,
-        metadata: session.metadata || {},
-      })),
+      requests: sessions.map((session) => {
+        const reconciledVideo = resolveVideoRequestListResult(
+          session,
+          videoSessionsById.get(session.sessionId?.toString()),
+          req,
+        );
+        return {
+          request_id: session.requestId || session.sessionId,
+          session_id: session.sessionId,
+          type: session.sessionType,
+          provider: session.provider || null,
+          status: reconciledVideo?.status || session.status || 'PENDING',
+          result_url: reconciledVideo ? reconciledVideo.resultUrl || null : session.resultUrl || null,
+          result_urls: reconciledVideo ? reconciledVideo.resultUrls || [] : (Array.isArray(session.resultUrls) ? session.resultUrls : []),
+          thumbnail_url: session.thumbnailUrl || null,
+          request_type: session.requestType || null,
+          session_sub_type: session.sessionSubType || null,
+          created_at: session.createdAt,
+          updated_at: session.updatedAt,
+          metadata: session.metadata || {},
+        };
+      }),
     });
   } catch (error) {
     return sendAuthError(res, error);

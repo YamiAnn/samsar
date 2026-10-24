@@ -254,7 +254,8 @@ export async function pollGenBlazeImageEditRequest(payload = {}, dependencies = 
     const image = await saveFile(resultUrl);
     // Keep the request locked until downstream edit persistence completes.
     return { image, resultUrl, resultUrls: [resultUrl],
-      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) } };
+      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId,
+        outputImages: response.assets.length, usage: response.billing?.usage, ...reportedImageCharge(response) } };
   } catch (error) {
     logger.error('[GenBlazeImageEdit] poll failed:', error);
     return {

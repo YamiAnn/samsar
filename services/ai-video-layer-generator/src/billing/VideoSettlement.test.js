@@ -47,7 +47,7 @@ function fixture() {
   };
   const charge = (userId, credits, idempotencyKey) => debitVideoOwnerOnce({ Owner, Ledger, userId, credits, idempotencyKey });
   const options = { id: 'logical-video-1', userId: 'owner', result: { video: 'finished.png' },
-    adapterReceipt: { adapter: 'gmicloud', costUsd: 0.125 }, store, charge };
+    adapterReceipt: { adapter: 'runway', model: 'gen4.5', seconds: 5, costUsd: 999 }, store, charge };
   return { options, store, charge, receipts, transactions, account, Owner, Ledger,
     failLedger: () => ledgerFailures++, failReceipt: () => receiptFailures++, mutations: () => mutations };
 }
@@ -55,7 +55,7 @@ function fixture() {
 test('parallel completion callbacks debit one video once', async () => {
   const f = fixture();
   const results = await Promise.all(Array.from({ length: 20 }, () => settleCompletedVideoCall(f.options)));
-  assert.equal(f.account.generationCredits, 85);
+  assert.equal(f.account.generationCredits, 28);
   assert.equal(f.mutations(), 1);
   assert.equal(f.transactions.size, 1);
   assert.ok(results.every(result => result.status === 'COMPLETED'));
@@ -66,10 +66,10 @@ for (const phase of ['ledger', 'receipt']) {
     const f = fixture();
     phase === 'ledger' ? f.failLedger() : f.failReceipt();
     await assert.rejects(settleCompletedVideoCall(f.options), /unavailable/);
-    assert.equal(f.account.generationCredits, 85);
+    assert.equal(f.account.generationCredits, 28);
     assert.deepEqual(f.receipts.get(f.options.id).result, { video: 'finished.png' });
     await settleCompletedVideoCall({ ...f.options, result: { video: 'must-not-replace-original.png' } });
-    assert.equal(f.account.generationCredits, 85);
+    assert.equal(f.account.generationCredits, 28);
     assert.equal(f.transactions.size, 1);
     assert.equal(f.receipts.get(f.options.id).result.video, 'finished.png');
   });
@@ -78,32 +78,33 @@ for (const phase of ['ledger', 'receipt']) {
 test('independent video calls and rerolls each incur their own charge', async () => {
   const f = fixture();
   await Promise.all(['video-1', 'video-2', 'reroll-1'].map(id => settleCompletedVideoCall({ ...f.options, id })));
-  assert.equal(f.account.generationCredits, 55);
+  assert.equal(f.account.generationCredits, -116);
   assert.equal(f.transactions.size, 3);
 });
 
-test('missing adapter billing remains pending and later confirmation settles the retained result', async () => {
+test('missing submitted configuration remains pending and queue recovery settles the retained result', async () => {
   const f = fixture();
-  const options = { ...f.options, adapterReceipt: { adapter: 'gmicloud' } };
+  const options = { ...f.options, adapterReceipt: { adapter: 'runway', model: 'gen4.5' } };
   await assert.rejects(settleCompletedVideoCall(options), /charge|duration/i);
   assert.equal(f.mutations(), 0);
   assert.equal(f.receipts.get(options.id).result.video, 'finished.png');
-  await settleCompletedVideoCall({ ...options, resolveReceipt: async receipt => ({ ...receipt, costUsd: 0.25 }) });
-  assert.equal(f.account.generationCredits, 70);
+  await settleCompletedVideoCall({ ...options, resolveReceipt: async receipt => ({ ...receipt, seconds: 5 }) });
+  assert.equal(f.account.generationCredits, 28);
 });
 
-test('zero adapter receipts are completed without an artificial minimum charge', async () => {
+test('a reported zero cannot override the static charge', async () => {
   const f = fixture();
-  const result = await settleCompletedVideoCall({ ...f.options, adapterReceipt: { adapter: 'gmicloud', costUsd: 0 } });
+  const result = await settleCompletedVideoCall({ ...f.options, adapterReceipt: { ...f.options.adapterReceipt, costUsd: 0 } });
   assert.equal(result.status, 'COMPLETED');
-  assert.equal(f.mutations(), 0);
+  assert.equal(result.billing.credits, 72);
+  assert.equal(f.mutations(), 1);
 });
 
 test('incurred video cost is settled even when the final charge exceeds the remaining balance', async () => {
   const f = fixture();
   f.account.generationCredits = 1;
   await settleCompletedVideoCall(f.options);
-  assert.equal(f.account.generationCredits, -14);
+  assert.equal(f.account.generationCredits, -71);
 });
 
 test('existing prepaid jobs, production pipelines and local Docker never receive a second video debit', async () => {
@@ -119,9 +120,9 @@ test('existing prepaid jobs, production pipelines and local Docker never receive
 test('hosted video call from an agent settles through the same path as Studio', async () => {
   const f = fixture();
   await billCompletedVideo({ _id: 'hosted-video', userId: 'owner', videoBillingPolicy: 'adapter' },
-    { video: 'done.png', videoBillingReceipt: { adapter: 'gmicloud', providerRequestId: 'remote-video', costUsd: 0.125 } },
+    { video: 'done.png', videoBillingReceipt: { adapter: 'runway', model: 'gen4.5', seconds: 5, providerRequestId: 'remote-video', costUsd: 0.125 } },
     { env: { SAMSAR_DEPLOYMENT_EDITION: 'production', SAMSAR_RUNTIME: 'docker' }, store: f.store, charge: f.charge });
-  assert.equal(f.account.generationCredits, 85);
+  assert.equal(f.account.generationCredits, 28);
 });
 
 test('provider polling and transport retries retain one billing identity; a new reroll gets another', () => {
@@ -162,7 +163,7 @@ test('completed provider receipt survives queue deletion before settlement', asy
   await settleCompletedVideoCall({ ...f.options, userId: saved.userId, result: saved.result,
     adapterReceipt: saved.adapterReceipt, context: saved.context });
   assert.equal(f.mutations(), 1);
-  assert.equal(f.account.generationCredits, 85);
+  assert.equal(f.account.generationCredits, 28);
 });
 
 test('an existing saved Sync v3 result settles once from its measured output', async () => {

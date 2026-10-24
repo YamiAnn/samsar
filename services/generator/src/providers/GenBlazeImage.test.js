@@ -223,6 +223,19 @@ test('polls the same job and preserves the existing image result shape', async (
   ]);
 });
 
+test('completed GMI generation retains trusted token usage for constant tariff settlement', async () => {
+  const usage = { promptTokenCount: 100, candidatesTokenCount: 1120,
+    candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: 1120 }] };
+  const result = await handleGenBlazeImageRequest({ _id: 'nano-row', model: 'NANOBANANA2',
+    apiGenerationStatus: 'PENDING', apiRequestId: 'genblaze-image:saved' }, {
+    connect: async () => {}, imageGenerationModel: createModelRecorder().model,
+    request: async () => ({ status: 'succeeded', assets: [{ url: 'https://cdn.example/done.png' }],
+      billing: { usage } }), saveFile: async () => 'done.png', logger: { error() {} },
+  });
+  assert.deepEqual(result.imageBillingReceipt.usage, usage);
+  assert.equal(result.imageBillingReceipt.outputImages, 1);
+});
+
 test('GPT Image 2 polling honors the same snake-case ratio accepted at submission', async () => {
   const recorder = createModelRecorder();
   const result = await handleGenBlazeImageRequest(

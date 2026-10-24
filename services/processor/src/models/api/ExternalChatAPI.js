@@ -162,7 +162,7 @@ export async function createExternalChatCompletion(
       assistantBillingRequestId: requestId, maxRetries: 0, externalMaxRetries: 0 }, dependencyOverrides),
     charge: (credits, context) => dependencyOverrides.deductCredits
       ? dependencyOverrides.deductCredits(userId, credits, { ...context, source: 'external_chat_completion',
-        metadata: { category: 'external_chat', pricingMultiplier: 1.2, costUsd: context.billing.costUsd } })
+        metadata: { category: 'external_chat', pricingMultiplier: context.billing.pricingMultiplier, costUsd: context.billing.costUsd } })
       : chargeAssistantRequest(userId, credits, { ...context, source: 'external_chat_completion',
         metadata: { apiKeyUsage: context.requestContext?.apiKeyUsage } }),
   });

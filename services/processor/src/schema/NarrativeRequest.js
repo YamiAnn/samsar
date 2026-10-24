@@ -1,3 +1,4 @@
+import { GENERATION_PRICING_MULTIPLIER } from '../consts/pricing/GenerationPricingPolicy.js';
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
@@ -101,7 +102,7 @@ const narrativeRequestSchema = new Schema({
   inferenceReceipts: { type: [Schema.Types.Mixed], default: [] },
   billingSnapshot: { type: Schema.Types.Mixed, default: null },
   billingCalculatedAt: { type: Date, default: null },
-  pricingMultiplier: { type: Number, default: 1.5 },
+  pricingMultiplier: { type: Number, default: GENERATION_PRICING_MULTIPLIER },
   underlyingCostUsd: { type: Number, default: 0 },
   underlyingCredits: { type: Number, default: 0 },
   creditsCharged: { type: Number, default: 0 },

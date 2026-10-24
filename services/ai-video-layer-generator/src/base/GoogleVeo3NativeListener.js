@@ -1,4 +1,5 @@
 import { GoogleAuth } from 'google-auth-library';
+import { sealStaticVideoSubmission } from '../billing/StaticVideoSubmission.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -462,10 +463,10 @@ export async function generateGoogleVeo3VideoLayer(payload) {
   const token = await getAccessToken();
 
   const requestBody = await buildVeoRequest(payload);
-  payload.videoBillingNativeReceipt = { adapter: 'googleCloud', model,
+  await sealStaticVideoSubmission(payload, { adapter: 'googleCloud', model,
     seconds: requestBody.parameters.durationSeconds,
     generateAudio: requestBody.parameters.generateAudio,
-    resolution: requestBody.parameters.resolution || '720p' };
+    resolution: requestBody.parameters.resolution || '720p' });
   const response = await fetch(buildPublisherModelUrl({
     projectId,
     location,

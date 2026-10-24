@@ -1,3 +1,4 @@
+import { GENERATION_PRICING_MULTIPLIER, GENERATION_CREDITS_PER_USD } from '../../consts/pricing/GenerationPricingPolicy.js';
 import OpenAI from 'openai';
 
 import { deductGenerationCredits } from '../GenerationCredits.js';
@@ -9,8 +10,10 @@ import {
 
 const MAX_EMBEDDING_INPUTS = 100;
 const MAX_EMBEDDING_INPUT_CHARS = 12000;
-const EMBEDDING_USD_PER_MILLION_TOKENS = 1;
-const SAMSAR_CREDITS_PER_USD = 100;
+// One-time official model-price snapshot, verified 2026-10-24:
+// https://developers.openai.com/api/docs/models/text-embedding-3-small
+const EMBEDDING_USD_PER_MILLION_TOKENS = 0.02;
+const SAMSAR_CREDITS_PER_USD = GENERATION_CREDITS_PER_USD;
 
 function buildError(message, statusCode = 400, code = null) {
   const error = new Error(message);
@@ -58,12 +61,12 @@ function validateRequestedModel(payload = {}) {
   }
 }
 
-function calculateEmbeddingCredits(tokenCount) {
+export function calculateEmbeddingCredits(tokenCount) {
   const costUsd = (Math.max(0, Number(tokenCount) || 0) / 1_000_000) *
     EMBEDDING_USD_PER_MILLION_TOKENS;
   return {
     costUsd,
-    credits: costUsd * SAMSAR_CREDITS_PER_USD,
+    credits: costUsd * SAMSAR_CREDITS_PER_USD * GENERATION_PRICING_MULTIPLIER,
   };
 }
 
@@ -100,6 +103,7 @@ export async function createExternalEmbeddingVectors({ userId, payload = {} } = 
           inputCount: inputs.length,
           inputTokens: tokenCount,
           usdPerMillionTokens: EMBEDDING_USD_PER_MILLION_TOKENS,
+          pricingMultiplier: GENERATION_PRICING_MULTIPLIER,
           costUsd: billing.costUsd,
           creditsCharged: billing.credits,
         },

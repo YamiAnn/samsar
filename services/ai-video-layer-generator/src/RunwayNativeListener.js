@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { sealStaticVideoSubmission } from './billing/StaticVideoSubmission.js';
 
 const RUNWAY_API_KEY = process.env.RUNWAY_API_KEY;
 const RUNWAY_VIDEO_LINK = "https://api.dev.runwayml.com/v1/image_to_video";
@@ -49,7 +50,7 @@ export async function generateRunwayNativeVideoLayer(payload) {
     }
   }
 
- payload.videoBillingNativeReceipt = { adapter: 'runway', model: inputPayload.model, seconds: inputPayload.duration };
+ await sealStaticVideoSubmission(payload, { adapter: 'runway', model: inputPayload.model, seconds: inputPayload.duration });
  const response = await axios.post(RUNWAY_VIDEO_LINK, inputPayload, headers);
 
   const responseData = response.data;

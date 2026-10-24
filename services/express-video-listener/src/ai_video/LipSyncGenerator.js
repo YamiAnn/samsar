@@ -8,6 +8,7 @@ import path from 'path';
 import { uploadSpeechAudioToCDN } from '../audio/AWS.js';
 import { padBlankAudioAtBeginningAndEnd } from '../audio/Audio.js';
 import { getCanonicalAiVideoReference } from './utils/ProviderMediaUrl.js';
+import { getSourceSceneMetadata } from './utils/SourceSceneMetadata.js';
 import {
   findConnectedSpeechAudioLayer,
   hasLipSyncOutput,
@@ -410,6 +411,7 @@ export async function generateLipSyncForLayer(sessionId, currentLayer, connected
     samsarExternalVideoRoute: 'lip_sync',
     sessionId: sessionId,
     layerId: currentLayer._id,
+    ...getSourceSceneMetadata(currentLayer),
     userId: userId,
     isAudioVideoGeneration: true,
     clipLayerToAiVideo: false,

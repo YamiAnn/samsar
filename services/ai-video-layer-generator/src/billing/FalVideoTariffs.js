@@ -7,11 +7,11 @@ import { falSoundEffectTariff } from './FalSoundEffectTariffs.js';
 // Keep the selected rate in each submitted receipt so a later deploy cannot
 // reprice a completed request. These URLs are the Fal model cards checked on
 // 2026-10-23; unsupported configurations must fail before queue.submit.
-export const FAL_VIDEO_TARIFF_VERSION = '2026-10-23';
+export const FAL_VIDEO_TARIFF_VERSION = '2026-10-24';
 const SNAPSHOT_2026_10_23 = '2026-10-23';
 const card = endpoint => `https://fal.ai/models/${endpoint}`;
-const entry = (endpoint, unit, rateUsd) => Object.freeze({
-  endpoint, unit, rateUsd, source: card(endpoint), verifiedOn: SNAPSHOT_2026_10_23,
+const entry = (endpoint, unit, rateUsd, verifiedOn = SNAPSHOT_2026_10_23) => Object.freeze({
+  endpoint, unit, rateUsd, source: card(endpoint), verifiedOn,
 });
 
 // Never change a dated snapshot after jobs have been submitted with it. Add a
@@ -55,6 +55,11 @@ const FAL_VIDEO_TARIFFS_2026_10_23 = Object.freeze({
 
 export const FAL_VIDEO_TARIFF_VERSIONS = Object.freeze({
   '2026-10-23': FAL_VIDEO_TARIFFS_2026_10_23,
+  '2026-10-24': Object.freeze({ ...FAL_VIDEO_TARIFFS_2026_10_23,
+    // The current listener does not send num_frames, resolution, or steps.
+    // Fal's documented defaults are 96 frames, 720p, and 16 steps ($0.32).
+    MAGIDISTILLED: entry('fal-ai/magi-distilled/image-to-video', 'video', 0.32, '2026-10-24'),
+  }),
 });
 export const FAL_VIDEO_TARIFFS = FAL_VIDEO_TARIFF_VERSIONS[FAL_VIDEO_TARIFF_VERSION];
 
@@ -171,6 +176,12 @@ export function buildFalVideoSubmissionReceipt(payload = {}) {
     if (duration !== 5) throw unavailable(model, `no verified ${duration}s tariff`);
     config.duration = duration;
     config.resolution = '720p';
+  } else if (model === 'MAGIDISTILLED') {
+    config.numFrames = 96;
+    config.resolution = '720p';
+    config.numInferenceSteps = 16;
+    config.duration = 4;
+    config.pricingDefaultsSource = 'provider_schema';
   } else if (model.startsWith('SEEDANCE')) {
     const input = buildSeedanceInputPayload(payload);
     config.duration = input.duration ?? 5;

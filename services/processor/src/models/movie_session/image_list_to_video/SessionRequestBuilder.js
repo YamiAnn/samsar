@@ -76,6 +76,7 @@ import {
 } from "../../../consts/DockerAudioAvailability.js";
 import { hasConnectedSpeechAudioLayer } from '../../video/LipSyncLayerState.js';
 import { normalizeExpressVideoPricingRateClass } from '../../../consts/pricing/ExpressVideoPricingDistribution.js';
+import { buildSourceSceneFields } from '../../video/SceneIdentity.js';
 
 const MEDIA_DOWNLOAD_TIMEOUT_MS = Number.isFinite(Number(process.env.API_MEDIA_DOWNLOAD_TIMEOUT_MS))
   ? Math.max(1000, Math.floor(Number(process.env.API_MEDIA_DOWNLOAD_TIMEOUT_MS)))
@@ -108,6 +109,21 @@ export function resolveImageListItemRequiresEnhancement(imageMeta = {}) {
     : typeof imageMeta?.requiresEnhancement === 'boolean'
       ? imageMeta.requiresEnhancement
       : false;
+}
+
+export function buildImageListLayerSourceSceneFields({
+  sourceSessionId,
+  sceneIndex,
+  movieResourceList = {},
+  themeJson = {},
+} = {}) {
+  return buildSourceSceneFields({
+    sourceSessionId,
+    sceneIndex,
+    scene: movieResourceList.scenes?.[sceneIndex],
+    sounds: movieResourceList.sounds || [],
+    themeJson,
+  });
 }
 
 function normalizeBackingTrackProvider(value) {
@@ -790,6 +806,12 @@ export async function requestImageListToVideGeneration(userId, payload) {
     );
 
     let returnPayload = {
+      ...(Number.isInteger(sceneIndex) && scenes[sceneIndex] ? buildImageListLayerSourceSceneFields({
+        sourceSessionId: sessionId,
+        sceneIndex,
+        movieResourceList: sanitizedMovieResourceList,
+        themeJson,
+      }) : {}),
       prompt: sound.audio,
       ...subtitleLayerFields,
       generationType: "speech",
@@ -883,7 +905,8 @@ export async function requestImageListToVideGeneration(userId, payload) {
     promptList.push({
       'prompt': promptForChunk,
       duration: scene.duration,
-      sceneType: sceneType
+      sceneType: sceneType,
+      sourceSceneIndex: i,
     });
   }
 
@@ -969,6 +992,12 @@ export async function requestImageListToVideGeneration(userId, payload) {
     const duration = promptItem.duration;
 
     const sceneType = promptItem.sceneType;
+    const sourceSceneFields = buildImageListLayerSourceSceneFields({
+      sourceSessionId: sessionId,
+      sceneIndex: promptItem.sourceSceneIndex ?? pIdx,
+      movieResourceList: sanitizedMovieResourceList,
+      themeJson,
+    });
 
 
     const editImageURL = imageList[pIdx];
@@ -993,6 +1022,7 @@ export async function requestImageListToVideGeneration(userId, payload) {
     const currentGenerationStatus = 'COMPLETED';
 
     const newSession = {
+      ...sourceSceneFields,
       userId,
       generations: [],
       activeSelectedImage: '',
@@ -1030,6 +1060,7 @@ export async function requestImageListToVideGeneration(userId, payload) {
 
 
     let layerPayload = {
+      ...sourceSceneFields,
 	      imageSession: newSession,
 	      prompt: prompt,
 	      originalImageGenerationPrompt: prompt,
@@ -1174,6 +1205,8 @@ export async function requestImageListToVideGeneration(userId, payload) {
     }
 
     const outroImageSession = {
+      sourceSceneIndex: null,
+      sourceSceneRef: null,
       userId,
       generations: [],
       activeSelectedImage: '',
@@ -1192,6 +1225,8 @@ export async function requestImageListToVideGeneration(userId, payload) {
     };
 
     newSessionLayers.push({
+      sourceSceneIndex: null,
+      sourceSceneRef: null,
       imageSession: outroImageSession,
       prompt: '',
       status: "pending",

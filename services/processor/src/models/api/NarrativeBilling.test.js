@@ -7,7 +7,7 @@ import {
   validateNarrativeBilling,
 } from './NarrativeBilling.js';
 
-test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.5x', () => {
+test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.2x', () => {
   const result = calculateNarrativeBilling([
     {
       stage: 'theme_generation',
@@ -47,12 +47,12 @@ test('aggregates mixed GPT, Gemini, and Qwen inference receipts at 1.5x', () => 
     },
   ], { pricingTimestampMs: Date.UTC(2026, 10, 21) });
 
-  assert.equal(NARRATIVE_PRICING_MULTIPLIER, 1.5);
+  assert.equal(NARRATIVE_PRICING_MULTIPLIER, 1.2);
   assert.equal(result.underlyingCostUsd, 2.215);
   assert.equal(result.costUsd, 2.215);
   assert.equal(result.underlyingCredits, 221.5);
-  assert.equal(result.credits, 332.25);
-  assert.equal(result.pricingMultiplier, 1.5);
+  assert.equal(result.credits, 265.8);
+  assert.equal(result.pricingMultiplier, 1.2);
   assert.equal(result.creditsPerDollar, 100);
   assert.deepEqual(result.usage, {
     inputTokens: 300_000,
@@ -107,7 +107,7 @@ test('applies the multiplier after summing underlying cost instead of rounded ca
     [0.0003, 0.0003],
   );
   assert.equal(result.underlyingCredits, 0.0005);
-  assert.equal(result.credits, 0.0008);
+  assert.equal(result.credits, 0.0006);
 });
 
 test('retains only safe per-call metadata and returns zero billing for invalid input', () => {
@@ -157,7 +157,7 @@ test('retains only safe per-call metadata and returns zero billing for invalid i
       reasoningTokens: 0,
     },
     receipts: [],
-    pricingMultiplier: 1.5,
+    pricingMultiplier: 1.2,
     creditsPerDollar: 100,
   });
 });

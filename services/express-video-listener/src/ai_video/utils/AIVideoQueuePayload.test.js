@@ -49,6 +49,27 @@ const retryableImageToVideoModels = [
   'HAPPYHORSEI2V',
 ];
 
+test('F2P: queued image-to-video retries preserve the immutable scene context including scene zero', () => {
+  const sourceSceneRef = {
+    version: 1, sourceSessionId: 'original-session', sceneIndex: 0,
+    scene: { visual: 'A watchman at the gate.' }, sounds: [], themeJson: { setting: 'Coastal gate' },
+  };
+  const payload = buildRetryableImageToVideoQueuePayload({
+    model: 'HAPPYHORSEI2V', videoSessionId: 'copy-session', layerId: 'layer-1',
+    sourceSceneIndex: 0, sourceSceneRef,
+    prompt: 'Animate the watchman.', duration: 10, useStartFrame: true,
+  }, { startImage: 'https://static.example/frame.png' });
+  assert.equal(payload.sourceSceneIndex, 0);
+  assert.deepEqual(payload.sourceSceneRef, sourceSceneRef);
+  assert.notEqual(payload.sourceSceneRef, sourceSceneRef);
+  assert.equal(payload.startImage, 'https://static.example/frame.png');
+  assert.equal(payload.duration, 10);
+  assert.equal(payload.retryOnFail, true);
+  const persisted = new AIVideoLayerGeneration(payload).toObject();
+  assert.equal(persisted.sourceSceneIndex, 0);
+  assert.deepEqual(persisted.sourceSceneRef, sourceSceneRef);
+});
+
 test('unsent pipeline video requests retain their queue record while capacity is full', () => {
   const payload = buildRetryableImageToVideoQueuePayload({
     videoSessionId: 'session-1', layerId: 'layer-1', model: 'SEEDANCE2.0I2V',

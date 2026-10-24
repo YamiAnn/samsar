@@ -15,7 +15,7 @@ test('every supported Fal video tariff identifies its exact endpoint and a dated
   for (const [model, tariff] of Object.entries(FAL_VIDEO_TARIFFS)) {
     assert.ok(tariff.endpoint, model);
     assert.equal(tariff.source, `https://fal.ai/models/${tariff.endpoint}`);
-    assert.equal(tariff.verifiedOn, '2026-10-23');
+    assert.equal(tariff.verifiedOn, model === 'MAGIDISTILLED' ? '2026-10-24' : '2026-10-23');
   }
 });
 
@@ -46,7 +46,6 @@ test('flat, frame, and rounded tariffs reflect submitted listener options', () =
 test('unverified model and configuration reject before a paid provider call', () => {
   for (const payload of [
     { model: 'HAIPER2.0' },
-    { model: 'MAGIDISTILLED' },
     { model: 'PIKA2.2I2V', duration: 10 },
     { model: 'WANI2V5B', duration: 7 },
     { model: 'PIXVERSEI2V', duration: 6 },
@@ -68,7 +67,7 @@ test('hosted adapter seals before submit; pipeline, lip sync, and standalone byp
   };
   await sealFalVideoSubmissionReceipt(hosted, 'fal', persist,
     { SAMSAR_DEPLOYMENT_EDITION: 'production' });
-  assert.equal(hosted.videoBillingNativeReceipt.falVideoTariffVersion, '2026-10-23');
+  assert.equal(hosted.videoBillingNativeReceipt.falVideoTariffVersion, '2026-10-24');
   events.push('submit');
   assert.deepEqual(events, ['persist', 'submit']);
 
@@ -121,6 +120,15 @@ test('Seedance token rates are sealed before submit and use only completed media
   assert.equal(probes, 1);
   assert.equal(resolved.billableQuantity, 216);
   assert.equal(calculateVideoCallCredits(resolved).credits, 554.688);
+});
+
+test('Magi bills the exact listener provider defaults while preserving dated snapshots', () => {
+  assert.equal(FAL_VIDEO_TARIFF_VERSIONS['2026-10-23'].MAGIDISTILLED, undefined);
+  const receipt = buildFalVideoSubmissionReceipt({ model: 'MAGIDISTILLED', duration: 8, framesPerSecond: 30 });
+  assert.equal(receipt.falVideoTariffVersion, '2026-10-24');
+  assert.equal(receipt.submittedConfig.numFrames, 96);
+  assert.equal(receipt.submittedConfig.duration, 4);
+  assert.equal(calculateVideoCallCredits({ ...receipt, costUsd: 999 }).credits, 38.4);
 });
 
 test('legacy completed Fal video recovers its queue rate; an orphaned variable-price job stays pending', async () => {

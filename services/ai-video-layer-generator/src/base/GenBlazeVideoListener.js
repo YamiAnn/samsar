@@ -1,3 +1,4 @@
+import { sealStaticVideoSubmission } from '../billing/StaticVideoSubmission.js';
 import { reportedVideoCharge } from '../billing/VideoPricing.js';
 const GENBLAZE_REQUEST_PREFIX = 'genblaze-video:';
 const DEFAULT_GENBLAZE_BASE_URL = 'http://genblaze:8080/v1';
@@ -423,15 +424,26 @@ export async function requestGenBlazeVideo(pathname, options = {}) {
 
 export async function generateGenBlazeVideoLayer(payload = {}, dependencies = {}) {
   const request = dependencies.request || requestGenBlazeVideo;
+  const body = buildGenBlazeVideoRequest(payload);
+  await sealStaticVideoSubmission(payload, buildGenBlazeVideoBillingConfiguration(body), dependencies);
   const response = await request('/media/requests', {
     method: 'POST',
-    body: buildGenBlazeVideoRequest(payload),
+    body,
   });
   const requestId = normalizeString(response?.request_id);
   if (!requestId) {
     throw invalidUpstreamResponse('GenBlaze video submit returned no request id.');
   }
   return `${GENBLAZE_REQUEST_PREFIX}${requestId}`;
+}
+
+export function buildGenBlazeVideoBillingConfiguration(request) {
+  return { adapter: 'gmicloud', model: request.model,
+    seconds: Number(request.params.duration),
+    resolution: request.params.resolution || (request.model.startsWith('VEO3.1') ||
+      request.model === 'SEEDANCEI2V' ? '720p' : undefined),
+    generateAudio: request.params.generate_audio === true,
+    ...(request.params.mode ? { mode: request.params.mode } : {}) };
 }
 
 export async function listenToPendingGenBlazeVideoRequest(payload = {}, dependencies = {}) {
@@ -451,7 +463,9 @@ export async function listenToPendingGenBlazeVideoRequest(payload = {}, dependen
       throw invalidUpstreamResponse('GMICloud video result returned no valid video URL.');
     }
     return { responseStatus: 'COMPLETED', remoteUrl, videoBillingReceipt: {
-      adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedVideoCharge(response) } };
+      ...payload.videoBillingNativeReceipt,
+      adapter: 'gmicloud', model: payload.model, providerRequestId: requestId,
+      ...(payload.model === 'HAILUOPRO' ? reportedVideoCharge(response) : {}) } };
   }
   if (status !== 'failed' && status !== 'cancelled') {
     throw invalidUpstreamResponse(`GMICloud video returned an unexpected status: ${status || '<missing>'}.`);

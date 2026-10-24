@@ -1,3 +1,4 @@
+import { GENERATION_PRICING_MULTIPLIER } from '../../consts/pricing/GenerationPricingPolicy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 
@@ -25,7 +26,7 @@ import { normalizeAPIKeyUsageContext } from './RequestAuthContext.js';
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 500;
 const BILLING_SOURCE = 'interactive_publication_metadata';
-const PUBLICATION_METADATA_PRICING_MULTIPLIER = 1.5;
+const PUBLICATION_METADATA_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
 // Publication metadata uses xhigh reasoning for OpenAI-backed sessions. Keep
 // the lease longer than the provider's normal request window so a live call is
 // never reclaimed while it is still producing a response.

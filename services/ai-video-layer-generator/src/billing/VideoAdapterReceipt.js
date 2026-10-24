@@ -4,30 +4,11 @@ import { falLipSyncTariff, requireCurrentFalLipSyncTariff } from './FalLipSyncTa
 import { falSoundEffectTariff } from './FalSoundEffectTariffs.js';
 import { buildFalVideoSubmissionReceipt, falVideoTariffForReceipt } from './FalVideoTariffs.js';
 import AIVideoLayerGeneration from '../schema/AIVideoLayerGeneration.js';
-
-const DEFAULT_GENBLAZE_BASE_URL = 'http://genblaze:8080/v1';
-
-/** Re-read the original GMICloud gateway result when its saved completion had
- * no charge. This is a result/status GET, never a model pricing endpoint or a
- * replacement generation request. */
-export async function readGenBlazeVideoCharge(requestId, { fetchImpl = fetch, env = process.env } = {}) {
-  const id = String(requestId || '').replace(/^genblaze-video:/, '').trim();
-  if (!id) throw videoBillingError('The GMICloud video request ID is missing.');
-  const baseUrl = String(env.SAMSAR_GENBLAZE_BASE_URL || DEFAULT_GENBLAZE_BASE_URL).replace(/\/+$/, '');
-  const response = await fetchImpl(`${baseUrl}/media/requests/${encodeURIComponent(id)}`,
-    { signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw videoBillingError(`GMICloud video billing confirmation is unavailable (${response.status}).`);
-  const data = await response.json();
-  if (data?.status !== 'succeeded') throw videoBillingError('The GMICloud video result is not complete.');
-  const costUsd = data?.billing?.cost_usd;
-  if (!['number', 'string'].includes(typeof costUsd) || String(costUsd).trim() === '' ||
-      !Number.isFinite(Number(costUsd)) || Number(costUsd) < 0) {
-    throw videoBillingError('The GMICloud video adapter charge is not available yet.');
-  }
-  return Number(costUsd);
-}
+import { buildStaticVideoReceipt, usesLegacyGmiReportedPricing } from './StaticVideoTariffs.js';
+import { buildGenBlazeVideoRequest, buildGenBlazeVideoBillingConfiguration } from '../base/GenBlazeVideoListener.js';
 
 export async function resolveVideoAdapterReceipt(receipt, context = {}, dependencies = {}) {
+  if (usesLegacyGmiReportedPricing(receipt)) return receipt;
   if (receipt.adapter === 'fal' && falLipSyncTariff(receipt.model)) {
     const tariff = falLipSyncTariff(receipt.model);
     if (!tariff.fallbackCreditsPerRequestedSecond) requireCurrentFalLipSyncTariff(receipt.model);
@@ -156,8 +137,36 @@ export async function resolveVideoAdapterReceipt(receipt, context = {}, dependen
     }
     return sealed;
   }
-  if (Object.hasOwn(receipt, 'costUsd')) return receipt;
-  if (receipt.adapter === 'gmicloud') return { ...receipt,
-    costUsd: await readGenBlazeVideoCharge(receipt.providerRequestId || context.apiRequestId, dependencies) };
-  return receipt;
+  if (receipt.staticVideoTariffVersion) return receipt;
+  if (receipt.seconds !== undefined) {
+    // The configuration and saved tariff, never a reported charge, determine
+    // the bill. Calculation validates the selected dated snapshot as well.
+    return { ...receipt, ...buildStaticVideoReceipt(receipt, receipt.staticVideoTariffVersion) };
+  }
+  const lookupGeneration = dependencies.lookupGeneration || (id =>
+    AIVideoLayerGeneration.findById(id).lean());
+  let queued;
+  if (context.requestId) {
+    try { queued = await lookupGeneration(context.requestId); } catch { /* Keep completed output pending. */ }
+  }
+  if (!queued || (queued.submittedAdapter && queued.submittedAdapter !== receipt.adapter) ||
+      (queued.generationId && receipt.providerRequestId &&
+        queued.generationId.replace(/^genblaze-video:/, '') !== receipt.providerRequestId.replace(/^genblaze-video:/, ''))) {
+    throw videoBillingError('The original static video submission configuration is unavailable.');
+  }
+  const saved = queued.videoBillingNativeReceipt;
+  let recovered;
+  if (saved?.adapter === receipt.adapter && saved.model === receipt.model) {
+    recovered = buildStaticVideoReceipt(saved, saved.staticVideoTariffVersion);
+  } else if (receipt.adapter === 'gmicloud' && queued.model === receipt.model) {
+    try {
+      recovered = buildStaticVideoReceipt(buildGenBlazeVideoBillingConfiguration(buildGenBlazeVideoRequest(queued)));
+    } catch {
+      throw videoBillingError('The original GMICloud video configuration has no verified static tariff.');
+    }
+  } else {
+    throw videoBillingError('The original static video submission configuration is unavailable.');
+  }
+  const { costUsd: _reportedCost, ...identity } = receipt;
+  return { ...identity, ...recovered, pricingRecovery: 'legacy_queue' };
 }

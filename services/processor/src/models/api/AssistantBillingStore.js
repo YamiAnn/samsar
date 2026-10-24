@@ -43,7 +43,7 @@ export async function chargeAssistantRequest(userId, credits, { idempotencyKey, 
     customerSubAccountExternalId: externalUser.customerSubAccountExternalId,
   } : {};
   const audit = { ...metadata, requestType: 'API', category: 'assistant',
-    model: response?.model, pricingMultiplier: 1.2, costUsd: billing.costUsd,
+    model: response?.model, pricingMultiplier: billing.pricingMultiplier, costUsd: billing.costUsd,
     costSource: billing.costSource, usage: billing.usage, assistantBilling: true };
   if (!externalUser || isInternalBillingExternalUser(externalUser)) {
     // Exact cost is only known after inference; settle incurred usage in full.

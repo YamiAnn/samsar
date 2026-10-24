@@ -10,6 +10,7 @@ const imageGenerationSchema = new Schema({
   imageBillingFingerprint: String,
   imageBillingAPIKeyUsage: Schema.Types.Mixed,
   falImageBillingSnapshot: Schema.Types.Mixed,
+  imageAdapterTariffSnapshot: Schema.Types.Mixed,
   imageBillingDebits: Schema.Types.Mixed,
   imageCreditsCharged: { type: Number, default: 0 },
   imageCreditsRemaining: Number,

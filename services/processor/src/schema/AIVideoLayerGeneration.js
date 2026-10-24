@@ -6,6 +6,8 @@ const aiVideoLayerGenerationSchema = new Schema({
   videoBillingPending: Boolean,
   videoBillingAPIKeyUsage: Schema.Types.Mixed,
   videoBillingSavedResult: Schema.Types.Mixed,
+  videoBillingNativeReceipt: Schema.Types.Mixed,
+  videoBillingError: String,
   videoBillingReceiptId: String,
   sessionId: String,
   layerId: String,

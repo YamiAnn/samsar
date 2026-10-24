@@ -43,8 +43,15 @@ export const FAL_IMAGE_TARIFFS_V1 = freezeTariffs({
   BRIA_GENFILL: ['fal-ai/bria/genfill', 0.04, 'generations'],
   BRIA_BACKGROUNDREMOVE: ['fal-ai/bria/background/remove', 0.018, 'generations'],
 });
-export const FAL_IMAGE_TARIFFS = FAL_IMAGE_TARIFFS_V1;
-const TARIFFS_BY_VERSION = Object.freeze({ 1: FAL_IMAGE_TARIFFS_V1 });
+// One-time account verification on 2026-10-24. Seedream's submitter fixes
+// num_images=1 and uses 1024²/1792x1024/1024x1792, all below the model
+// card's 1536² high-resolution threshold. Never fetch prices on submission.
+export const FAL_IMAGE_TARIFFS_V2 = freezeTariffs({
+  ...FAL_IMAGE_TARIFFS_V1,
+  SEEDREAM: ['bytedance/seedream/v5/pro/text-to-image', 0.0675, 'images'],
+});
+export const FAL_IMAGE_TARIFFS = FAL_IMAGE_TARIFFS_V2;
+const TARIFFS_BY_VERSION = Object.freeze({ 1: FAL_IMAGE_TARIFFS_V1, 2: FAL_IMAGE_TARIFFS_V2 });
 
 // These exact model cards also verify the rounding rule. Other Fal cards
 // identify a per-MP rate without defining billable-unit rounding; they must
@@ -97,7 +104,7 @@ export function createFalImageTariffSnapshot(payload = {}) {
   const speedMultiplier = model === 'IDEOGRAMV3' ? 2 : 1;
   const outputCount = nanoEdit?.outputCount || 1;
   return {
-    version: 1, model, endpoint, unit, baseUsdPerUnit,
+    version: 2, model, endpoint, unit, baseUsdPerUnit,
     config: { aspectRatio: payload.aspectRatio || '1:1',
       ...(nanoEdit ? nanoEdit : {}),
       ...(recraftStyle ? { imageStyle: recraftStyle } : {}),
@@ -112,7 +119,7 @@ export function createFalImageTariffSnapshot(payload = {}) {
     ...(['RECRAFTV3', 'RECRAFT20B'].includes(model) ? { styleMultiplier } : {}),
     ...(model === 'IDEOGRAMV3' ? { speedMultiplier } : {}),
     ...(model.includes('NANOBANANA') ? { resolutionMultiplier: nanoMultiplier } : {}),
-    verifiedOn: '2026-10-23', source: 'fal-models-pricing-api',
+    verifiedOn: model === 'SEEDREAM' ? '2026-10-24' : '2026-10-23', source: 'fal-models-pricing-api',
   };
 }
 
@@ -126,7 +133,7 @@ export function calculateFalImageTariffCost(snapshot) {
       snapshot.baseUsdPerUnit !== rate) {
     throw imageBillingError('The Fal image tariff snapshot is invalid.');
   }
-  if (unit === 'megapixels' && snapshot.version === 1 && !V1_ROUNDED_MEGAPIXEL_MODELS.has(snapshot.model)) {
+  if (unit === 'megapixels' && !V1_ROUNDED_MEGAPIXEL_MODELS.has(snapshot.model)) {
     throw imageBillingError('The Fal image megapixel billing rule is unverified.');
   }
   const units = snapshot.billableUnits;

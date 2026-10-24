@@ -320,7 +320,7 @@ test('branching worker can only claim a branched create_branching request', asyn
   assert.deepEqual(claimFilter.$or[0], { status: 'PENDING' });
 });
 
-test('recovered branching artifacts use an isolated debit namespace and 1.5x billing', async (t) => {
+test('recovered branching artifacts use an isolated debit namespace and twenty percent billing', async (t) => {
   setConnectionReadyForTest(t);
   const requestId = '507f1f77bcf86cd799439012';
   const sourceRequestId = '507f1f77bcf86cd799439011';
@@ -390,7 +390,7 @@ test('recovered branching artifacts use an isolated debit namespace and 1.5x bil
   assert.equal(result.request_type, 'create_branching');
   assert.equal(result.narrative_type, 'branched');
   assert.equal(result.source_narrative_request_id, sourceRequestId);
-  assert.equal(result.billing.pricing_multiplier, 1.5);
+  assert.equal(result.billing.pricing_multiplier, 1.2);
   assert.equal(result.billing.underlying_credits, expectedBilling.underlyingCredits);
   assert.equal(result.billing.credits_charged, expectedBilling.credits);
   assert.deepEqual(chargeLookup.$or, [
@@ -571,7 +571,7 @@ test('fresh worker checkpoints the tree, meters every branching call, and forwar
   });
 
   assert.equal(result.status, 'COMPLETED');
-  assert.equal(result.billing.pricing_multiplier, 1.5);
+  assert.equal(result.billing.pricing_multiplier, 1.2);
   assert.equal(result.billing.credits_charged, expectedBilling.credits);
   assert.equal(treeOptions.requestedDuration, 30);
   assert.equal(treeOptions.videoGenerationModel, 'CUSTOM_SOURCE_MODEL');

@@ -177,6 +177,19 @@ test('submits and polls an opaque image-edit job while preserving Samsar result 
   });
 });
 
+test('completed GMI edit retains trusted token usage for constant tariff settlement', async () => {
+  const usage = { promptTokenCount: 100, candidatesTokenCount: 1120,
+    candidatesTokensDetails: [{ modality: 'IMAGE', tokenCount: 1120 }] };
+  const result = await handleGenBlazeImageEditRequest({ _id: 'nano-edit', model: 'NANOBANANA2EDIT',
+    apiEditStatus: 'PENDING', apiRequestId: 'genblaze-image-edit:saved' }, {
+    connect: async () => {}, imageGenerationModel: createModelRecorder().model,
+    request: async () => ({ status: 'succeeded', assets: [{ url: 'https://cdn.example/edit.png' }],
+      billing: { usage } }), saveFile: async () => 'edit.png', logger: { error() {} },
+  });
+  assert.deepEqual(result.imageBillingReceipt.usage, usage);
+  assert.equal(result.imageBillingReceipt.outputImages, 1);
+});
+
 test('failed GenBlaze edits retain ownership until shared failover is persisted', async () => {
   const recorder = createModelRecorder();
   const result = await handleGenBlazeImageEditRequest({

@@ -1,13 +1,14 @@
+import { GENERATION_PRICING_MULTIPLIER } from '../../consts/pricing/GenerationPricingPolicy.js';
 import OpenAI from 'openai';
 import { GPT_56_SOL_REASONING_EFFORT } from '../../consts/InferenceModels.js';
 import { getAccessibleProviderMediaUrl } from '../ai_utils/VisionMediaUrl.js';
 import { deductGenerationCredits } from '../GenerationCredits.js';
-import { calculateInferenceCreditsFromUsage as calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
+import { assertAssistantTariffAvailable, calculateInferenceCreditsFromUsage as calculateAssistantCreditsFromUsage } from './AssistantBilling.js';
 
 const ASSIGN_TITLE_MODEL = process.env.IMAGE_ASSIGN_TITLE_MODEL || 'gpt-6-astra';
 const ASSIGN_TITLE_REASONING_EFFORT = GPT_56_SOL_REASONING_EFFORT;
 const ASSIGN_TITLE_IMAGE_DETAIL = 'low';
-const ASSIGN_TITLE_PRICING_MULTIPLIER = 1.5;
+const ASSIGN_TITLE_PRICING_MULTIPLIER = GENERATION_PRICING_MULTIPLIER;
 const ASSIGN_TITLE_MAX_OUTPUT_TOKENS_DESCRIPTION = 220;
 const ASSIGN_TITLE_MAX_OUTPUT_TOKENS_TITLE = 80;
 const ASSIGN_TITLE_MAX_TITLE_CHARS = 72;
@@ -45,6 +46,7 @@ export async function assignTitleToImage(payload = {}) {
     throw buildError('userId is required.', 401);
   }
 
+  assertAssistantTariffAvailable(ASSIGN_TITLE_MODEL);
   ensureOpenAIClient();
 
   const imageInput = resolveImageInput(payload);
@@ -258,13 +260,17 @@ function normalizeMetadata(value) {
   throw buildError('metadata must be a JSON object.', 400);
 }
 
-function calculateAssignTitleBilling(stepResponses = []) {
+export function calculateAssignTitleBilling(stepResponses = []) {
   const steps = stepResponses.map(({ step, response }) => {
+    assertAssistantTariffAvailable(response?.model || ASSIGN_TITLE_MODEL);
     const billing = calculateAssistantCreditsFromUsage({
       model: response?.model || ASSIGN_TITLE_MODEL,
       usage: response?.usage,
       pricingMultiplier: ASSIGN_TITLE_PRICING_MULTIPLIER,
     });
+    if (!billing.billable) {
+      throw buildError('Image title generation has no billable token usage.', 502);
+    }
 
     return {
       step,
@@ -279,13 +285,11 @@ function calculateAssignTitleBilling(stepResponses = []) {
 
   const credits = roundTo(steps.reduce((sum, step) => sum + (Number(step.credits) || 0), 0), 4);
   const costUsd = roundTo(steps.reduce((sum, step) => sum + (Number(step.costUsd) || 0), 0), 8);
-  const fallbackApplied = credits <= 0;
-
   return {
-    credits: fallbackApplied ? 1 : credits,
+    credits,
     costUsd,
     pricingMultiplier: ASSIGN_TITLE_PRICING_MULTIPLIER,
-    fallbackApplied,
+    fallbackApplied: false,
     steps,
   };
 }

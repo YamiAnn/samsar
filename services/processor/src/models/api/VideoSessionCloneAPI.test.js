@@ -5,6 +5,23 @@ import os from 'os';
 import path from 'path';
 
 import { __testOnly__ } from './VideoSessionCloneAPI.js';
+import { captureSessionSceneReferences } from '../video/SceneIdentity.js';
+
+test('P2P cloning rewrites render asset paths while preserving captured original scene provenance', () => {
+  const sourceSessionId = 'source-session';
+  const clonedSession = {
+    _id: sourceSessionId,
+    movieResourceList: { scenes: [{ visual: 'A harbor', duration: 2 }], sounds: [] },
+    layers: [{ _id: 'layer-1', originalImageGenerationPrompt: 'A harbor', duration: 2,
+      aiVideoLayer: `assets_v2/ai_video/generations/${sourceSessionId}/layer-1/video.mp4`, imageSession: {} }],
+  };
+  captureSessionSceneReferences(clonedSession);
+  __testOnly__.rewriteSessionAssetReferences(clonedSession, sourceSessionId, 'copy-session');
+  assert.equal(clonedSession.layers[0].aiVideoLayer, 'assets_v2/ai_video/generations/copy-session/layer-1/video.mp4');
+  assert.equal(clonedSession.layers[0].sourceSceneRef.sourceSessionId, sourceSessionId);
+  assert.equal(clonedSession.layers[0].imageSession.sourceSceneRef.scene.visual, 'A harbor');
+  assert.equal(clonedSession.layers[0].duration, 2);
+});
 
 test('regenerate avatar can build narrator image input for sessions without prior avatar config', () => {
   const result = __testOnly__.resolveNarratorAvatarImageGenerationInput({

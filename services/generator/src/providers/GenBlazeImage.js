@@ -270,13 +270,15 @@ export async function pollGenBlazeImageRequest(payload = {}, dependencies = {}) 
       );
       return normalizeGPTImageTwoResult({
         image,
-        imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) },
+        imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId,
+          outputImages: response.assets.length, usage: response.billing?.usage, ...reportedImageCharge(response) },
         width: output.width,
         height: output.height,
       });
     }
     return { image, resultUrl: imageUrl, resultUrls: [imageUrl],
-      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId, ...reportedImageCharge(response) } };
+      imageBillingReceipt: { adapter: 'gmicloud', model: payload.model, providerRequestId: requestId,
+        outputImages: response.assets.length, usage: response.billing?.usage, ...reportedImageCharge(response) } };
   } catch (error) {
     logger.error('[GenBlazeImage] poll failed:', error);
     return {

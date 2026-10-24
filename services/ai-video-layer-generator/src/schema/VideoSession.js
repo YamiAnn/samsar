@@ -207,6 +207,13 @@ const audioLayerSchema = new Schema({
 
 // Create the main schema corresponding to the document interface
 const videoSessionSchema = new Schema({
+    // Explicit paths keep billing assignments on hydrated worker sessions
+    // serialized and tracked; ordinary pipeline sessions have no new defaults.
+    videoBillingPolicy: String,
+    videoBillingAPIKeyUsage: Schema.Types.Mixed,
+    videoBillingDebits: Schema.Types.Mixed,
+    videoCreditsCharged: Number,
+    videoRemainingCredits: Number,
     userId: String,
     promptlist: [String],
     layers: [layerSchema],

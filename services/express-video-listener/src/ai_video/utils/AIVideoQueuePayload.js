@@ -1,5 +1,6 @@
 import { buildAiVideoRetryQueueFields } from './AIVideoPromptContext.js';
 import { isStandaloneEdition } from '../../utils/EnvironmentUtils.js';
+import { getSourceSceneMetadata } from './SourceSceneMetadata.js';
 
 export function getInitialVideoAdapter(model, env = process.env) {
   if (
@@ -26,6 +27,7 @@ export function buildRetryableImageToVideoQueuePayload(
     originalVideoModel: payload.originalVideoModel,
     sessionId: payload.videoSessionId || payload.sessionId,
     layerId: payload.layerId,
+    ...getSourceSceneMetadata(payload),
     useEndFrame: payload.useEndFrame,
     useStartFrame: payload.useStartFrame,
     combineLayers: payload.combineLayers,
